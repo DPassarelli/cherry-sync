@@ -44,6 +44,11 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 The general approach for outside-in testing means that I want to have a conversation about what I expect the application to do, _before writing any code to implement that expectation_. The Gherkin files should act as a TODO list and form the canonical behavioral specification. Please help me start here and then as we drill down into implementation, then we can start working on unit tests.
 
+### Gherkin style
+
+- Prefer imperative scenarios — exact commands and exact expected output — over declarative ones when we've designed something specific. Vague assertions like "I see the planned actions" erode hard-won design decisions; we can always loosen specific assertions later if they become brittle in practice.
+- Use Gherkin tables to make world state concrete (e.g. listing files and their state on each side). Concrete examples are easier to verify and easier to translate into test fixtures later (godog or otherwise).
+
 ### Scope for v0.1
 
 A minimal first version that's useful immediately:
