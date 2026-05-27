@@ -12,6 +12,7 @@ Feature: Compare directories
       LICENSE
       .gitignore
       """
+    And   csync is configured with source "./project" and destination "user@host:/project"
 
   Scenario: None of the files are different
     Given that all of the files are identical between local and remote
