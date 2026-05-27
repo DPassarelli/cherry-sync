@@ -1,25 +1,57 @@
-Feature: Compare local and remote directories
+Feature: Compare directories
+
   In order to understand what a sync will do before committing to it,
   I want to see which files differ and what action would be taken.
 
-  Scenario: Previewing a one-way push
-    Given a local directory "./project" containing:
-      | path          | state                           |
-      | src/parser.go | does not exist on remote        |
-      | src/main.go   | differs from the remote copy    |
-      | docs/old.md   | exists on remote but not local  |
-      | README.md     | identical on remote             |
-    When I run "csync ./project user@host:/srv/project"
-    Then the output is:
+  Background:
+    Given a local directory containing these files:
+      """
+      src/main.go
+      src/parser.go
+      README.md
+      LICENSE
+      .gitignore
+      """
+
+  Scenario: None of the files are different
+    Given that all of the files are identical between local and remote
+    When  I run "csync"
+    Then  the output should be:
       """
       Source:      ./project
-      Destination: user@host:/srv/project
+      Destination: user@host:/project
 
-        create  src/parser.go
-        update  src/main.go
-        delete  docs/old.md
+        (no differences)
 
-      3 changes. Re-run with --execute to apply.
+      0 changes to make.
+      """
+
+  Scenario: One of the files is different
+    Given that the file "README.md" has been changed locally
+    When  I run "csync"
+    Then  the output should be:
+      """
+      Source:      ./project
+      Destination: user@host:/project
+
+        update README.md
+
+      1 change to make.
+      """
+
+  Scenario: Two of the files are different
+    Given that the file "README.md" has been changed locally
+    And   that the file "src/adder.go" has been added locally
+    When  I run "csync"
+    Then  the output should be:
+      """
+      Source:      ./project
+      Destination: user@host:/project
+
+        update README.md
+        create src/adder.go
+
+      2 changes to make.
       """
 
   # ---------------------------------------------------------------------------
