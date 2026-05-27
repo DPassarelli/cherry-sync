@@ -28,23 +28,12 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 - `rsync --files-from=<path>` accepts a text file of relative paths and transfers only those. This is how selective sync works without running rsync once per file.
 - Bidirectional comparison requires two dry-run passes (one push, one pull) and merging the results. Conflicts (modified on both sides) need to be flagged clearly.
 
-## Open questions to resolve early
+### Technical implementation and guidelines
 
-### Implementation language
-
-**Option A: Node.js CLI**
-- Pro: The author (dpassarelli) has 30 years of JS experience. Rich TUI libraries (`inquirer`, `prompts`, `chalk`). Easy to publish via `npm`. Cross-platform.
-- Con: Requires Node.js runtime on the local machine. Heavier dependency footprint.
-
-**Option B: Shell script (bash/zsh)**
-- Pro: Zero dependencies beyond rsync/ssh. Runs anywhere. Fast to prototype.
-- Con: TUI interaction is painful in pure shell. Argument parsing, error handling, and cross-platform support get ugly fast. Hard to test.
-
-**Option C: Go or Rust**
-- Pro: Single static binary, no runtime. Fast. Good CLI libraries (cobra, clap).
-- Con: Less familiar to the author. Slower iteration in early stages.
-
-Recommendation: start with Node.js for speed of iteration and TUI quality, with the understanding that a compiled rewrite is possible later if the dependency bothers people.
+- Let's use Go. I have no prior experience with this language, so I'll be relying heavily on you to help me scaffold the architecture and use proper idioms/patterns.
+- Please help me learn as we go along. Explain your choices, and always remember to work in small pieces so that I can follow along.
+- We want to maintain a test-driven development approach at all times. Tests should always be focused, and (if possible) follow the pattern described in the document `5 Questions Every Unit Test Must Answer.pdf`. I understand that document is written for JavaScript, and I understand that Go has an existing idiom for testing, but if we can incorporate any of the ideas from that document into our test template, I would greatly appreciate it.
+- Please also try (where practical) to adhere to the guidelines documented at https://clig.dev. I understand some of them will be unnecessary, and I don't expect to have 100% implementation, but let's give at least some of them a try! We can create a document to track which ones we've included and update as we go along. 
 
 ### Scope for v0.1
 
@@ -55,11 +44,6 @@ A minimal first version that's useful immediately:
 - Interactive file selection (checkbox-style multi-select)
 - Execute transfer for selected files
 - Respect `.gitignore` or a custom exclude file
-
-## Development workflow
-
-- Test-first. The itemize-changes parser is pure logic and very testable. Start there.
-- The tool will be developed inside a Claude Code sandbox (Debian LXC container on Proxmox) and synced to/from a Mac workstation — meaning we'll be dogfooding immediately.
 
 ## Author context
 
