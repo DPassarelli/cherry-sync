@@ -1,7 +1,11 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 func main() {
-	fmt.Println("csync v0.0.0")
+	fmt.Println("Source:", os.Args[1])
+	fmt.Println("Destination:", os.Args[2])
 }

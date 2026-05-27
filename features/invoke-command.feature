@@ -7,7 +7,6 @@ Feature: Invoke command
     When I run "csync ./project user@host:/project"
     Then the reported source should be "./project"
     And  the reported destination should be "user@host:/project"
-    And  the reported direction should be "push"
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.

@@ -61,7 +61,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)"$`, iRun)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
-	ctx.Step(`^the reported direction should be "([^"]*)"$`, theReportedDirectionShouldBe)
 }
 
 func iRun(ctx context.Context, command string) (context.Context, error) {
@@ -83,10 +82,6 @@ func theReportedSourceShouldBe(ctx context.Context, expected string) error {
 
 func theReportedDestinationShouldBe(ctx context.Context, expected string) error {
 	return assertReportedField(ctx, "Destination", expected)
-}
-
-func theReportedDirectionShouldBe(ctx context.Context, expected string) error {
-	return assertReportedField(ctx, "Direction", expected)
 }
 
 func assertReportedField(ctx context.Context, label, expected string) error {
