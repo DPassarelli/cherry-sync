@@ -17,43 +17,26 @@ Feature: Compare directories
   Scenario: None of the files are different
     Given that all of the files are identical between local and remote
     When  I run "csync"
-    Then  the output should be:
-      """
-      Source:      ./project
-      Destination: user@host:/project
-
-        (no differences)
-
-      0 changes to make.
-      """
+    Then  no actions should be reported
+    And   the reported change count should be 0
 
   Scenario: One of the files is different
     Given that the file "README.md" has been changed locally
     When  I run "csync"
-    Then  the output should be:
-      """
-      Source:      ./project
-      Destination: user@host:/project
-
-        update README.md
-
-      1 change to make.
-      """
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
+    And   the reported change count should be 1
 
   Scenario: Two of the files are different
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync"
-    Then  the output should be:
-      """
-      Source:      ./project
-      Destination: user@host:/project
-
-        update README.md
-        create src/adder.go
-
-      2 changes to make.
-      """
+    Then  the reported actions should be:
+      | action | path         |
+      | update | README.md    |
+      | create | src/adder.go |
+    And   the reported change count should be 2
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
