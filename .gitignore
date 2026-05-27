@@ -1,0 +1,20 @@
+# Compiled binary (matches the cmd/csync output)
+/csync
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage.txt
+coverage.html
+
+# Reference PDFs (kept locally, not in repo)
+*.pdf
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
