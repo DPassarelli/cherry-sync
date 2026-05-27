@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/dpassarelli/cherry-sync/internal/cli"
 )
 
 func main() {
-	fmt.Println("Source:", os.Args[1])
-	fmt.Println("Destination:", os.Args[2])
+	a := cli.Parse(os.Args[1:])
+	fmt.Println("Source:", a.Source)
+	fmt.Println("Destination:", a.Destination)
 }
