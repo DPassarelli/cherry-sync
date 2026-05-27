@@ -13,6 +13,10 @@ coverage.html
 # Reference PDFs (kept locally, not in repo)
 *.pdf
 
+# Scratchpad for Claude
+/.claude
+/NOTES.md
+
 # Editor / OS
 .DS_Store
 .idea/
