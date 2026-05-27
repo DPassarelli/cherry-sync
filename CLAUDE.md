@@ -32,8 +32,17 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 - Let's use Go. I have no prior experience with this language, so I'll be relying heavily on you to help me scaffold the architecture and use proper idioms/patterns.
 - Please help me learn as we go along. Explain your choices, and always remember to work in small pieces so that I can follow along.
-- We want to maintain a test-driven development approach at all times. Tests should always be focused, and (if possible) follow the pattern described in the document `5 Questions Every Unit Test Must Answer.pdf`. I understand that document is written for JavaScript, and I understand that Go has an existing idiom for testing, but if we can incorporate any of the ideas from that document into our test template, I would greatly appreciate it.
 - Please also try (where practical) to adhere to the guidelines documented at https://clig.dev. I understand some of them will be unnecessary, and I don't expect to have 100% implementation, but let's give at least some of them a try! We can create a document to track which ones we've included and update as we go along. 
+
+### Testing approach
+
+- We want to maintain a test-first development approach at all times.
+- Although I have a significant background in pure TDD, I have also gained a lot of value from learning and practicing BDD.
+- Instead of starting from the inside (the smallest possible unit) and working out, I would prefer to start on the outside (what are the primary behaviors?) and work inwards. This doesn't mean we won't have unit tests. It means that we start with one or more Given/When/Then statements and drill down from there. Every unit test and every application function should clearly map to a desired application _behavior_.
+- We will want to incorporate Cucumber at some point, although it isn't necessary at first.
+- Wherever we have unit tests, they should be tightly focused, and (if possible) follow the pattern described in the document `5 Questions Every Unit Test Must Answer.pdf`. I understand that document is written for JavaScript, and I understand that Go has an existing idiom for testing, but if we can incorporate any of the ideas from that document into our test template, I would greatly appreciate it.
+
+The general approach for outside-in testing means that I want to have a conversation about what I expect the application to do, _before writing any code to implement that expectation_. The Gherkin files should act as a TODO list and form the canonical behavioral specification. Please help me start here and then as we drill down into implementation, then we can start working on unit tests.
 
 ### Scope for v0.1
 
