@@ -33,6 +33,10 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 See [TESTING.md](TESTING.md) for the development loop, Gherkin and unit test style conventions, the output-parsing facade, and how to run the suite. That document is the source of truth on testing.
 
+## Style
+
+See [STYLE.md](STYLE.md) for code style rules that aren't enforced by `gofmt` or `go vet`. That document is the source of truth on style.
+
 ## Scope for v0.1
 
 A minimal first version that's useful immediately:

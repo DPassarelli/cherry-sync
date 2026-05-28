@@ -40,7 +40,8 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			out.Destination = m[2]
 		case "Changes":
 			out.HasChangeCount = true
-			if n, err := strconv.Atoi(m[2]); err == nil {
+			n, err := strconv.Atoi(m[2])
+			if err == nil {
 				out.ChangeCount = n
 			}
 		}
