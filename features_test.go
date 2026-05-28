@@ -51,7 +51,8 @@ func TestMain(m *testing.M) {
 	build := exec.Command("go", "build", "-o", csyncBinary, "./cmd/csync")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
-	if err := build.Run(); err != nil {
+	err = build.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "build:", err)
 		os.Exit(2)
 	}
@@ -87,11 +88,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
-		if p, ok := ctx.Value(localPathKey{}).(string); ok && p != "" {
-			os.RemoveAll(p)
+		localPath, _ := ctx.Value(localPathKey{}).(string)
+		if localPath != "" {
+			os.RemoveAll(localPath)
 		}
-		if p, ok := ctx.Value(remotePathKey{}).(string); ok && p != "" {
-			os.RemoveAll(p)
+		remotePath, _ := ctx.Value(remotePathKey{}).(string)
+		if remotePath != "" {
+			os.RemoveAll(remotePath)
 		}
 		return ctx, nil
 	})
@@ -108,14 +111,17 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 
 	args := parts[1:]
 	subs := map[string]string{}
-	if p, ok := ctx.Value(localPathKey{}).(string); ok && p != "" {
-		subs["./project"] = p
+	localPath, _ := ctx.Value(localPathKey{}).(string)
+	if localPath != "" {
+		subs["./project"] = localPath
 	}
-	if p, ok := ctx.Value(remotePathKey{}).(string); ok && p != "" {
-		subs["user@host:/project"] = p
+	remotePath, _ := ctx.Value(remotePathKey{}).(string)
+	if remotePath != "" {
+		subs["user@host:/project"] = remotePath
 	}
 	for i, a := range args {
-		if replacement, ok := subs[a]; ok {
+		replacement, ok := subs[a]
+		if ok {
 			args[i] = replacement
 		}
 	}
@@ -128,11 +134,11 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
 			return ctx, fmt.Errorf("exec failed: %w", err)
 		}
+		exitCode = exitErr.ExitCode()
 	}
 
 	result := runResult{
@@ -193,10 +199,12 @@ func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocStrin
 			continue
 		}
 		full := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		err = os.MkdirAll(filepath.Dir(full), 0o755)
+		if err != nil {
 			return ctx, fmt.Errorf("mkdir: %w", err)
 		}
-		if err := os.WriteFile(full, []byte(""), 0o644); err != nil {
+		err = os.WriteFile(full, []byte(""), 0o644)
+		if err != nil {
 			return ctx, fmt.Errorf("write %s: %w", full, err)
 		}
 	}
@@ -212,7 +220,8 @@ func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Contex
 	if err != nil {
 		return ctx, fmt.Errorf("mktempdir: %w", err)
 	}
-	if err := copyTree(local, remote); err != nil {
+	err = copyTree(local, remote)
+	if err != nil {
 		return ctx, fmt.Errorf("copy: %w", err)
 	}
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
@@ -263,7 +272,8 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		err = os.MkdirAll(filepath.Dir(target), 0o755)
+		if err != nil {
 			return err
 		}
 		return os.WriteFile(target, data, 0o644)
