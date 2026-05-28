@@ -66,12 +66,12 @@ One round of behavior, from idea to merged code:
 Tests must be readable line by line. The shape we use:
 
 ```go
-func theReportedSourceShouldBe(ctx context.Context, expected string) error {
-    raw := captured(ctx)
-    actual := parseStdout(raw).Source
+func theReportedSourceShouldBe(ctx context.Context, want string) error {
+    r := captured(ctx)
+    got := parseOutput(r.Stdout, r.Stderr).Source
 
-    if actual != expected {
-        return fmt.Errorf("expected Source %q, got %q in output:\n%s", expected, actual, raw)
+    if got != want {
+        return fmt.Errorf("Source: got %q, want %q in output:\n%s", got, want, r.Stdout)
     }
     return nil
 }
@@ -79,9 +79,15 @@ func theReportedSourceShouldBe(ctx context.Context, expected string) error {
 
 Conventions:
 
-- **Named locals for the moving parts.** `raw`, `parsed`, `actual`, `expected`
-  — each names a step in the test's logic. A reader can follow the test
-  without reverse-engineering inline expressions.
+- **`got` and `want` are the standard names.** Use them in unit tests and in
+  step definitions alike (`want` becomes the step's parameter name; `got` is
+  the locally-extracted value under test). This is the Go stdlib testing
+  idiom — short, symmetric, instantly recognizable to a Go reader. Error
+  messages follow the same idiom: `"X: got %v, want %v"`.
+- **Name any intermediate values, too.** In the example, `r` holds the
+  captured `runResult` from the previous `When` step. Each named local is a
+  step in the test's logic; a reader can follow without reverse-engineering
+  inline expressions.
 - **Blank line separating act from assert.** A visual cue for arrange / act /
   assert.
 - **No abstraction until it pays for itself.** For two similar assertions,

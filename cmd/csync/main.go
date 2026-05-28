@@ -8,7 +8,11 @@ import (
 )
 
 func main() {
-	a := cli.Parse(os.Args[1:])
+	a, err := cli.Parse(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "usage: csync SOURCE DESTINATION")
+		os.Exit(2)
+	}
 	fmt.Println("Source:", a.Source)
 	fmt.Println("Destination:", a.Destination)
 }
