@@ -19,13 +19,19 @@ Feature: Compare directories
     Then  no actions should be reported
     And   the reported change count should be 0
 
+  Scenario: One of the files is different
+    Given that all of the files are identical between local and remote
+    And   that the file "README.md" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
+    And   the reported change count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - One of the files is different (locally-modified): asserts a single
-  #   `update README.md` action and change count 1.
   #
   # - Two of the files are different (one updated, one newly added locally):
   #   asserts both actions in a table and change count 2.
