@@ -4,7 +4,7 @@
 
 When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is clumsy. Plain `rsync` transfers everything or nothing. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves and in which direction.
 
-This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc.
+This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc. This tool originated from a need to improve an AI-assisted development workflow, where Claude runs inside a sandbox isolated from the primary computer.
 
 ## What this tool does
 
@@ -21,6 +21,7 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 - **SSH is the transport.** No additional daemon or agent on the remote side. If you can `ssh` to it, this tool works.
 - **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display (showing which side is newer) is a goal.
 - **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
+- **CLI conventions.** Where practical, follows the guidelines at [clig.dev](https://clig.dev) for command-line UX. Adherence is intentional but not exhaustive.
 
 ## Key technical details
 
@@ -28,28 +29,11 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 - `rsync --files-from=<path>` accepts a text file of relative paths and transfers only those. This is how selective sync works without running rsync once per file.
 - Bidirectional comparison requires two dry-run passes (one push, one pull) and merging the results. Conflicts (modified on both sides) need to be flagged clearly.
 
-### Technical implementation and guidelines
+## Testing
 
-- Let's use Go. I have no prior experience with this language, so I'll be relying heavily on you to help me scaffold the architecture and use proper idioms/patterns.
-- Please help me learn as we go along. Explain your choices, and always remember to work in small pieces so that I can follow along.
-- Please also try (where practical) to adhere to the guidelines documented at https://clig.dev. I understand some of them will be unnecessary, and I don't expect to have 100% implementation, but let's give at least some of them a try! We can create a document to track which ones we've included and update as we go along. 
+See [TESTING.md](TESTING.md) for the development loop, Gherkin and unit test style conventions, the output-parsing facade, and how to run the suite. That document is the source of truth on testing.
 
-### Testing approach
-
-- We want to maintain a test-first development approach at all times.
-- Although I have a significant background in pure TDD, I have also gained a lot of value from learning and practicing BDD.
-- Instead of starting from the inside (the smallest possible unit) and working out, I would prefer to start on the outside (what are the primary behaviors?) and work inwards. This doesn't mean we won't have unit tests. It means that we start with one or more Given/When/Then statements and drill down from there. Every unit test and every application function should clearly map to a desired application _behavior_.
-- We will want to incorporate Cucumber at some point, although it isn't necessary at first.
-- Wherever we have unit tests, they should be tightly focused, and (if possible) follow the pattern described in the document `5 Questions Every Unit Test Must Answer.pdf`. I understand that document is written for JavaScript, and I understand that Go has an existing idiom for testing, but if we can incorporate any of the ideas from that document into our test template, I would greatly appreciate it.
-
-The general approach for outside-in testing means that I want to have a conversation about what I expect the application to do, _before writing any code to implement that expectation_. The Gherkin files should act as a TODO list and form the canonical behavioral specification. Please help me start here and then as we drill down into implementation, then we can start working on unit tests.
-
-### Gherkin style
-
-- Prefer imperative scenarios — exact commands and exact expected output — over declarative ones when we've designed something specific. Vague assertions like "I see the planned actions" erode hard-won design decisions; we can always loosen specific assertions later if they become brittle in practice.
-- Use Gherkin tables to make world state concrete (e.g. listing files and their state on each side). Concrete examples are easier to verify and easier to translate into test fixtures later (godog or otherwise).
-
-### Scope for v0.1
+## Scope for v0.1
 
 A minimal first version that's useful immediately:
 
@@ -58,10 +42,3 @@ A minimal first version that's useful immediately:
 - Interactive file selection (checkbox-style multi-select)
 - Execute transfer for selected files
 - Respect `.gitignore` or a custom exclude file
-
-## Author context
-
-- 30 years as a programmer, primarily full-stack web (JS/TS)
-- Strong proponent of test-first development, feedback loops, experimentation
-- Comfortable with technical depth but prefers problems broken into small pieces
-- This project originated from a real workflow need while building a Proxmox home lab
