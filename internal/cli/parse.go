@@ -1,5 +1,7 @@
 package cli
 
+import "fmt"
+
 // Args is the parsed result of a csync command-line invocation: the source
 // and destination paths the user wants to sync between.
 type Args struct {
@@ -9,12 +11,14 @@ type Args struct {
 
 // Parse turns the positional arguments (typically os.Args[1:]) into an Args
 // value. v0.1 accepts exactly two positional arguments in source/destination
-// order; richer parsing (flags, validation, usage errors) will be layered on
-// later as the corresponding scenarios in features/invoke-command.feature
-// move out of the TODO block.
-func Parse(argv []string) Args {
+// order; anything else returns an error. The caller (main.go) decides how to
+// surface that error to the user.
+func Parse(argv []string) (Args, error) {
+	if len(argv) != 2 {
+		return Args{}, fmt.Errorf("expected 2 arguments, got %d", len(argv))
+	}
 	return Args{
 		Source:      argv[0],
 		Destination: argv[1],
-	}
+	}, nil
 }
