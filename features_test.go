@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,14 @@ var csyncBinary string
 // outputKey is the context key used to stash the captured runResult from
 // `When I run "..."` so the following Then steps can assert on it.
 type outputKey struct{}
+
+// localPathKey and remotePathKey stash the per-scenario tempdir paths set
+// up by `Given a local directory ...` and `Given that all of the files are
+// identical between local and remote`. iRun reads them to substitute the
+// Gherkin placeholders `./project` and `user@host:/project` with the real
+// paths before invoking csync.
+type localPathKey struct{}
+type remotePathKey struct{}
 
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
@@ -55,7 +64,7 @@ func TestFeatures(t *testing.T) {
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"features/invoke-command.feature"},
+			Paths:    []string{"features"},
 			Strict:   true,
 			TestingT: t,
 		},
@@ -72,6 +81,20 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
+	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
+	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
+	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
+	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
+
+	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
+		if p, ok := ctx.Value(localPathKey{}).(string); ok && p != "" {
+			os.RemoveAll(p)
+		}
+		if p, ok := ctx.Value(remotePathKey{}).(string); ok && p != "" {
+			os.RemoveAll(p)
+		}
+		return ctx, nil
+	})
 }
 
 func iRun(ctx context.Context, command string) (context.Context, error) {
@@ -83,7 +106,21 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 		return ctx, fmt.Errorf("expected command to start with %q, got %q", "csync", parts[0])
 	}
 
-	cmd := exec.Command(csyncBinary, parts[1:]...)
+	args := parts[1:]
+	subs := map[string]string{}
+	if p, ok := ctx.Value(localPathKey{}).(string); ok && p != "" {
+		subs["./project"] = p
+	}
+	if p, ok := ctx.Value(remotePathKey{}).(string); ok && p != "" {
+		subs["user@host:/project"] = p
+	}
+	for i, a := range args {
+		if replacement, ok := subs[a]; ok {
+			args[i] = replacement
+		}
+	}
+
+	cmd := exec.Command(csyncBinary, args...)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -145,7 +182,90 @@ func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
 	return nil
 }
 
+func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync-local-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(ds.Content), "\n") {
+		rel := strings.TrimSpace(line)
+		if rel == "" {
+			continue
+		}
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return ctx, fmt.Errorf("mkdir: %w", err)
+		}
+		if err := os.WriteFile(full, []byte(""), 0o644); err != nil {
+			return ctx, fmt.Errorf("write %s: %w", full, err)
+		}
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	remote, err := os.MkdirTemp("", "csync-remote-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	if err := copyTree(local, remote); err != nil {
+		return ctx, fmt.Errorf("copy: %w", err)
+	}
+	return context.WithValue(ctx, remotePathKey{}, remote), nil
+}
+
+func noActionsShouldBeReported(ctx context.Context) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Actions
+
+	if len(got) != 0 {
+		return fmt.Errorf("Actions: got %d (%+v), want 0", len(got), got)
+	}
+	return nil
+}
+
+func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.HasChangeCount {
+		return fmt.Errorf("no Changes line in output:\n%s", r.Stdout)
+	}
+	if parsed.ChangeCount != want {
+		return fmt.Errorf("Changes: got %d, want %d in output:\n%s", parsed.ChangeCount, want, r.Stdout)
+	}
+	return nil
+}
+
 func captured(ctx context.Context) runResult {
 	r, _ := ctx.Value(outputKey{}).(runResult)
 	return r
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
 }
