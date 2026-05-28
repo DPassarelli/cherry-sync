@@ -27,3 +27,15 @@ func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+// Behavior: a `>f+++++++++` line (all-new attribute markers) yields a create
+// Action. Mirrors the new-file half of the Gherkin scenario "Two of the files
+// are different" in features/compare-directories.feature.
+func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
+	got := parseActions(">f+++++++++ src/adder.go\n")
+
+	want := []Action{{Verb: "create", Path: "src/adder.go"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}

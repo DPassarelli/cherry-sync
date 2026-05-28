@@ -87,6 +87,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
+	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
@@ -238,6 +239,23 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 	}
 	full := filepath.Join(local, relPath)
 	err := os.WriteFile(full, []byte("modified\n"), 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	full := filepath.Join(local, relPath)
+	err := os.MkdirAll(filepath.Dir(full), 0o755)
+	if err != nil {
+		return ctx, fmt.Errorf("mkdir: %w", err)
+	}
+	err = os.WriteFile(full, []byte("new file\n"), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
 	}
