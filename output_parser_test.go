@@ -20,15 +20,17 @@ type ReportedOutput struct {
 }
 
 // Action is a single planned change in csync's reported output: a verb
-// (create / update / delete) and the path it applies to. The Actions slice
-// stays empty until scenarios in compare-directories.feature drill into
-// non-zero-change behavior.
+// (e.g. update) and the path it applies to. Production's Action type lives
+// in internal/compare; this one is the test-side view of the rendered text.
 type Action struct {
 	Verb string
 	Path string
 }
 
-var labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
+var (
+	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
+	actionLineRE  = regexp.MustCompile(`(?m)^\s+(\S+)\s+(.+?)\s*$`)
+)
 
 func parseOutput(stdout, stderr string) ReportedOutput {
 	var out ReportedOutput
@@ -45,6 +47,9 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 				out.ChangeCount = n
 			}
 		}
+	}
+	for _, m := range actionLineRE.FindAllStringSubmatch(stdout, -1) {
+		out.Actions = append(out.Actions, Action{Verb: m[1], Path: m[2]})
 	}
 	out.Usage = strings.TrimSpace(stderr)
 	return out

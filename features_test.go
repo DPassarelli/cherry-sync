@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -84,7 +86,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
+	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
+	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
@@ -227,6 +231,19 @@ func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Contex
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
 
+func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	full := filepath.Join(local, relPath)
+	err := os.WriteFile(full, []byte("modified\n"), 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
 func noActionsShouldBeReported(ctx context.Context) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Actions
@@ -235,6 +252,47 @@ func noActionsShouldBeReported(ctx context.Context) error {
 		return fmt.Errorf("Actions: got %d (%+v), want 0", len(got), got)
 	}
 	return nil
+}
+
+func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Actions
+
+	headers := map[string]int{}
+	for i, cell := range table.Rows[0].Cells {
+		headers[cell.Value] = i
+	}
+	actionCol, ok1 := headers["action"]
+	pathCol, ok2 := headers["path"]
+	if !ok1 || !ok2 {
+		return fmt.Errorf("expected 'action' and 'path' columns; got headers: %+v", headers)
+	}
+
+	var want []Action
+	for _, row := range table.Rows[1:] {
+		want = append(want, Action{
+			Verb: row.Cells[actionCol].Value,
+			Path: row.Cells[pathCol].Value,
+		})
+	}
+
+	gotSorted := sortActions(got)
+	wantSorted := sortActions(want)
+	if !reflect.DeepEqual(gotSorted, wantSorted) {
+		return fmt.Errorf("Actions: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+func sortActions(a []Action) []Action {
+	cpy := append([]Action(nil), a...)
+	sort.Slice(cpy, func(i, j int) bool {
+		if cpy[i].Verb != cpy[j].Verb {
+			return cpy[i].Verb < cpy[j].Verb
+		}
+		return cpy[i].Path < cpy[j].Path
+	})
+	return cpy
 }
 
 func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
