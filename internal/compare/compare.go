@@ -52,8 +52,9 @@ func parseActions(rsyncOut string) []Action {
 }
 
 // actionFromLine translates one rsync --itemize-changes line into an Action.
-// v0.1 only recognizes `>f...` (file being pushed) as an update; create and
-// delete verbs land here as scenarios drill them.
+// v0.1 recognizes `>f...` (file being pushed) as update, with `>f+++++++++`
+// (all-new attribute markers) as create. Delete and other verbs land here as
+// scenarios drill them.
 func actionFromLine(line string) Action {
 	if len(line) < 12 {
 		return Action{}
@@ -61,6 +62,10 @@ func actionFromLine(line string) Action {
 	if line[0] != '>' || line[1] != 'f' {
 		return Action{}
 	}
+	code := line[:11]
 	path := strings.TrimSpace(line[11:])
+	if strings.Contains(code, "+++++++++") {
+		return Action{Verb: "create", Path: path}
+	}
 	return Action{Verb: "update", Path: path}
 }
