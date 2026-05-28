@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -77,23 +76,26 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 }
 
 func theReportedSourceShouldBe(ctx context.Context, expected string) error {
-	return assertReportedField(ctx, "Source", expected)
+	raw := captured(ctx)
+	actual := parseStdout(raw).Source
+
+	if actual != expected {
+		return fmt.Errorf("expected Source %q, got %q in output:\n%s", expected, actual, raw)
+	}
+	return nil
 }
 
 func theReportedDestinationShouldBe(ctx context.Context, expected string) error {
-	return assertReportedField(ctx, "Destination", expected)
-}
+	raw := captured(ctx)
+	actual := parseStdout(raw).Destination
 
-func assertReportedField(ctx context.Context, label, expected string) error {
-	out, _ := ctx.Value(outputKey{}).(string)
-	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(label) + `:\s+(.+)\s*$`)
-	match := re.FindStringSubmatch(out)
-	if match == nil {
-		return fmt.Errorf("no %q line in output:\n%s", label+":", out)
-	}
-	actual := strings.TrimSpace(match[1])
 	if actual != expected {
-		return fmt.Errorf("expected %s %q, got %q", label, expected, actual)
+		return fmt.Errorf("expected Destination %q, got %q in output:\n%s", expected, actual, raw)
 	}
 	return nil
+}
+
+func captured(ctx context.Context) string {
+	s, _ := ctx.Value(outputKey{}).(string)
+	return s
 }
