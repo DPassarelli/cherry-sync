@@ -88,6 +88,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
 	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
+	ctx.Step(`^that the file "([^"]*)" has been added on the remote$`, theFileHasBeenAddedOnTheRemote)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
@@ -256,6 +257,23 @@ func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Co
 		return ctx, fmt.Errorf("mkdir: %w", err)
 	}
 	err = os.WriteFile(full, []byte("new file\n"), 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+func theFileHasBeenAddedOnTheRemote(ctx context.Context, relPath string) (context.Context, error) {
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+	if remote == "" {
+		return ctx, fmt.Errorf("remote path not set; missing 'identical between local and remote' step?")
+	}
+	full := filepath.Join(remote, relPath)
+	err := os.MkdirAll(filepath.Dir(full), 0o755)
+	if err != nil {
+		return ctx, fmt.Errorf("mkdir: %w", err)
+	}
+	err = os.WriteFile(full, []byte("remote only\n"), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
 	}

@@ -8,6 +8,11 @@ Feature: Invoke command
     Then the reported source should be "./project"
     And  the reported destination should be "user@host:/project"
 
+  Scenario: Pull direction — remote source, local destination
+    When I run "csync user@host:/project ./project"
+    Then the reported source should be "user@host:/project"
+    And  the reported destination should be "./project"
+
   Scenario: No arguments — show usage and exit non-zero
     When I run "csync"
     Then csync should return exit code 2
@@ -22,9 +27,6 @@ Feature: Invoke command
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - Pull direction: `csync user@host:/project ./project` swaps the labels;
-  #   the destination header is now the local path.
   #
   # - Usage-message content: once we settle what the rest of the message
   #   should include (synopsis line, brief description, pointer to `--help`),

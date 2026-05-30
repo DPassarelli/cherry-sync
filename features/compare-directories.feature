@@ -39,15 +39,19 @@ Feature: Compare directories
       | create | src/adder.go |
     And   the reported change count should be 2
 
+  Scenario: Pull direction — a file is new on the remote
+    Given that all of the files are identical between local and remote
+    And   that the file "src/remote_only.go" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path               |
+      | create | src/remote_only.go |
+    And   the reported change count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - Pull direction: invocation with a remote source and local destination
-  #   (e.g. `csync user@host:/srv/project ./project`) infers a pull. The
-  #   Source/Destination labels swap accordingly; action verbs (create / update
-  #   / delete) still describe what happens at the destination.
   #
   # - No differences: when both sides are identical, the user sees a clear
   #   "No changes." message and the process exits 0.
