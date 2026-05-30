@@ -116,7 +116,10 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 	}
 
 	args := parts[1:]
-	subs := map[string]string{}
+	// <empty> is a sentinel for an empty-string argument: the step regex and
+	// strings.Fields can't carry a literal "" through the Gherkin command, so
+	// scenarios write <empty> and we substitute it here.
+	subs := map[string]string{"<empty>": ""}
 	localPath, _ := ctx.Value(localPathKey{}).(string)
 	if localPath != "" {
 		subs["./project"] = localPath

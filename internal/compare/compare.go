@@ -23,18 +23,28 @@ type Result struct {
 // Both paths get a trailing slash so rsync compares directory contents
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
-	args := []string{
-		"--dry-run",
-		"--itemize-changes",
-		"--recursive",
-		source + "/",
-		destination + "/",
-	}
+	args := rsyncArgs(source, destination)
 	out, err := exec.Command("rsync", args...).Output()
 	if err != nil {
 		return Result{}, fmt.Errorf("rsync: %w", err)
 	}
 	return Result{Actions: parseActions(string(out))}, nil
+}
+
+// rsyncArgs builds the argument vector for the dry-run comparison. The `--`
+// end-of-options separator immediately before the paths ensures a source or
+// destination beginning with `-` is parsed by rsync as a path, never as an
+// option — closing off rsync argument injection (e.g. a path like `-e` or
+// `--rsh=…` that would otherwise hijack rsync's remote-shell command).
+func rsyncArgs(source, destination string) []string {
+	return []string{
+		"--dry-run",
+		"--itemize-changes",
+		"--recursive",
+		"--",
+		source + "/",
+		destination + "/",
+	}
 }
 
 // parseActions walks rsync's --itemize-changes output and returns one
