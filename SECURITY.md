@@ -85,3 +85,20 @@ What we defend, and what we explicitly don't:
   proves to be a real footgun.
 - **Path literally `--`.** With our added `--`, a user path of `--` becomes a
   literal path named `--`. Believed harmless; noted for completeness.
+
+## Automated checks
+
+`gosec` runs as a deterministic gate in the `lefthook` pre-push hook — static
+analysis, no LLM, no session bias, and it can't be forgotten because it gates
+the push itself. It flags any `exec.Command` with variable arguments as G204.
+
+The single rsync call in `internal/compare` carries a justified `#nosec G204`:
+its safety rests on the invariants above and is *proven* by a behavioral test —
+the "treated as a path" scenario in `features/compare-directories.feature`,
+which exits the run non-zero only because the `--` separator forces an
+option-looking path to be read as a (missing) path. Strip the `--` and that
+test goes red.
+
+Suppress G204 only per-site, with a justification that points at the reasoning.
+Never disable it globally — that would blind the gate to the same pattern
+everywhere else in the tree.

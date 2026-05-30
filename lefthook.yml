@@ -42,3 +42,8 @@ pre-push:
   commands:
     go-vet:
       run: go vet ./...
+    gosec:
+      # Static security analysis. Pinned via `go run @version` so the gate is
+      # reproducible without a separate global install (first run downloads +
+      # builds gosec, then it's cached). `-quiet` prints only on findings.
+      run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -quiet ./...

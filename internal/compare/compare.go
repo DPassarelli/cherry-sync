@@ -24,7 +24,12 @@ type Result struct {
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
 	args := rsyncArgs(source, destination)
-	out, err := exec.Command("rsync", args...).Output()
+	// The variable args are safe by construction — see SECURITY.md: no shell
+	// (exec.Command, not sh -c), a `--` separator added by rsyncArgs, and path
+	// operands validated in cli.Parse. The guard is proven behaviorally by the
+	// "treated as a path" scenario in compare-directories.feature, which fails
+	// if the `--` is removed. gosec G204 flags the exec pattern regardless.
+	out, err := exec.Command("rsync", args...).Output() // #nosec G204 -- justified above
 	if err != nil {
 		return Result{}, fmt.Errorf("rsync: %w", err)
 	}

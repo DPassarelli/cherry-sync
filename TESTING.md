@@ -134,6 +134,7 @@ must not be able to import them.
 | `go test ./...`   | Run the full suite (godog scenarios + unit tests)    |
 | `gofmt -l .`      | List files needing formatting (silent = all clean)   |
 | `go vet ./...`    | Runs automatically in lefthook pre-push              |
+| `gosec ./...`     | Static security analysis; runs in lefthook pre-push  |
 
 godog's default pretty formatter prints feature-file line numbers on failure,
 which makes it easy to navigate from a failing assertion back to the scenario
