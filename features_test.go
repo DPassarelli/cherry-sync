@@ -83,6 +83,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
+	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
@@ -183,6 +184,15 @@ func csyncShouldReturnExitCode(ctx context.Context, want int) error {
 
 	if got != want {
 		return fmt.Errorf("exit code: got %d, want %d (stderr: %q)", got, want, captured(ctx).Stderr)
+	}
+	return nil
+}
+
+func csyncShouldReturnANonZeroExitCode(ctx context.Context) error {
+	r := captured(ctx)
+
+	if r.ExitCode == 0 {
+		return fmt.Errorf("exit code: got 0, want non-zero (stdout: %q, stderr: %q)", r.Stdout, r.Stderr)
 	}
 	return nil
 }

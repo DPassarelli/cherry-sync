@@ -48,6 +48,16 @@ Feature: Compare directories
       | create | src/remote_only.go |
     And   the reported change count should be 1
 
+  Scenario: A source that looks like an rsync option is treated as a path
+    # Security regression guard. rsyncArgs puts `--` before the operands, so an
+    # option-looking source (here `-e`, rsync's remote-shell flag) reaches rsync
+    # as a path. That path doesn't exist, so rsync errors and csync exits
+    # non-zero. Delete the `--` and rsync would honor `-e` and exit 0 — flipping
+    # this red. This asserts the guard's *behavior*, not its implementation.
+    # See SECURITY.md.
+    When  I run "csync -e ./project"
+    Then  csync should return a non-zero exit code
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
