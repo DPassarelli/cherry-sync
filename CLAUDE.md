@@ -37,6 +37,15 @@ See [TESTING.md](TESTING.md) for the development loop, Gherkin and unit test sty
 
 See [STYLE.md](STYLE.md) for code style rules that aren't enforced by `gofmt` or `go vet`. That document is the source of truth on style.
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for the threat model, trust boundaries, and the catalog of concerns. That document is the source of truth on security. The non-negotiable invariants, kept here because they constrain every change:
+
+- **No shell, ever.** Invoke external commands with `exec.Command` and an argument slice — never `sh -c`. Shell metacharacters in a path must reach `rsync` as inert literal bytes.
+- **`--` before positional paths handed to rsync**, so a path beginning with `-` can't be parsed as an rsync option (`-e`/`--rsh` = remote-shell execution).
+- **Validate every path operand** before use — at minimum reject empty strings (an empty path becomes `/`).
+- **NUL-delimit (`--from0`) any `--files-from` list** once the transfer phase exists; newlines in filenames otherwise smuggle extra entries.
+
 ## Scope for v0.1
 
 A minimal first version that's useful immediately:
