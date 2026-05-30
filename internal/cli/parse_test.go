@@ -35,3 +35,23 @@ func TestParse_NoArguments_ReturnsError(t *testing.T) {
 		t.Fatal("expected error for empty argv, got nil")
 	}
 }
+
+// Behavior: an empty-string path is rejected. Left unchecked, "" + "/" = "/"
+// would point rsync at the filesystem root. Mirrors the Gherkin scenario
+// "Empty path argument — show usage and exit non-zero" in
+// features/invoke-command.feature. Either position counts.
+func TestParse_EmptyPath_ReturnsError(t *testing.T) {
+	cases := map[string][]string{
+		"empty source":      {"", "user@host:/project"},
+		"empty destination": {"./project", ""},
+	}
+	for name, argv := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := cli.Parse(argv)
+
+			if err == nil {
+				t.Fatalf("expected error for %v, got nil", argv)
+			}
+		})
+	}
+}

@@ -17,6 +17,12 @@ func Parse(argv []string) (Args, error) {
 	if len(argv) != 2 {
 		return Args{}, fmt.Errorf("expected 2 arguments, got %d", len(argv))
 	}
+	if argv[0] == "" {
+		return Args{}, fmt.Errorf("source path is empty")
+	}
+	if argv[1] == "" {
+		return Args{}, fmt.Errorf("destination path is empty")
+	}
 	return Args{
 		Source:      argv[0],
 		Destination: argv[1],

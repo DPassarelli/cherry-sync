@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+// Behavior: rsyncArgs ends with a `--` end-of-options separator immediately
+// before the source and destination paths. This is what stops a path that
+// begins with `-` (e.g. `-e`, `--rsh=touch /tmp/pwned`) from being parsed by
+// rsync as an OPTION rather than a path — rsync's `-e`/`--rsh` can run an
+// arbitrary remote shell command. Guards against rsync argument injection.
+func TestRsyncArgs_SeparatesOptionsFromPaths(t *testing.T) {
+	got := rsyncArgs("-e/evil", "./dest")
+
+	tail := got[len(got)-3:]
+	want := []string{"--", "-e/evil/", "./dest/"}
+	if !reflect.DeepEqual(tail, want) {
+		t.Errorf("arg tail: got %+v, want %+v", tail, want)
+	}
+}
+
 // Behavior: with no rsync output, parseActions returns no actions. Mirrors
 // the Gherkin scenario "None of the files are different" in
 // features/compare-directories.feature.
