@@ -67,11 +67,13 @@ func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
 // passing.
 func assertSortsBefore(t *testing.T, before, after string) {
 	t.Helper()
-	if got := comparePaths(before, after); got >= 0 {
+	got := comparePaths(before, after)
+	if got >= 0 {
 		t.Errorf("comparePaths(%q, %q) = %d, want < 0", before, after, got)
 	}
-	if got := comparePaths(after, before); got <= 0 {
-		t.Errorf("comparePaths(%q, %q) = %d, want > 0", after, before, got)
+	gotReverse := comparePaths(after, before)
+	if gotReverse <= 0 {
+		t.Errorf("comparePaths(%q, %q) = %d, want > 0", after, before, gotReverse)
 	}
 }
 

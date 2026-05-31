@@ -4,8 +4,13 @@ Project-wide conventions that aren't enforced by `gofmt` or `go vet`. We track
 them here so they survive across sessions and reviewers. Style rules join the
 list as they come up; nothing here is meant to be exhaustive.
 
-For test-specific style (Gherkin shape, `got`/`want` naming, the output-parsing
-facade), see [TESTING.md](TESTING.md).
+This document is authoritative for **all** code in the repository, tests
+included. A rule here applies to test files exactly as it applies to production
+code unless it explicitly says otherwise.
+
+For *additional* test-specific style (Gherkin shape, `got`/`want` naming, the
+output-parsing facade), see [TESTING.md](TESTING.md). Those conventions extend
+the rules here; they never override them.
 
 ## Avoid assignments inside `if` conditions
 

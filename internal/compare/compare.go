@@ -109,7 +109,8 @@ func comparePaths(a, b string) int {
 		aIsFile := i == len(as)-1
 		bIsFile := i == len(bs)-1
 
-		if ad, bd := isDotSegment(aSeg), isDotSegment(bSeg); ad != bd {
+		ad, bd := isDotSegment(aSeg), isDotSegment(bSeg)
+		if ad != bd {
 			return firstIf(ad)
 		}
 		if aIsFile != bIsFile {
@@ -134,13 +135,15 @@ func compareSegment(a, b string) int {
 		return firstIf(aNum)
 	}
 	if aNum {
-		if c := compareNumericRun(a, b); c != 0 {
-			return c
+		numCmp := compareNumericRun(a, b)
+		if numCmp != 0 {
+			return numCmp
 		}
 		return strings.Compare(a, b)
 	}
-	if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
-		return c
+	nameCmp := strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	if nameCmp != 0 {
+		return nameCmp
 	}
 	return strings.Compare(a, b)
 }
