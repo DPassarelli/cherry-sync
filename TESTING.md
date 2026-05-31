@@ -83,6 +83,9 @@ One round of behavior, from idea to merged code:
 
 ## Unit test style
 
+The project-wide rules in [STYLE.md](STYLE.md) apply to test code too; the
+conventions below are additions specific to tests, not replacements.
+
 Tests must be readable line by line. The shape we use:
 
 ```go
