@@ -14,6 +14,12 @@ conventions, the file layout, and the rationale behind each.
   the user run, what output do they see? — and drill inward only when a step
   needs supporting unit-level work. Unit tests are subordinate to behavior
   tests, not the other way around.
+- **Behavior is defined by its conditions.** A behavior isn't understood until
+  you can list the conditions that change its outcome — inputs, directions,
+  orderings, failure modes, edge values. An unlisted condition is an
+  undiscovered behavior or a latent bug. Enumerating conditions is mandatory;
+  the depth scales with uncertainty, and sometimes the honest answer is "only
+  one case" — that's fine, but you have to have asked.
 - **Gherkin as canonical spec.** The `.feature` files are the authoritative
   description of what csync does. They are written in Given/When/Then form and
   executed by godog. New behaviors enter the project as Gherkin scenarios
@@ -23,20 +29,34 @@ conventions, the file layout, and the rationale behind each.
 
 One round of behavior, from idea to merged code:
 
-1. **Discuss the behavior in plain English.** What does the user do? What do
-   they observe? What's the smallest interesting example?
-2. **Sketch a Gherkin scenario.** Use imperative `When`/`Then` with the exact
-   command and the exact expected output. Concrete beats abstract.
-3. **Stash deferred scenarios.** If the discussion surfaces related scenarios
-   that aren't ready to drill into, add them as TODO comment blocks at the
-   bottom of the relevant `.feature` file. They become the visible backlog.
+1. **Discuss the behavior, then map its conditions.** State it in plain English
+   — what the user does, what they observe. Then enumerate the conditions that
+   change its outcome and brainstorm them widely; the smallest interesting
+   example is a starting point, not the finish line. Verify any assumption
+   about how an external tool (`rsync`, `ssh`) actually behaves by experiment,
+   not memory, before encoding it in a scenario.
+2. **Turn the conditions into scenarios.** Each condition with a distinct
+   observable outcome becomes a candidate scenario, written imperative and
+   concrete (exact command, exact expected output). Conditions you won't cover
+   yet become TODO comment blocks at the bottom of the `.feature` file — the
+   visible backlog, chosen deliberately from the brainstorm rather than left
+   out by oversight.
+3. **Review the scenarios before writing any code.** Stop here. Read the
+   scenarios back — with the user, and against the design — and confirm they
+   say what's intended, in the right Given/When/Then shape, with the right
+   expected values. This is a gate, not a courtesy: the scenarios are the spec,
+   and revising text is far cheaper than reworking step definitions and
+   production code. Do not wire steps until the scenarios are agreed.
 4. **Wire step definitions.** Implement the scenario's steps in
    `features_test.go` so godog can run it. The test will fail — that's the
    point.
 5. **Drill inward as needed.** If a step requires logic that benefits from
-   focused unit coverage (parsing, state derivation, edge cases), write the
-   unit test in the appropriate `internal/<pkg>/*_test.go` before writing the
-   implementation.
+   focused unit coverage (parsing, ordering, state derivation, edge cases),
+   write the unit test in the appropriate `internal/<pkg>/*_test.go` before
+   writing the implementation. Unit tests pin individual conditions one at a
+   time; the scenario already covers the behavior holistically, so don't
+   re-assert the whole scenario at the unit level — isolate the one rule or
+   edge case each test exists to prove.
 6. **Make it pass.** Write the minimum production code to satisfy the failing
    tests. No speculative features, no unused fields.
 7. **Refactor on green.** Rename, extract, simplify — but only with all tests
