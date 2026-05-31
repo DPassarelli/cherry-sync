@@ -87,11 +87,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
+	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
 	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
 	ctx.Step(`^that the file "([^"]*)" has been added on the remote$`, theFileHasBeenAddedOnTheRemote)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
+	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
@@ -246,6 +248,14 @@ func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Contex
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
 
+func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
+	remote, err := os.MkdirTemp("", "csync-remote-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	return context.WithValue(ctx, remotePathKey{}, remote), nil
+}
+
 func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
@@ -307,22 +317,9 @@ func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Actions
 
-	headers := map[string]int{}
-	for i, cell := range table.Rows[0].Cells {
-		headers[cell.Value] = i
-	}
-	actionCol, ok1 := headers["action"]
-	pathCol, ok2 := headers["path"]
-	if !ok1 || !ok2 {
-		return fmt.Errorf("expected 'action' and 'path' columns; got headers: %+v", headers)
-	}
-
-	var want []Action
-	for _, row := range table.Rows[1:] {
-		want = append(want, Action{
-			Verb: row.Cells[actionCol].Value,
-			Path: row.Cells[pathCol].Value,
-		})
+	want, err := actionsFromTable(table)
+	if err != nil {
+		return err
 	}
 
 	gotSorted := sortActions(got)
@@ -331,6 +328,47 @@ func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 		return fmt.Errorf("Actions: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
 	}
 	return nil
+}
+
+// theReportedActionsShouldBeInOrder asserts the reported actions match the
+// table exactly, including sequence — unlike theReportedActionsShouldBe, which
+// is order-insensitive. Used by scenarios that pin the display ordering.
+func theReportedActionsShouldBeInOrder(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Actions
+
+	want, err := actionsFromTable(table)
+	if err != nil {
+		return err
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("Actions (in order): got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// actionsFromTable reads a Gherkin table with "action" and "path" columns into
+// a slice of Actions, preserving row order.
+func actionsFromTable(table *godog.Table) ([]Action, error) {
+	headers := map[string]int{}
+	for i, cell := range table.Rows[0].Cells {
+		headers[cell.Value] = i
+	}
+	actionCol, ok1 := headers["action"]
+	pathCol, ok2 := headers["path"]
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("expected 'action' and 'path' columns; got headers: %+v", headers)
+	}
+
+	var actions []Action
+	for _, row := range table.Rows[1:] {
+		actions = append(actions, Action{
+			Verb: row.Cells[actionCol].Value,
+			Path: row.Cells[pathCol].Value,
+		})
+	}
+	return actions, nil
 }
 
 func sortActions(a []Action) []Action {
