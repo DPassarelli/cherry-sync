@@ -57,7 +57,6 @@ Feature: Select and sync files
     And   the file "src/adder.go" should be identical between local and remote
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: Choosing none transfers nothing and exits cleanly
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "n"

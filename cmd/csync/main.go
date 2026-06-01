@@ -64,11 +64,12 @@ func main() {
 }
 
 // selectActions reads one line of input and returns the actions the user chose.
-// A bare Enter (empty line) accepts the default: every change. End-of-input
-// with no line at all — a closed or non-interactive stdin — selects nothing, so
-// running csync without answering the prompt never transfers anything. Other
-// responses (a single index, "n", etc.) are drafted as @wip scenarios in
-// select-and-sync.feature and land here as each is drilled in.
+// A bare Enter or "a" accepts the default (every change); "n" declines and
+// selects nothing; a single 1-based index picks just that change. End-of-input
+// with no line at all — a closed or non-interactive stdin — also selects
+// nothing, so running csync without answering the prompt never transfers
+// anything. Unrecognized input is an error. Multi-select grammars (ranges,
+// lists) remain @wip in select-and-sync.feature and land here when drilled in.
 func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, error) {
 	line, err := bufio.NewReader(r).ReadString('\n')
 	// Nothing was read at all (closed/non-interactive stdin, or Ctrl-D before
@@ -84,6 +85,10 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	// A bare Enter or "a" accepts the default: every change.
 	if response == "" || response == "a" {
 		return actions, nil
+	}
+	// "n" explicitly declines: transfer nothing, exit cleanly.
+	if response == "n" {
+		return nil, nil
 	}
 	// A single 1-based index selects just that change from the displayed list.
 	// (Multi-select grammars like "1-3" or "1,3", and out-of-range handling,
