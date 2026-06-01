@@ -22,7 +22,6 @@ Feature: Select and sync files
     Then  the reported message should begin with "No changes"
     And   csync should return exit code 0
 
-  @wip
   Scenario: Accepting the default selects every change
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
