@@ -63,9 +63,6 @@ Feature: Compare directories
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
   #
-  # - No differences: when both sides are identical, the user sees a clear
-  #   "No changes." message and the process exits 0.
-  #
   # - Missing rsync: if `rsync` is not on PATH, csync exits with a clear,
   #   actionable error (does not produce a partial diff).
   #

@@ -30,4 +30,9 @@ func main() {
 	for _, act := range result.Actions {
 		fmt.Printf("  %s %s\n", act.Verb, act.Path)
 	}
+
+	if len(result.Actions) == 0 {
+		fmt.Println("No changes to sync.")
+		return
+	}
 }
