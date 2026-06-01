@@ -27,11 +27,17 @@ type Action struct {
 	Path string
 }
 
+// labeledLineRE and actionLineRE match the two line shapes csync prints:
+// labeledLineRE captures `Label: value` summary lines (Source, Destination,
+// Changes); actionLineRE captures the indented `verb path` action lines.
 var (
 	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
 	actionLineRE  = regexp.MustCompile(`(?m)^\s+(\S+)\s+(.+?)\s*$`)
 )
 
+// parseOutput translates csync's rendered stdout and stderr into a structured
+// ReportedOutput. It is the single parsing facade the test assertions read
+// through, so a rendering change only has to be absorbed here.
 func parseOutput(stdout, stderr string) ReportedOutput {
 	var out ReportedOutput
 	for _, m := range labeledLineRE.FindAllStringSubmatch(stdout, -1) {
