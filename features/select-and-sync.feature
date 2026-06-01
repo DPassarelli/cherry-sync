@@ -64,7 +64,6 @@ Feature: Select and sync files
     And   the file "README.md" should still differ between local and remote
     And   csync should return exit code 0
 
-  @wip
   Scenario: An unrecognized response is rejected without transferring
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "wat"
