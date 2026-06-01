@@ -66,13 +66,19 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// TestFeatures runs the godog feature suite under `go test`, excluding
+// @wip-tagged features. A non-zero suite result fails the test.
 func TestFeatures(t *testing.T) {
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
-			Format:   "pretty",
-			Paths:    []string{"features"},
-			Strict:   true,
+			Format: "pretty",
+			Paths:  []string{"features"},
+			Strict: true,
+			// Exclude features tagged @wip — scenarios drafted ahead of their
+			// step definitions and production code. Drop the tag on a feature
+			// to bring it into the run.
+			Tags:     "~@wip",
 			TestingT: t,
 		},
 	}
@@ -92,6 +98,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
 	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
+	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
@@ -223,6 +230,18 @@ func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
 
 	if !strings.HasPrefix(got, want) {
 		return fmt.Errorf("Usage: got %q, want prefix %q", got, want)
+	}
+	return nil
+}
+
+// theReportedMessageShouldBeginWith asserts the free-text status message parsed
+// from stdout starts with want.
+func theReportedMessageShouldBeginWith(ctx context.Context, want string) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Message
+
+	if !strings.HasPrefix(got, want) {
+		return fmt.Errorf("Message: got %q, want prefix %q in output:\n%s", got, want, r.Stdout)
 	}
 	return nil
 }

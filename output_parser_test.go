@@ -16,6 +16,7 @@ type ReportedOutput struct {
 	ChangeCount    int
 	HasChangeCount bool
 	Actions        []Action
+	Message        string
 	Usage          string
 }
 
@@ -56,6 +57,19 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	}
 	for _, m := range actionLineRE.FindAllStringSubmatch(stdout, -1) {
 		out.Actions = append(out.Actions, Action{Verb: m[1], Path: m[2]})
+	}
+	// Message is the first free-text line: non-empty, and neither a `Label:
+	// value` summary line nor an indented action line. csync emits one for
+	// human-facing status like "No changes to sync."
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if labeledLineRE.MatchString(line) || actionLineRE.MatchString(line) {
+			continue
+		}
+		out.Message = strings.TrimSpace(line)
+		break
 	}
 	out.Usage = strings.TrimSpace(stderr)
 	return out
