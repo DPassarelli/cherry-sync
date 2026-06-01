@@ -59,6 +59,31 @@ Feature: Order the reported actions
       | create | src/adder.go          |
       | create | src/parser.go         |
 
+  @wip
+  Scenario: Each reported change is labeled with its selection number
+    # The number a user types at the prompt to pick a change is shown next to
+    # that change, counting from 1 in the displayed (tree) order — so "1" always
+    # refers to the first row. This makes the select-by-number affordance in
+    # select-and-sync.feature usable: today the selection logic indexes the
+    # sorted list correctly, but the list is printed without visible numbers.
+    #
+    # Coupling note for when this is drilled in: the rendered index becomes part
+    # of what the output-parser facade reads. A new step (e.g. "should be
+    # numbered, in order") plus an index field on the parsed action keep the
+    # existing verb/path assertions in compare-directories and the scenario
+    # above from breaking on the changed line shape.
+    Given a local directory containing these files:
+      """
+      README.md
+      src/adder.go
+      """
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  the reported changes should be numbered, in order:
+      | number | action | path         |
+      | 1      | create | README.md    |
+      | 2      | create | src/adder.go |
+
   # ---------------------------------------------------------------------------
   # TODO: Additional ordering scenarios, not yet drafted.
   # ---------------------------------------------------------------------------
