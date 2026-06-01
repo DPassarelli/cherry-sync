@@ -23,19 +23,23 @@ type ReportedOutput struct {
 }
 
 // Action is a single planned change in csync's reported output: a verb
-// (e.g. update) and the path it applies to. Production's Action type lives
-// in internal/compare; this one is the test-side view of the rendered text.
+// (e.g. update), the path it applies to, and Index — the 1-based selection
+// number shown next to the change (the digit a user types to pick it). Index is
+// 0 when the rendered line carries no number. Production's Action type lives in
+// internal/compare; this one is the test-side view of the rendered text.
 type Action struct {
-	Verb string
-	Path string
+	Index int
+	Verb  string
+	Path  string
 }
 
 // labeledLineRE and actionLineRE match the two line shapes csync prints:
 // labeledLineRE captures `Label: value` summary lines (Source, Destination,
-// Changes); actionLineRE captures the indented `verb path` action lines.
+// Changes); actionLineRE captures the indented action lines, with an optional
+// leading `N.` selection number ahead of the `verb path` pair.
 var (
 	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
-	actionLineRE  = regexp.MustCompile(`(?m)^\s+(\S+)\s+(.+?)\s*$`)
+	actionLineRE  = regexp.MustCompile(`(?m)^\s+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
 )
 
 // parseOutput translates csync's rendered stdout and stderr into a structured
@@ -64,7 +68,11 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		}
 	}
 	for _, m := range actionLineRE.FindAllStringSubmatch(stdout, -1) {
-		out.Actions = append(out.Actions, Action{Verb: m[1], Path: m[2]})
+		idx := 0
+		if m[1] != "" {
+			idx, _ = strconv.Atoi(m[1])
+		}
+		out.Actions = append(out.Actions, Action{Index: idx, Verb: m[2], Path: m[3]})
 	}
 	// Message is the first free-text line: non-empty, and neither a `Label:
 	// value` summary line nor an indented action line. csync emits one for

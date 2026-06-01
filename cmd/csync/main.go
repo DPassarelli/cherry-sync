@@ -33,8 +33,11 @@ func main() {
 	}
 
 	fmt.Println("Changes:", len(result.Actions))
-	for _, act := range result.Actions {
-		fmt.Printf("  %s %s\n", act.Verb, act.Path)
+	// Number each change from 1 in displayed order. The number is the selection
+	// affordance: it's the digit a user types at the prompt to pick that change,
+	// and selectActions indexes result.Actions by the same 1-based value.
+	for i, act := range result.Actions {
+		fmt.Printf("  %d. %s %s\n", i+1, act.Verb, act.Path)
 	}
 
 	if len(result.Actions) == 0 {

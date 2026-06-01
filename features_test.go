@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -110,6 +111,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
+	ctx.Step(`^the reported changes should be numbered, in order:$`, theReportedChangesShouldBeNumberedInOrder)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
@@ -400,8 +402,8 @@ func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 		return err
 	}
 
-	gotSorted := sortActions(got)
-	wantSorted := sortActions(want)
+	gotSorted := sortActions(verbPath(got))
+	wantSorted := sortActions(verbPath(want))
 	if !reflect.DeepEqual(gotSorted, wantSorted) {
 		return fmt.Errorf("Actions: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
 	}
@@ -420,14 +422,35 @@ func theReportedActionsShouldBeInOrder(ctx context.Context, table *godog.Table) 
 		return err
 	}
 
-	if !reflect.DeepEqual(got, want) {
+	if !reflect.DeepEqual(verbPath(got), verbPath(want)) {
 		return fmt.Errorf("Actions (in order): got %+v, want %+v in output:\n%s", got, want, r.Stdout)
 	}
 	return nil
 }
 
+// theReportedChangesShouldBeNumberedInOrder asserts the reported changes match
+// the table exactly — sequence and the visible 1-based selection number — so a
+// user typing "1" at the prompt picks the first row. Unlike
+// theReportedActionsShouldBeInOrder, this compares the rendered Index too.
+func theReportedChangesShouldBeNumberedInOrder(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Actions
+
+	want, err := actionsFromTable(table)
+	if err != nil {
+		return err
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("Numbered changes: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
 // actionsFromTable reads a Gherkin table with "action" and "path" columns into
-// a slice of Actions, preserving row order.
+// a slice of Actions, preserving row order. An optional "number" column sets
+// each Action's selection Index; absent it, Index is left 0 (the verb/path-only
+// tables read by the order-agnostic steps).
 func actionsFromTable(table *godog.Table) ([]Action, error) {
 	headers := map[string]int{}
 	for i, cell := range table.Rows[0].Cells {
@@ -438,15 +461,35 @@ func actionsFromTable(table *godog.Table) ([]Action, error) {
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("expected 'action' and 'path' columns; got headers: %+v", headers)
 	}
+	numberCol, hasNumber := headers["number"]
 
 	var actions []Action
 	for _, row := range table.Rows[1:] {
-		actions = append(actions, Action{
+		act := Action{
 			Verb: row.Cells[actionCol].Value,
 			Path: row.Cells[pathCol].Value,
-		})
+		}
+		if hasNumber {
+			n, err := strconv.Atoi(strings.TrimSpace(row.Cells[numberCol].Value))
+			if err != nil {
+				return nil, fmt.Errorf("number column: %w", err)
+			}
+			act.Index = n
+		}
+		actions = append(actions, act)
 	}
 	return actions, nil
+}
+
+// verbPath returns a copy of a with each Action's selection Index cleared, for
+// the steps that assert verb and path only and are indifferent to the displayed
+// numbering. theReportedChangesShouldBeNumberedInOrder compares Index directly.
+func verbPath(a []Action) []Action {
+	out := make([]Action, len(a))
+	for i, x := range a {
+		out[i] = Action{Verb: x.Verb, Path: x.Path}
+	}
+	return out
 }
 
 // sortActions returns a copy of a sorted by verb then path, so two action
