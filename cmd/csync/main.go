@@ -33,8 +33,11 @@ func main() {
 	}
 
 	fmt.Println("Changes:", len(result.Actions))
-	for _, act := range result.Actions {
-		fmt.Printf("  %s %s\n", act.Verb, act.Path)
+	// Number each change from 1 in displayed order. The number is the selection
+	// affordance: it's the digit a user types at the prompt to pick that change,
+	// and selectActions indexes result.Actions by the same 1-based value.
+	for i, act := range result.Actions {
+		fmt.Printf("  %d. %s %s\n", i+1, act.Verb, act.Path)
 	}
 
 	if len(result.Actions) == 0 {
@@ -93,7 +96,8 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	// A single 1-based index selects just that change from the displayed list.
 	// (Multi-select grammars like "1-3" or "1,3", and out-of-range handling,
 	// are separate not-yet-drilled scenarios in select-and-sync.feature.)
-	if n, convErr := strconv.Atoi(response); convErr == nil && n >= 1 && n <= len(actions) {
+	n, convErr := strconv.Atoi(response)
+	if convErr == nil && n >= 1 && n <= len(actions) {
 		return []compare.Action{actions[n-1]}, nil
 	}
 	return nil, fmt.Errorf("unrecognized selection: %q", response)

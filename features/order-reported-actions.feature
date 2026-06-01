@@ -59,7 +59,6 @@ Feature: Order the reported actions
       | create | src/adder.go          |
       | create | src/parser.go         |
 
-  @wip
   Scenario: Each reported change is labeled with its selection number
     # The number a user types at the prompt to pick a change is shown next to
     # that change, counting from 1 in the displayed (tree) order — so "1" always
