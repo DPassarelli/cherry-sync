@@ -4,7 +4,7 @@ An interactive rsync wrapper for moving files selectively between a local machin
 
 [![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
 
-> **Status: pre-v0.1.** CLI scaffolding only — the tool does not yet perform any rsync operations. See [Status](#status) below for a feature-by-feature breakdown.
+> **Status: pre-v0.1.** The core select-then-sync loop works end to end — `csync` reports the changes between two directories, numbers them, lets you pick which to sync (all, none, or one by number), and transfers the selected files. Multi-select grammar (ranges/lists) and exclude support are still TODO. See [Status](#status) below for a feature-by-feature breakdown.
 
 ## Problem
 
@@ -30,20 +30,29 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 ## Status
 
-| Current                                                  | Planned for v0.1                                       |
-| -------------------------------------------------------- | ------------------------------------------------------ |
-| Two-positional-arg CLI (echoes `source` and `destination`) | Dry-run diff via `rsync --dry-run --itemize-changes`   |
-| Test + lint CI on PRs (`go vet`, `go test`)              | Human-readable change list (new / modified / deleted)  |
-| Conventional Commits enforced on PR titles               | Interactive multi-select of files to transfer          |
-| Lefthook git hooks (`commit-msg`, `pre-push`)            | Selective transfer via `rsync --files-from`            |
-|                                                          | Honor `.gitignore` or a custom exclude file            |
+**Done:**
 
-Beyond v0.1: bidirectional diff (showing which side is newer) and conflict flagging when a file has changed on both sides.
+- [x] ~~Two-positional-arg CLI; usage error → stderr + exit 2~~
+- [x] ~~Dry-run diff via `rsync --dry-run --itemize-changes`~~
+- [x] ~~Human-readable change list (create / update), in stable tree order~~
+- [x] ~~Each change numbered for selection~~
+- [x] ~~Interactive selection (Enter / `a` = all, `n` = none, a number = one change)~~
+- [x] ~~Selective transfer via `rsync --files-from` (NUL-delimited)~~
+- [x] ~~Test + lint CI on PRs (`go vet`, `go test`)~~
+- [x] ~~Conventional Commits enforced on PR titles~~
+- [x] ~~Lefthook git hooks (`commit-msg`, `pre-push`)~~
+
+**Planned for v0.1:**
+
+- [ ] Multi-select grammar (ranges like `1-3`, lists like `1,3`)
+- [ ] Honor `.gitignore` or a custom exclude file
+
+Beyond v0.1: bidirectional diff (showing which side is newer), delete detection (`*deleting` rsync entries), and conflict flagging when a file has changed on both sides.
 
 ## Requirements
 
-- Go ≥ 1.26 (to build from source)
-- `rsync` and `ssh` on both the local and remote machines (once v0.1 lands)
+- Go ≥ 1.26.3 (to build from source)
+- `rsync` and `ssh` on both the local and remote machines
 
 ## Build
 
@@ -55,13 +64,30 @@ Produces a `csync` binary at the repo root.
 
 ## Usage
 
-The CLI currently accepts two positional args and prints them back; no synchronization is performed yet.
+```sh
+$ ./csync ./local-dir user@host:/remote-dir
+Source: ./local-dir
+Destination: user@host:/remote-dir
+Changes: 2
+  1. update README.md
+  2. create src/adder.go
+Press Enter to sync all changes:
+Synced: 2
+```
+
+At the prompt: press **Enter** (or `a`) to sync every change, `n` to cancel without transferring anything, or a **number** to sync just that one change. The prompt is written to stderr, so the report on stdout stays clean and parseable.
+
+If the two directories are identical:
 
 ```sh
 $ ./csync ./local-dir user@host:/remote-dir
 Source: ./local-dir
 Destination: user@host:/remote-dir
+Changes: 0
+No changes to sync.
 ```
+
+Missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
 
 ## Development
 
@@ -71,7 +97,7 @@ Run all tests (unit + godog scenarios):
 go test ./...
 ```
 
-The `features/` directory holds the Gherkin specification and acts as the canonical TODO list — every scenario maps to a desired behavior. See [CLAUDE.md](CLAUDE.md) for the testing philosophy.
+The `features/` directory holds the Gherkin specification and acts as the canonical TODO list — every scenario maps to a desired behavior. See [TESTING.md](TESTING.md) for the testing philosophy and [STYLE.md](STYLE.md) for code style rules that aren't enforced by `gofmt` or `go vet`.
 
 After cloning, activate the git hooks once:
 
