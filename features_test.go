@@ -113,6 +113,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
+	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
 		localPath, _ := ctx.Value(localPathKey{}).(string)
@@ -506,6 +507,21 @@ func theFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context, relPath 
 	}
 	if !bytes.Equal(localBytes, remoteBytes) {
 		return fmt.Errorf("file %q differs: local %q, remote %q", relPath, localBytes, remoteBytes)
+	}
+	return nil
+}
+
+// theFileShouldNotExistOnTheRemote asserts the named file is absent on the
+// remote side — i.e. a change that wasn't selected was not transferred.
+func theFileShouldNotExistOnTheRemote(ctx context.Context, relPath string) error {
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+
+	_, err := os.Stat(filepath.Join(remote, relPath))
+	if err == nil {
+		return fmt.Errorf("file %q exists on the remote but should not", relPath)
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat remote %s: %w", relPath, err)
 	}
 	return nil
 }
