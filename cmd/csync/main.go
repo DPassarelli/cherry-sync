@@ -70,11 +70,16 @@ func main() {
 // select-and-sync.feature and land here as each is drilled in.
 func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, error) {
 	line, err := bufio.NewReader(r).ReadString('\n')
+	// Nothing was read at all (closed/non-interactive stdin, or Ctrl-D before
+	// typing): select nothing. This is distinct from the empty *line* below —
+	// both trim to "", but only a bare Enter means "accept the default". The
+	// `line == ""` guard lets a partial line with no trailing newline (e.g.
+	// "a"+Ctrl-D) still fall through to the switch rather than be discarded.
 	if err != nil && line == "" {
 		return nil, nil
 	}
 	switch strings.TrimSpace(line) {
-	case "":
+	case "": // bare Enter: accept the default — every change
 		return actions, nil
 	default:
 		return nil, fmt.Errorf("unrecognized selection: %q", strings.TrimSpace(line))
