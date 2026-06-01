@@ -114,6 +114,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
+	ctx.Step(`^the file "([^"]*)" should still differ between local and remote$`, theFileShouldStillDifferBetweenLocalAndRemote)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
 		localPath, _ := ctx.Value(localPathKey{}).(string)
@@ -507,6 +508,27 @@ func theFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context, relPath 
 	}
 	if !bytes.Equal(localBytes, remoteBytes) {
 		return fmt.Errorf("file %q differs: local %q, remote %q", relPath, localBytes, remoteBytes)
+	}
+	return nil
+}
+
+// theFileShouldStillDifferBetweenLocalAndRemote asserts the named file's bytes
+// differ across the two sides — i.e. a change that wasn't selected was left
+// untransferred (the file exists on both sides, but the remote is still stale).
+func theFileShouldStillDifferBetweenLocalAndRemote(ctx context.Context, relPath string) error {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+
+	localBytes, err := os.ReadFile(filepath.Join(local, relPath))
+	if err != nil {
+		return fmt.Errorf("read local %s: %w", relPath, err)
+	}
+	remoteBytes, err := os.ReadFile(filepath.Join(remote, relPath))
+	if err != nil {
+		return fmt.Errorf("read remote %s: %w", relPath, err)
+	}
+	if bytes.Equal(localBytes, remoteBytes) {
+		return fmt.Errorf("file %q is identical on both sides but should still differ", relPath)
 	}
 	return nil
 }
