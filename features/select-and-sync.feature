@@ -30,7 +30,6 @@ Feature: Select and sync files
     And   the file "README.md" should be identical between local and remote
     And   the file "src/adder.go" should be identical between local and remote
 
-  @wip
   Scenario: Selecting "a" selects every change
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally

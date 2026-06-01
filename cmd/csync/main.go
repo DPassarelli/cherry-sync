@@ -79,7 +79,7 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 		return nil, nil
 	}
 	switch strings.TrimSpace(line) {
-	case "": // bare Enter: accept the default — every change
+	case "", "a": // bare Enter or "a": accept the default — every change
 		return actions, nil
 	default:
 		return nil, fmt.Errorf("unrecognized selection: %q", strings.TrimSpace(line))
