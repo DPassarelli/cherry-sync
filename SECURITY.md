@@ -7,8 +7,10 @@ single source of truth on the tool's security posture: the invariants every
 change must hold, the trust boundaries we do and don't defend, and the catalog
 of concerns we've found so far.
 
-It is deliberately terse and concrete. New concerns join the catalog as they
-surface; each one carries a pointer to the test that pins it.
+It is deliberately principle-first: it records threats and the invariants that
+counter them, not the code that implements them — so a reviewer reasons from the
+threat model rather than from our current implementation. New concerns join the
+catalog as they surface; closed ones are held closed by regression tests.
 
 ## Invariants
 
@@ -22,18 +24,18 @@ still passes.
   inert — they reach `rsync` as literal bytes in one argument. This is why the
   classic "shell injection" class does not apply to us, and it must stay that
   way.
-- **`--` before positional paths handed to rsync.** `rsync` parses options
-  anywhere on its command line, so a path beginning with `-` (e.g. `-e`,
-  `--rsh=…`) would otherwise be read as an *option* — and `rsync`'s `-e`/`--rsh`
-  can run an arbitrary remote shell command. The `--` end-of-options separator
-  immediately before the paths forecloses this. See `internal/compare`
-  (`rsyncArgs`).
+- **An end-of-options (`--`) separator before user paths.** `rsync` parses
+  options anywhere on its command line, so a path beginning with `-` would
+  otherwise be read as an *option*. The danger is concrete: rsync's remote-shell
+  option (`-e`/`--rsh`) executes an arbitrary command on the far side. A `--`
+  end-of-options marker immediately before the user-supplied paths forecloses
+  this — everything after it is a path, never an option.
 - **Validate every path operand before use.** At minimum, reject empty strings:
   an empty path becomes `"" + "/"` = `"/"`, pointing `rsync` at the filesystem
-  root. Validation lives in `cli.Parse`; surface failures as a usage error
-  (exit 2), not a partial run.
-- **NUL-delimit any file list handed to rsync.** When the transfer phase drives
-  `rsync --files-from`, use `--from0` and NUL-delimited paths. The default
+  root. Validation belongs at the input boundary; surface failures as a usage
+  error (exit 2), not a partial run.
+- **NUL-delimit any file list handed to rsync.** When a transfer is driven from
+  a list of paths, delimit it with NUL bytes rather than newlines. The default
   newline delimiter lets a filename containing a newline (legal on Unix) smuggle
   extra entries into the list. (Not yet implemented — see the catalog.)
 
@@ -61,30 +63,32 @@ What we defend, and what we explicitly don't:
 
 ### Closed
 
-- **rsync argument injection via leading-dash paths.** A source/destination
-  beginning with `-` parsed as an rsync option (worst case: `-e`/`--rsh`
-  remote-shell execution). *Fixed* by the `--` separator in `rsyncArgs`.
-  Pinned by `compare.TestRsyncArgs_SeparatesOptionsFromPaths`.
-- **Empty path → filesystem root.** `csync "" host:/p` would make the source
-  `"/"`. *Fixed* by the empty-path rejection in `cli.Parse`. Pinned by
-  `cli.TestParse_EmptyPath_ReturnsError` and the scenario "Empty path argument —
-  show usage and exit non-zero" in `features/invoke-command.feature`.
+- **rsync argument injection via leading-dash paths.** A source or destination
+  beginning with `-` parsed as an rsync option — worst case, a remote-shell
+  option executing an arbitrary command on the far side. *Closed* by the
+  end-of-options separator invariant, and held closed by a behavioral test that
+  fails if the separator is removed.
+- **Empty path → filesystem root.** An empty path operand would expand to `"/"`,
+  retargeting the operation at the root of the filesystem. *Closed* by the
+  path-validation invariant (empty-string rejection), held closed by unit and
+  behavioral regression tests.
 - **Shell injection.** Not applicable: we use `exec.Command` with an argv slice,
   never `sh -c`. Recorded here so the question doesn't get re-litigated — the
   defense is the "No shell, ever" invariant, not a patch.
 
 ### Open / deferred
 
-- **Newline in a filename smuggling into `--files-from`.** Harmless to the
-  current compare path, but the v0.1 transfer phase will drive `rsync` via
-  `--files-from`, which is newline-delimited. Mitigation: `--from0` /
-  NUL-delimited paths (see invariant). Address when the transfer phase lands.
+- **Newline in a filename smuggling into the transfer list.** Harmless on the
+  current compare-only path, but the v0.1 transfer phase will drive `rsync` from
+  a list of paths, newline-delimited by default. Mitigation: NUL-delimited paths
+  (see invariant). Address when the transfer phase lands.
 - **Whitespace-only / all-blank paths.** We currently reject only the exactly
   empty string. `"   "` becomes `"   /"`, which is not filesystem root, so we
   left it alone to avoid rejecting legitimate-if-weird paths. Revisit if it
   proves to be a real footgun.
-- **Path literally `--`.** With our added `--`, a user path of `--` becomes a
-  literal path named `--`. Believed harmless; noted for completeness.
+- **Path literally `--`.** With the end-of-options separator in place, a user
+  path of `--` resolves to a literal path named `--`. Believed harmless; noted
+  for completeness.
 
 ## Automated checks
 
@@ -92,12 +96,9 @@ What we defend, and what we explicitly don't:
 analysis, no LLM, no session bias, and it can't be forgotten because it gates
 the push itself. It flags any `exec.Command` with variable arguments as G204.
 
-The single rsync call in `internal/compare` carries a justified `#nosec G204`:
-its safety rests on the invariants above and is *proven* by a behavioral test —
-the "treated as a path" scenario in `features/compare-directories.feature`,
-which exits the run non-zero only because the `--` separator forces an
-option-looking path to be read as a (missing) path. Strip the `--` and that
-test goes red.
+The single rsync invocation with variable arguments carries a justified,
+per-site `#nosec G204`: its safety rests on the invariants above and is *proven*
+by a behavioral test that goes red if the end-of-options separator is removed.
 
 Suppress G204 only per-site, with a justification that points at the reasoning.
 Never disable it globally — that would blind the gate to the same pattern

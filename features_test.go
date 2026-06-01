@@ -24,12 +24,14 @@ var csyncBinary string
 // `When I run "..."` so the following Then steps can assert on it.
 type outputKey struct{}
 
-// localPathKey and remotePathKey stash the per-scenario tempdir paths set
-// up by `Given a local directory ...` and `Given that all of the files are
-// identical between local and remote`. iRun reads them to substitute the
-// Gherkin placeholders `./project` and `user@host:/project` with the real
-// paths before invoking csync.
+// localPathKey stashes the per-scenario local tempdir path set up by `Given a
+// local directory ...`. iRun reads it to substitute the Gherkin placeholder
+// `./project` with the real path before invoking csync.
 type localPathKey struct{}
+
+// remotePathKey stashes the per-scenario remote tempdir path set up by the
+// `... identical between local and remote` and `empty remote directory` steps.
+// iRun reads it to substitute `user@host:/project` before invoking csync.
 type remotePathKey struct{}
 
 // runResult holds everything the test world cares about after a csync
@@ -41,6 +43,8 @@ type runResult struct {
 	ExitCode int
 }
 
+// TestMain builds the csync binary into a temp dir once, records its path in
+// csyncBinary for the scenarios to invoke, and removes it when the suite ends.
 func TestMain(m *testing.M) {
 	tmpDir, err := os.MkdirTemp("", "csync-test-*")
 	if err != nil {
@@ -78,6 +82,9 @@ func TestFeatures(t *testing.T) {
 	}
 }
 
+// InitializeScenario registers each Gherkin step with its step function and
+// installs an After hook that removes the per-scenario local and remote
+// tempdirs.
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)"$`, iRun)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
@@ -109,6 +116,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 }
 
+// iRun executes the `When I run "..."` step: it splits the command, substitutes
+// the Gherkin placeholders (`./project`, `user@host:/project`, `<empty>`) with
+// the scenario's real tempdir paths, runs the csync binary, and stashes the
+// captured streams and exit code in the context.
 func iRun(ctx context.Context, command string) (context.Context, error) {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
@@ -161,6 +172,7 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 	return context.WithValue(ctx, outputKey{}, result), nil
 }
 
+// theReportedSourceShouldBe asserts the parsed "Source:" line equals want.
 func theReportedSourceShouldBe(ctx context.Context, want string) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Source
@@ -171,6 +183,7 @@ func theReportedSourceShouldBe(ctx context.Context, want string) error {
 	return nil
 }
 
+// theReportedDestinationShouldBe asserts the parsed "Destination:" line equals want.
 func theReportedDestinationShouldBe(ctx context.Context, want string) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Destination
@@ -181,6 +194,7 @@ func theReportedDestinationShouldBe(ctx context.Context, want string) error {
 	return nil
 }
 
+// csyncShouldReturnExitCode asserts the captured process exit code equals want.
 func csyncShouldReturnExitCode(ctx context.Context, want int) error {
 	got := captured(ctx).ExitCode
 
@@ -190,6 +204,8 @@ func csyncShouldReturnExitCode(ctx context.Context, want int) error {
 	return nil
 }
 
+// csyncShouldReturnANonZeroExitCode asserts the captured exit code is non-zero
+// (the error path, without pinning a specific code).
 func csyncShouldReturnANonZeroExitCode(ctx context.Context) error {
 	r := captured(ctx)
 
@@ -199,6 +215,8 @@ func csyncShouldReturnANonZeroExitCode(ctx context.Context) error {
 	return nil
 }
 
+// theReportedUsageShouldBeginWith asserts the usage text parsed from stderr
+// starts with want.
 func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Usage
@@ -209,6 +227,9 @@ func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
 	return nil
 }
 
+// aLocalDirectoryContainingTheseFiles creates a local tempdir populated with
+// the (empty) files named in the DocString and stashes its path under
+// localPathKey.
 func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
 	dir, err := os.MkdirTemp("", "csync-local-*")
 	if err != nil {
@@ -232,6 +253,9 @@ func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocStrin
 	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
+// allFilesIdenticalBetweenLocalAndRemote copies the local tree into a fresh
+// remote tempdir so the two sides start identical, stashing the remote path
+// under remotePathKey.
 func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
@@ -248,6 +272,8 @@ func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Contex
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
 
+// anEmptyRemoteDirectory creates an empty remote tempdir and stashes its path
+// under remotePathKey.
 func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
 	remote, err := os.MkdirTemp("", "csync-remote-*")
 	if err != nil {
@@ -256,6 +282,8 @@ func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
 
+// theFileHasBeenChangedLocally overwrites the named file in the local tree so a
+// later comparison reports it as modified.
 func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
@@ -269,6 +297,8 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 	return ctx, nil
 }
 
+// theFileHasBeenAddedLocally writes a new file (creating parent dirs) into the
+// local tree so a later comparison reports it as added.
 func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
@@ -286,6 +316,8 @@ func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Co
 	return ctx, nil
 }
 
+// theFileHasBeenAddedOnTheRemote writes a new file (creating parent dirs) into
+// the remote tree so a later comparison reports it as remote-only.
 func theFileHasBeenAddedOnTheRemote(ctx context.Context, relPath string) (context.Context, error) {
 	remote, _ := ctx.Value(remotePathKey{}).(string)
 	if remote == "" {
@@ -303,6 +335,7 @@ func theFileHasBeenAddedOnTheRemote(ctx context.Context, relPath string) (contex
 	return ctx, nil
 }
 
+// noActionsShouldBeReported asserts csync's output lists zero actions.
 func noActionsShouldBeReported(ctx context.Context) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Actions
@@ -313,6 +346,9 @@ func noActionsShouldBeReported(ctx context.Context) error {
 	return nil
 }
 
+// theReportedActionsShouldBe asserts the reported actions match the table,
+// order-insensitively — both sides are sorted before comparison. For an
+// order-sensitive check see theReportedActionsShouldBeInOrder.
 func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 	r := captured(ctx)
 	got := parseOutput(r.Stdout, r.Stderr).Actions
@@ -371,6 +407,8 @@ func actionsFromTable(table *godog.Table) ([]Action, error) {
 	return actions, nil
 }
 
+// sortActions returns a copy of a sorted by verb then path, so two action
+// slices can be compared regardless of their original order.
 func sortActions(a []Action) []Action {
 	cpy := append([]Action(nil), a...)
 	sort.Slice(cpy, func(i, j int) bool {
@@ -382,6 +420,8 @@ func sortActions(a []Action) []Action {
 	return cpy
 }
 
+// theReportedChangeCountShouldBe asserts csync printed a "Changes:" line and
+// that its count equals want.
 func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	r := captured(ctx)
 	parsed := parseOutput(r.Stdout, r.Stderr)
@@ -395,11 +435,15 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	return nil
 }
 
+// captured returns the runResult stashed by iRun, or a zero value if the run
+// step hasn't executed.
 func captured(ctx context.Context) runResult {
 	r, _ := ctx.Value(outputKey{}).(runResult)
 	return r
 }
 
+// copyTree recursively copies the file tree rooted at src into dst, recreating
+// directories and file contents (permissions are normalized, not preserved).
 func copyTree(src, dst string) error {
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

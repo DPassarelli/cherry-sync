@@ -116,19 +116,46 @@ Conventions:
 - **No abstraction until it pays for itself.** For two similar assertions,
   inline duplication is preferable to a helper. Reach for a shared helper only
   when three or more assertions share the same shape.
+- **Describe contracts in prose; don't paste signatures.** This document (and
+  docs generally) captures intent and invariants; the code stays the source of
+  truth for mechanics. Name stable anchors — a function, type, or file — so a
+  reader can find the code, but describe what it takes and returns in words
+  rather than quoting a literal signature. Parameter lists and return types
+  drift on every incidental change; a prose contract doesn't. The exception is
+  when the literal form *is* the subject (e.g. a syntax rule), where a code
+  example is the point.
+- **`Test*` functions describe the behavior, not the name.** This is the one
+  sanctioned exception to STYLE.md's "doc comments start with the identifier
+  name" rule. A test function's name is already a descriptive sentence
+  (`TestComparePaths_NumbersCompareByValue`), so leading the comment with it
+  again is pure echo. Instead, lead with what the test pins down, using a
+  `Behavior:` prefix for godog-mirroring unit tests and a `Rule N:` prefix when
+  isolating one rule of a larger behavior:
+
+  ```go
+  // Behavior: a single `>f...` update line yields a single update Action.
+  func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) { ... }
+
+  // Rule 4: numbers compare by value, not lexically.
+  func TestComparePaths_NumbersCompareByValue(t *testing.T) { ... }
+  ```
+
+  The exception is scoped to `Test*` functions only. Test *helpers* and *step
+  definitions* (e.g. `assertSortsBefore`, `iRun`) are ordinary functions and
+  follow the name-first rule like any other code.
 
 ## The output-parsing facade
 
-Tests assert against csync's stdout, but they should not parse it inline in
-every step. The `parseStdout` function in `output_parser_test.go` is the
+Tests assert against csync's output, but they should not parse it inline in
+every step. The output parser in `output_parser_test.go` (`parseOutput`) is the
 single translation point between rendered output and structured test data.
 
 - **Production emits text; tests parse it.** This keeps the boundary honest.
   Production code is free to render however reads best; test code is free to
   assert against semantic fields.
-- **One file, one function.** `parseStdout(stdout string) ReportedOutput` is
-  the entire surface. If rendering changes, this is the only place that
-  changes.
+- **One file, one function.** A single function is the entire surface: it takes
+  csync's captured output and returns a `ReportedOutput`. If rendering changes,
+  this is the only place that changes.
 - **`_test.go` location.** The parser is test-only scaffolding. Putting it in
   a `_test.go` file means it's compiled out of the production binary and the
   boundary stays enforced — production code can never call into the parser.
@@ -142,7 +169,7 @@ single translation point between rendered output and structured test data.
 ```
 features/*.feature              Gherkin specs — the behavior catalog
 features_test.go                godog wiring and step definitions
-output_parser_test.go           parseStdout / ReportedOutput facade
+output_parser_test.go           parseOutput / ReportedOutput facade
 internal/<pkg>/*_test.go        Unit tests next to the code they cover
 ```
 

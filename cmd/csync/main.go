@@ -8,6 +8,8 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
+// main parses the command-line arguments, runs the dry-run comparison, and
+// prints the source, destination, and the list of changes rsync would make.
 func main() {
 	a, err := cli.Parse(os.Args[1:])
 	if err != nil {

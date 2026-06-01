@@ -160,6 +160,7 @@ func compareNumericRun(a, b string) int {
 	return strings.Compare(na, nb)
 }
 
+// leadingDigits returns the longest prefix of s made up of ASCII digits.
 func leadingDigits(s string) string {
 	i := 0
 	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
@@ -168,10 +169,12 @@ func leadingDigits(s string) string {
 	return s[:i]
 }
 
+// startsWithDigit reports whether s begins with an ASCII digit.
 func startsWithDigit(s string) bool {
 	return len(s) > 0 && s[0] >= '0' && s[0] <= '9'
 }
 
+// isDotSegment reports whether a path segment begins with a dot.
 func isDotSegment(s string) bool {
 	return strings.HasPrefix(s, ".")
 }
