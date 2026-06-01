@@ -20,6 +20,15 @@ conventions, the file layout, and the rationale behind each.
   undiscovered behavior or a latent bug. Enumerating conditions is mandatory;
   the depth scales with uncertainty, and sometimes the honest answer is "only
   one case" — that's fine, but you have to have asked.
+- **Triangulate parameterized rules.** When a behavior is parameterized — select
+  the *N*th change, transfer *K* files, retry *M* times — a single example can be
+  satisfied by a constant that never reads the parameter: `respond with "1"`
+  passes even against code hardcoded to "always the first". *Triangulation* is
+  adding a second example whose expected outcome *differs* (`respond with "2"` →
+  the second change), which forces the parameter to actually drive the result.
+  Two discriminating data points pin a non-degenerate mapping; one does not. To
+  confirm such a test has teeth, briefly mutate the production code to the
+  degenerate constant and check that the new scenario — and only it — goes red.
 - **Gherkin as canonical spec.** The `.feature` files are the authoritative
   description of what csync does. They are written in Given/When/Then form and
   executed by godog. New behaviors enter the project as Gherkin scenarios

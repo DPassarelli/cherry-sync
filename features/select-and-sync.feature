@@ -38,7 +38,6 @@ Feature: Select and sync files
     And   the file "README.md" should be identical between local and remote
     And   the file "src/adder.go" should be identical between local and remote
 
-  @wip
   Scenario: Choosing a subset by number syncs only those files
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
@@ -46,6 +45,17 @@ Feature: Select and sync files
     Then  the reported sync count should be 1
     And   the file "README.md" should be identical between local and remote
     And   the file "src/adder.go" should not exist on the remote
+
+  Scenario: A different number selects a different change
+    # Triangulates the by-number selection: with "1" pinned to the first row
+    # above, "2" must reach the second — proving the typed response is actually
+    # read, not a hardcoded "always the first".
+    Given that the file "README.md" has been changed locally
+    And   that the file "src/adder.go" has been added locally
+    When  I run "csync ./project user@host:/project" and respond with "2"
+    Then  the reported sync count should be 1
+    And   the file "src/adder.go" should be identical between local and remote
+    And   the file "README.md" should still differ between local and remote
 
   @wip
   Scenario: Choosing none transfers nothing and exits cleanly

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/dpassarelli/cherry-sync/internal/cli"
@@ -78,10 +79,17 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	if err != nil && line == "" {
 		return nil, nil
 	}
-	switch strings.TrimSpace(line) {
-	case "", "a": // bare Enter or "a": accept the default — every change
+
+	response := strings.TrimSpace(line)
+	// A bare Enter or "a" accepts the default: every change.
+	if response == "" || response == "a" {
 		return actions, nil
-	default:
-		return nil, fmt.Errorf("unrecognized selection: %q", strings.TrimSpace(line))
 	}
+	// A single 1-based index selects just that change from the displayed list.
+	// (Multi-select grammars like "1-3" or "1,3", and out-of-range handling,
+	// are separate not-yet-drilled scenarios in select-and-sync.feature.)
+	if n, convErr := strconv.Atoi(response); convErr == nil && n >= 1 && n <= len(actions) {
+		return []compare.Action{actions[n-1]}, nil
+	}
+	return nil, fmt.Errorf("unrecognized selection: %q", response)
 }
