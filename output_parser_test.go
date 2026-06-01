@@ -16,6 +16,8 @@ type ReportedOutput struct {
 	ChangeCount    int
 	HasChangeCount bool
 	Actions        []Action
+	SyncCount      int
+	HasSyncCount   bool
 	Message        string
 	Usage          string
 }
@@ -52,6 +54,12 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			n, err := strconv.Atoi(m[2])
 			if err == nil {
 				out.ChangeCount = n
+			}
+		case "Synced":
+			out.HasSyncCount = true
+			n, err := strconv.Atoi(m[2])
+			if err == nil {
+				out.SyncCount = n
 			}
 		}
 	}

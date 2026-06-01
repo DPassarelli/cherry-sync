@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -93,6 +94,7 @@ func TestFeatures(t *testing.T) {
 // tempdirs.
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)"$`, iRun)
+	ctx.Step(`^I run "([^"]*)" and respond with "([^"]*)"$`, iRunAndRespond)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
@@ -109,6 +111,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
+	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
+	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
 		localPath, _ := ctx.Value(localPathKey{}).(string)
@@ -123,11 +127,27 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 }
 
-// iRun executes the `When I run "..."` step: it splits the command, substitutes
-// the Gherkin placeholders (`./project`, `user@host:/project`, `<empty>`) with
-// the scenario's real tempdir paths, runs the csync binary, and stashes the
-// captured streams and exit code in the context.
+// iRun executes the `When I run "..."` step with no interactive input.
 func iRun(ctx context.Context, command string) (context.Context, error) {
+	return runCsync(ctx, command, nil)
+}
+
+// iRunAndRespond executes the `When I run "..." and respond with "..."` step,
+// feeding the response to csync on stdin as if typed at the prompt. The
+// `<empty>` sentinel stands for an empty response (a bare Enter); a trailing
+// newline is appended so the response reads as a completed line.
+func iRunAndRespond(ctx context.Context, command, response string) (context.Context, error) {
+	if response == "<empty>" {
+		response = ""
+	}
+	return runCsync(ctx, command, strings.NewReader(response+"\n"))
+}
+
+// runCsync splits the command, substitutes the Gherkin placeholders
+// (`./project`, `user@host:/project`, `<empty>`) with the scenario's real
+// tempdir paths, runs the csync binary with the given stdin, and stashes the
+// captured streams and exit code in the context.
+func runCsync(ctx context.Context, command string, stdin io.Reader) (context.Context, error) {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
 		return ctx, fmt.Errorf("empty command")
@@ -157,6 +177,7 @@ func iRun(ctx context.Context, command string) (context.Context, error) {
 	}
 
 	cmd := exec.Command(csyncBinary, args...)
+	cmd.Stdin = stdin
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -450,6 +471,41 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	}
 	if parsed.ChangeCount != want {
 		return fmt.Errorf("Changes: got %d, want %d in output:\n%s", parsed.ChangeCount, want, r.Stdout)
+	}
+	return nil
+}
+
+// theReportedSyncCountShouldBe asserts csync printed a "Synced:" line and that
+// its count equals want.
+func theReportedSyncCountShouldBe(ctx context.Context, want int) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.HasSyncCount {
+		return fmt.Errorf("no Synced line in output:\n%s", r.Stdout)
+	}
+	if parsed.SyncCount != want {
+		return fmt.Errorf("Synced: got %d, want %d in output:\n%s", parsed.SyncCount, want, r.Stdout)
+	}
+	return nil
+}
+
+// theFileShouldBeIdenticalBetweenLocalAndRemote asserts the named file has the
+// same bytes on both sides — i.e. the transfer actually moved it.
+func theFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context, relPath string) error {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+
+	localBytes, err := os.ReadFile(filepath.Join(local, relPath))
+	if err != nil {
+		return fmt.Errorf("read local %s: %w", relPath, err)
+	}
+	remoteBytes, err := os.ReadFile(filepath.Join(remote, relPath))
+	if err != nil {
+		return fmt.Errorf("read remote %s: %w", relPath, err)
+	}
+	if !bytes.Equal(localBytes, remoteBytes) {
+		return fmt.Errorf("file %q differs: local %q, remote %q", relPath, localBytes, remoteBytes)
 	}
 	return nil
 }
