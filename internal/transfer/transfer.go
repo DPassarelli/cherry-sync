@@ -39,6 +39,11 @@ func Run(source, destination string, paths []string) error {
 func rsyncArgs(source, destination string) []string {
 	return []string{
 		"--recursive",
+		// --times preserves each transferred file's modification time. Without
+		// it, every synced file lands with "now" as its mtime and rsync's
+		// quick-check (size + mtime) re-flags it as changed on the next compare —
+		// a perpetual phantom update. Must match compare.rsyncArgs.
+		"--times",
 		"--files-from=-",
 		"--from0",
 		"--",

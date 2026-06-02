@@ -14,9 +14,20 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cucumber/godog"
 )
+
+// localChangeMtime is the modification time stamped on files touched by the
+// "changed locally" / "added locally" steps. rsync's quick-check compares mtime
+// at whole-second granularity, so if a file were created and synced within the
+// same second (as everything in this harness otherwise is), a transfer that
+// failed to preserve mtime would still compare equal — masking the bug. Dating
+// the source files firmly in the past forces the post-transfer "now" timestamp
+// into a different second, so mtime-preservation is actually exercised. The
+// assertions only read file bytes, so a fixed past time is invisible to them.
+var localChangeMtime = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // csyncBinary is the path to the compiled csync binary, set by TestMain
 // before any scenario runs.
@@ -95,6 +106,7 @@ func TestFeatures(t *testing.T) {
 // tempdirs.
 func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)"$`, iRun)
+	ctx.Step(`^I run "([^"]*)" a second time$`, iRun)
 	ctx.Step(`^I run "([^"]*)" and respond with "([^"]*)"$`, iRunAndRespond)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
@@ -131,7 +143,12 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 }
 
-// iRun executes the `When I run "..."` step with no interactive input.
+// iRun executes the `When I run "..."` step with no interactive input. It also
+// backs the `... a second time` phrasing: the scenario's local and remote
+// tempdirs persist in the context across steps, so a repeat invocation runs
+// against the already-synced state — which is what idempotence checks assert on.
+// With no stdin, a second run that does surface phantom changes reads EOF at the
+// prompt and selects nothing rather than blocking.
 func iRun(ctx context.Context, command string) (context.Context, error) {
 	return runCsync(ctx, command, nil)
 }
@@ -338,6 +355,10 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
 	}
+	err = os.Chtimes(full, localChangeMtime, localChangeMtime)
+	if err != nil {
+		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
+	}
 	return ctx, nil
 }
 
@@ -356,6 +377,10 @@ func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Co
 	err = os.WriteFile(full, []byte("new file\n"), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	err = os.Chtimes(full, localChangeMtime, localChangeMtime)
+	if err != nil {
+		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
 	}
 	return ctx, nil
 }
