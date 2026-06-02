@@ -77,22 +77,46 @@ func parseActions(rsyncOut string) []Action {
 }
 
 // actionFromLine translates one rsync --itemize-changes line into an Action.
-// v0.1 recognizes `>f...` (file being pushed) as update, with `>f+++++++++`
-// (all-new attribute markers) as create. Delete and other verbs land here as
-// scenarios drill them.
+// v0.1 recognizes `>f...` (file received into the destination) as update, with
+// an all-`+` attribute run (a brand-new file) as create. Delete and other verbs
+// land here as scenarios drill them.
+//
+// An itemize line is "<code> <path>": a whitespace-free change code, one space,
+// then the path. The code's width is implementation-specific — GNU rsync emits
+// 11 chars, macOS's openrsync 9 — so we split on the first space rather than a
+// fixed offset, which would otherwise eat the path's first byte under openrsync.
+// The path is taken verbatim (no trim), preserving a filename's own leading or
+// trailing spaces.
 func actionFromLine(line string) Action {
-	if len(line) < 12 {
+	code, path, found := strings.Cut(line, " ")
+	if !found {
 		return Action{}
 	}
-	if line[0] != '>' || line[1] != 'f' {
+	if len(code) < 2 || code[0] != '>' || code[1] != 'f' || path == "" {
 		return Action{}
 	}
-	code := line[:11]
-	path := strings.TrimSpace(line[11:])
-	if strings.Contains(code, "+++++++++") {
+	// A newly created file marks every attribute column '+', however many this
+	// rsync emits (9 under GNU, 7 under openrsync). An all-`+` tail after the
+	// 2-char type prefix means create; anything else is an in-place update.
+	if isAllPlus(code[2:]) {
 		return Action{Verb: "create", Path: path}
 	}
 	return Action{Verb: "update", Path: path}
+}
+
+// isAllPlus reports whether s is non-empty and every byte is '+'. It identifies
+// rsync's "newly created" attribute run independent of how many columns the
+// running rsync emits.
+func isAllPlus(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != '+' {
+			return false
+		}
+	}
+	return true
 }
 
 // sortActions orders actions the way a file tree presents them, so the
