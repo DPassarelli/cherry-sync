@@ -5,6 +5,12 @@ describe behavior before code exists, and behavior — not the unit — is the
 starting point. This document captures how we work: the loop, the style
 conventions, the file layout, and the rationale behind each.
 
+The condensed **non-negotiables** live in [CLAUDE.md](CLAUDE.md), so they're
+always in Claude's working context. This document is the depth behind them — the
+why and the how — and the home for the detailed conventions (Gherkin shape,
+`got`/`want`, the facade) that don't fit a checklist. The terse rule statements
+belong in CLAUDE.md; keep them out of here so the two don't drift.
+
 ## Philosophy
 
 - **Test-first.** Every behavior begins as a failing test. The test expresses

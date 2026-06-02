@@ -31,11 +31,23 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 ## Testing
 
-See [TESTING.md](TESTING.md) for the development loop, Gherkin and unit test style conventions, the output-parsing facade, and how to run the suite. That document is the source of truth on testing.
+See [TESTING.md](TESTING.md) for the philosophy, the development loop in full, the Gherkin/unit/facade conventions, and how to run the suite — the reasoning and detail behind the rules below. The non-negotiables are kept here, not duplicated there, because they constrain every change:
+
+- **Test-first.** Every behavior begins as a failing test; write it and watch it fail before writing production code.
+- **Enumerate the conditions** that change a behavior's outcome before writing the test — an unlisted condition is an undiscovered behavior or a latent bug.
+- **Prove the test has teeth.** Confirm it fails for the right reason before making it pass: mutate the production code to the degenerate version and check that this test — and only it — goes red.
+- **Verify external-tool behavior by experiment, not memory.** Check what `rsync`/`ssh` actually emit before encoding it in a test or parser.
+- **Agree the scenario before wiring it.** Gherkin scenarios are the spec; review them before writing step definitions or production code.
+- **One scenario, one behavior.** Don't bundle expectations into a single scenario.
+- **Green before refactor; verify before done.** Minimal code to pass, refactor only on green, and run `go test ./...` and `gofmt -l .` before calling it done.
 
 ## Style
 
-See [STYLE.md](STYLE.md) for code style rules that aren't enforced by `gofmt` or `go vet`. That document is the source of truth on style.
+See [STYLE.md](STYLE.md) for the rationale, scope, and worked examples behind each rule — the "why." The rules themselves are kept here, not duplicated there, because they apply to every change. They cover what `gofmt` and `go vet` don't, and hold for all code including tests:
+
+- **No assignment inside an `if` condition.** Lift the init statement onto its own line above the `if`. (`for` loops and type switches keep their init — see STYLE.md for the exact scope.)
+- **Doc-comment every top-level declaration** — `type`, `var`, `const`, `func`, exported or not.
+- **Start each doc comment with the identifier name, then an active verb** (`Run invokes…`); data types may use "X is a…" / "holds…" instead.
 
 ## Security
 
