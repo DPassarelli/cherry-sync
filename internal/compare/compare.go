@@ -77,9 +77,12 @@ func parseActions(rsyncOut string) []Action {
 }
 
 // actionFromLine translates one rsync --itemize-changes line into an Action.
-// v0.1 recognizes `>f...` (file received into the destination) as update, with
-// an all-`+` attribute run (a brand-new file) as create. Delete and other verbs
-// land here as scenarios drill them.
+// v0.1 recognizes a regular-file transfer in either direction — `>f...` (received
+// into the destination: pull or local-to-local) and `<f...` (sent to a remote:
+// a real push over SSH) — as update, with an all-`+` attribute run (a brand-new
+// file) as create. The leading byte is the transfer direction, not a distinct
+// change, so both map to the same verb. Delete and other verbs land here as
+// scenarios drill them.
 //
 // An itemize line is "<code> <path>": a whitespace-free change code, one space,
 // then the path. The code's width is implementation-specific — GNU rsync emits
@@ -92,7 +95,7 @@ func actionFromLine(line string) Action {
 	if !found {
 		return Action{}
 	}
-	if len(code) < 2 || code[0] != '>' || code[1] != 'f' || path == "" {
+	if len(code) < 2 || (code[0] != '<' && code[0] != '>') || code[1] != 'f' || path == "" {
 		return Action{}
 	}
 	// A newly created file marks every attribute column '+', however many this
