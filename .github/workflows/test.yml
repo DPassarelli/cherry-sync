@@ -87,3 +87,20 @@ jobs:
 
       - name: go test
         run: go test ./...
+
+  # Single stable status check to require in branch protection. The matrix leg
+  # names can change freely underneath this gate without breaking the required
+  # check. `needs.test.result` is the aggregate of every matrix leg — "success"
+  # only if all legs passed. `if: always()` makes the gate run even when a leg
+  # fails (a skipped required check would itself block the merge).
+  ci-gate:
+    name: ci-gate
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all matrix legs to have succeeded
+        run: |
+          result="${{ needs.test.result }}"
+          echo "matrix aggregate result: $result"
+          [ "$result" = "success" ]
