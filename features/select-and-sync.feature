@@ -38,6 +38,18 @@ Feature: Select and sync files
     And   the file "README.md" should be identical between local and remote
     And   the file "src/adder.go" should be identical between local and remote
 
+  Scenario: A completed sync leaves nothing to re-sync
+    # Idempotence guard: after csync transfers a set of changes, re-running the
+    # same compare must report nothing left to do. A second run that still finds
+    # differences means the transfer didn't fully reconcile the two sides — for
+    # whatever reason — leaving the user re-syncing the same files indefinitely.
+    Given that the file "README.md" has been changed locally
+    And   that the file "src/adder.go" has been added locally
+    When  I run "csync ./project user@host:/project" and respond with "a"
+    And   I run "csync ./project user@host:/project" a second time
+    Then  no actions should be reported
+    And   the reported change count should be 0
+
   Scenario: Choosing a subset by number syncs only those files
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally

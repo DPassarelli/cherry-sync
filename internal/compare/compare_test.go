@@ -55,6 +55,36 @@ func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
 	}
 }
 
+// Behavior: the itemize code's width is implementation-specific — GNU rsync
+// emits 11 chars, macOS's openrsync 9 (two fewer attribute columns). The two
+// tests below pin parseActions to openrsync's actual byte layout (captured from
+// `rsync --itemize-changes` under `openrsync: protocol version 29`), so the
+// parser can't regress to assuming GNU's field widths. A fixed-offset parser
+// would slice one byte into the path here, dropping its first character.
+
+// Behavior: an openrsync update line (9-char code) yields an update Action with
+// the path intact — no leading byte eaten.
+func TestParseActions_OpenrsyncUpdate_KeepsFirstPathByte(t *testing.T) {
+	got := parseActions(">f.st.... after-merge.sh\n")
+
+	want := []Action{{Verb: "update", Path: "after-merge.sh"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: an openrsync new-file line marks every attribute column '+' — seven
+// of them, not GNU's nine — and must still be recognized as a create, not an
+// update. A fixed nine-'+' check would misread this as an update.
+func TestParseActions_OpenrsyncCreate_ReturnsCreateAction(t *testing.T) {
+	got := parseActions(">f+++++++ after-merge.sh\n")
+
+	want := []Action{{Verb: "create", Path: "after-merge.sh"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 // The tests below pin the individual ordering rules of comparePaths, one rule
 // per pair. The holistic, end-to-end ordering is covered by the scenario in
 // features/order-reported-actions.feature; these isolate each rule (and edge
