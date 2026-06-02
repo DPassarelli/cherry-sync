@@ -49,6 +49,13 @@ func rsyncArgs(source, destination string) []string {
 		"--dry-run",
 		"--itemize-changes",
 		"--recursive",
+		// --times mirrors transfer.rsyncArgs so the dry-run models the same
+		// operation the transfer performs. It does NOT change which files are
+		// reported — rsync's quick-check compares mtime regardless of this flag,
+		// and a dry-run writes nothing — so the actual phantom-update fix lives
+		// in transfer preserving mtime. Kept here to stop the two flag sets
+		// drifting as fidelity flags (perms, links, …) are added later.
+		"--times",
 		"--",
 		source + "/",
 		destination + "/",
