@@ -85,6 +85,37 @@ func TestParseActions_OpenrsyncCreate_ReturnsCreateAction(t *testing.T) {
 	}
 }
 
+// Behavior: rsync marks the transfer direction in the first byte of the
+// itemize code — `>` for files received into the destination (pull /
+// local-to-local), `<` for files sent to a remote (a real push over SSH). The
+// godog harness only ever runs local-to-local, which always emits `>`, so the
+// `<` direction is invisible to it; a real push (`csync ./local host:/remote`)
+// emits `<f` and a `>`-only parser drops every line — reporting zero changes
+// and syncing nothing. The two tests below pin parseActions to the `<f` bytes,
+// captured from `rsync --itemize-changes` pushing to a remote (GNU rsync 3.4.1).
+
+// Behavior: a push update line (`<f`) yields an update Action, the same as its
+// `>f` pull counterpart — the leading byte is direction, not a different change.
+func TestParseActions_PushUpdate_ReturnsUpdateAction(t *testing.T) {
+	got := parseActions("<f.s....... README.md\n")
+
+	want := []Action{{Verb: "update", Path: "README.md"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: a push new-file line (`<f` with an all-`+` attribute run) yields a
+// create Action, just as the `>f+++` pull form does.
+func TestParseActions_PushCreate_ReturnsCreateAction(t *testing.T) {
+	got := parseActions("<f+++++++++ newfile.txt\n")
+
+	want := []Action{{Verb: "create", Path: "newfile.txt"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 // The tests below pin the individual ordering rules of comparePaths, one rule
 // per pair. The holistic, end-to-end ordering is covered by the scenario in
 // features/order-reported-actions.feature; these isolate each rule (and edge

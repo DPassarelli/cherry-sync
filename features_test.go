@@ -33,6 +33,22 @@ var localChangeMtime = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
 // before any scenario runs.
 var csyncBinary string
 
+// fakeRsh is the path to a test-only remote shell written by TestMain. Scenarios
+// tagged @remote run csync with RSYNC_RSH pointing here so a `fakehost:` operand
+// puts rsync into real remote mode without an SSH server. See fakeRshScript.
+var fakeRsh string
+
+// fakeRshScript is the body of the fake remote shell. rsync invokes a remote
+// shell as `rsh <host> <command...>`; dropping the host and exec-ing the rest
+// locally makes a `fakehost:` transfer run on this machine yet still travel
+// rsync's remote (sender/receiver) code path — so it emits the `<f`/`>f`
+// direction codes a real push/pull would, which local-to-local never does and
+// the suite was therefore blind to (see NOTES.md "harness blind spots").
+const fakeRshScript = `#!/bin/sh
+shift
+exec "$@"
+`
+
 // outputKey is the context key used to stash the captured runResult from
 // `When I run "..."` so the following Then steps can assert on it.
 type outputKey struct{}
@@ -46,6 +62,12 @@ type localPathKey struct{}
 // `... identical between local and remote` and `empty remote directory` steps.
 // iRun reads it to substitute `user@host:/project` before invoking csync.
 type remotePathKey struct{}
+
+// remoteModeKey flags a scenario (via the @remote tag) as needing a real remote
+// transport: runCsync then resolves the remote placeholder to a `fakehost:` path
+// and sets RSYNC_RSH to fakeRsh, so rsync runs in sender/receiver mode rather
+// than local-to-local — the only way the suite exercises the `<` push direction.
+type remoteModeKey struct{}
 
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
@@ -73,6 +95,13 @@ func TestMain(m *testing.M) {
 	err = build.Run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "build:", err)
+		os.Exit(2)
+	}
+
+	fakeRsh = filepath.Join(tmpDir, "fakersh")
+	err = os.WriteFile(fakeRsh, []byte(fakeRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fakersh:", err)
 		os.Exit(2)
 	}
 
@@ -130,6 +159,15 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
 	ctx.Step(`^the file "([^"]*)" should still differ between local and remote$`, theFileShouldStillDifferBetweenLocalAndRemote)
 
+	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+		for _, tag := range sc.Tags {
+			if tag.Name == "@remote" {
+				return context.WithValue(ctx, remoteModeKey{}, true), nil
+			}
+		}
+		return ctx, nil
+	})
+
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
 		localPath, _ := ctx.Value(localPathKey{}).(string)
 		if localPath != "" {
@@ -186,9 +224,17 @@ func runCsync(ctx context.Context, command string, stdin io.Reader) (context.Con
 	if localPath != "" {
 		subs["./project"] = localPath
 	}
+	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
 	remotePath, _ := ctx.Value(remotePathKey{}).(string)
 	if remotePath != "" {
-		subs["user@host:/project"] = remotePath
+		// In @remote scenarios the placeholder resolves to a `fakehost:` path so
+		// rsync enters real remote (sender/receiver) mode via RSYNC_RSH below;
+		// otherwise it stays a bare local path (local-to-local).
+		if remoteMode {
+			subs["user@host:/project"] = "fakehost:" + remotePath
+		} else {
+			subs["user@host:/project"] = remotePath
+		}
 	}
 	for i, a := range args {
 		replacement, ok := subs[a]
@@ -199,6 +245,12 @@ func runCsync(ctx context.Context, command string, stdin io.Reader) (context.Con
 
 	cmd := exec.Command(csyncBinary, args...)
 	cmd.Stdin = stdin
+	if remoteMode {
+		// rsync reads RSYNC_RSH as its remote shell; fakeRsh execs locally so the
+		// `fakehost:` operand transfers on this machine over the real remote code
+		// path. csync's own rsync child inherits this environment.
+		cmd.Env = append(os.Environ(), "RSYNC_RSH="+fakeRsh)
+	}
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
