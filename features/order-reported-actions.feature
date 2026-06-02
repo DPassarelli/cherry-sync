@@ -23,7 +23,12 @@ Feature: Order the reported actions
     #   - numeric names sort by value, not lexically: 01 < 2 < 10
     #   - number-leading names precede letter-leading names
     #   - mixed case interleaves among letters: main.go between LICENSE and README.md
-    #   - TODO.md / todo.md tie under case-fold; byte order puts 'T' before 't'
+    #   - TODO.md exercises uppercase-letter placement in the letter group. The
+    #     case-only TODO.md/todo.md tie is deliberately NOT tested here: the two
+    #     names collapse to a single file on a case-insensitive filesystem (macOS
+    #     APFS), so the fixture can't represent both cross-platform. That rule is
+    #     pinned filesystem-free by TestComparePaths_UpperBeforeLowerOnCaseTie in
+    #     internal/compare.
     #   - nested src/* sorts after every top-level file (files before subdirs)
     # An empty remote makes every file a clean "create", isolating the ordering
     # of paths from any verb differences.
@@ -38,7 +43,6 @@ Feature: Order the reported actions
       main.go
       README.md
       TODO.md
-      todo.md
       src/adder.go
       src/parser.go
       """
@@ -55,7 +59,6 @@ Feature: Order the reported actions
       | create | main.go               |
       | create | README.md             |
       | create | TODO.md               |
-      | create | todo.md               |
       | create | src/adder.go          |
       | create | src/parser.go         |
 

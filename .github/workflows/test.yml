@@ -8,7 +8,33 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      # Run every leg to completion; one platform failing must not mask the
+      # result of the others — the whole point of the matrix is per-leg signal.
+      fail-fast: false
+      matrix:
+        # OS/arch and rsync implementation are independent axes, but can't be
+        # combined freely. csync needs rsync's --itemize-changes / --files-from
+        # / --from0; the portable openrsync on Linux (protocol 27) implements
+        # none of them and there's no itemize-capable openrsync packaged for
+        # Linux, so openrsync coverage comes only from macOS — Apple's openrsync
+        # does support those flags and is the real-world target. GitHub does not
+        # offer an ARM64 Linux runner, so arm64 coverage rides on the macOS
+        # runners (which are arm64). The `rsync` field is what each leg CLAIMS to
+        # run; "any" means discover-and-report without asserting (macOS 15 may
+        # still ship GNU rsync — Apple switched to openrsync mid-cycle).
+        include:
+          - name: linux-x64-gnu
+            runs-on: ubuntu-latest
+            rsync: gnu
+          - name: macos15-arm64
+            runs-on: macos-15
+            rsync: any
+          - name: macos26-arm64-openrsync
+            runs-on: macos-26
+            rsync: openrsync
     steps:
       - uses: actions/checkout@v6
 
@@ -16,6 +42,45 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      # Force macOS to test Apple's system rsync, not the Homebrew GNU rsync the
+      # runner images ship ahead of it on PATH. /usr/bin/rsync is openrsync on
+      # recent macOS — the implementation csync's users actually run — and Linux
+      # already covers GNU. Without this shim both macOS legs would silently test
+      # GNU and the openrsync coverage would vanish.
+      - name: Prefer Apple's system rsync (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$HOME/rsync-shim"
+          ln -sf /usr/bin/rsync "$HOME/rsync-shim/rsync"
+          echo "$HOME/rsync-shim" >> "$GITHUB_PATH"
+
+      # Record which rsync this leg actually resolves to, so the log always shows
+      # what was really exercised.
+      - name: Show rsync identity
+        run: |
+          command -v rsync
+          rsync --version
+
+      # Fail loudly if a leg is not running the rsync it claims to — a swapped
+      # runner image (or a broken shim) would otherwise silently drop an
+      # implementation from coverage while the suite stays green. openrsync
+      # self-identifies as "openrsync: protocol version N"; GNU prints
+      # "rsync  version 3.x" (both verified by experiment). A leg with rsync:any
+      # only reports what it found and does not assert.
+      - name: Confirm rsync implementation
+        run: |
+          if rsync --version | grep -qi openrsync; then
+            actual=openrsync
+          else
+            actual=gnu
+          fi
+          echo "expected=${{ matrix.rsync }} actual=$actual"
+          if [ "${{ matrix.rsync }}" = "any" ]; then
+            echo "discover mode: not asserting a specific implementation"
+          else
+            [ "$actual" = "${{ matrix.rsync }}" ]
+          fi
 
       - name: go vet
         run: go vet ./...
