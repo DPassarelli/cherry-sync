@@ -1,20 +1,23 @@
 # Code style
 
-Project-wide conventions that aren't enforced by `gofmt` or `go vet`. We track
-them here so they survive across sessions and reviewers. Style rules join the
-list as they come up; nothing here is meant to be exhaustive.
+The actionable style rules live in [CLAUDE.md](CLAUDE.md), so they're always in
+Claude's working context. **This document is the reasoning behind them** — the
+why, the scope, and worked examples — not a second copy of the rules. Read it to
+understand or challenge a rule; don't restate the rules here, or the two will
+drift. When a rule changes, the statement changes in CLAUDE.md; this file only
+changes when the *reasoning* does.
 
-This document is authoritative for **all** code in the repository, tests
-included. A rule here applies to test files exactly as it applies to production
-code unless it explicitly says otherwise.
+The rules cover what `gofmt` and `go vet` don't, and apply to all code in the
+repository, tests included. For *additional* test-specific conventions (Gherkin
+shape, `got`/`want` naming, the output-parsing facade), see
+[TESTING.md](TESTING.md).
 
-For *additional* test-specific style (Gherkin shape, `got`/`want` naming, the
-output-parsing facade), see [TESTING.md](TESTING.md). Those conventions extend
-the rules here; they never override them.
+The sections below pair with the CLAUDE.md rules of the same topic.
 
-## Avoid assignments inside `if` conditions
+## Assignments inside `if` conditions
 
-Go permits an init statement inside `if`:
+Go permits an init statement inside `if`, and it's idiomatic — the stdlib uses
+it heavily:
 
 ```go
 if err := doSomething(); err != nil {
@@ -22,7 +25,7 @@ if err := doSomething(); err != nil {
 }
 ```
 
-This is idiomatic Go and the stdlib uses it heavily — but we don't. Prefer:
+The CLAUDE.md rule forbids it in favor of the two-line form:
 
 ```go
 err := doSomething()
@@ -48,19 +51,20 @@ if err != nil {
 - Regular switches with init (`switch x := f(); x { ... }`) follow the same
   spirit; prefer two lines unless the switch is genuinely tighter that way.
 
-## Doc comments start with the name, then an active verb
+## Doc comments: name first, then an active verb
 
-Begin every doc comment with the identifier it documents — the Go convention,
-and what `go doc`, pkg.go.dev, and `staticcheck` (ST1020–ST1022) expect:
+The CLAUDE.md rule starts every doc comment with the identifier it documents —
+the Go convention, and what `go doc`, pkg.go.dev, and `staticcheck`
+(ST1020–ST1022) expect:
 
 ```go
 // Run invokes rsync to compute the diff between source and destination.
 func Run(...) { ... }
 ```
 
-After the name, prefer a present-tense active verb that says what the thing
-does — "Run **invokes**", "Parse **turns**", "parseActions **walks**". Avoid a
-vague restatement of the name.
+After the name, a present-tense active verb says what the thing does — "Run
+**invokes**", "Parse **turns**", "parseActions **walks**" — rather than vaguely
+restating the name.
 
 **Scope of the rule:**
 
@@ -72,12 +76,12 @@ vague restatement of the name.
 - The name must come first either way; that part is non-negotiable because the
   tooling depends on it.
 
-## Comment every top-level declaration
+## Commenting every top-level declaration
 
-Every package-level declaration — `type`, `var`, `const`, `func` — carries a
-doc comment, exported or not, in production code and tests alike. Yes, this
-means the occasional comment that mostly restates the name; we accept that
-cost in exchange for a uniform rule with no judgment call about which
+The CLAUDE.md rule puts a doc comment on every package-level declaration —
+`type`, `var`, `const`, `func` — exported or not, in production code and tests
+alike. Yes, this means the occasional comment that mostly restates the name; we
+accept that cost in exchange for a uniform rule with no judgment call about which
 declarations "deserve" one.
 
 A comment should still earn its place where it can — note a non-obvious
