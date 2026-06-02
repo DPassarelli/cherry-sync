@@ -10,8 +10,10 @@
 coverage.txt
 coverage.html
 
-# Reference PDFs (kept locally, not in repo)
+# Reference docs (kept locally, not in repo)
 *.pdf
+*.png
+*.zip
 
 # Scratchpad for Claude
 /.claude
