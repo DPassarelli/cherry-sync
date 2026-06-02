@@ -1,0 +1,54 @@
+# GoReleaser configuration — https://goreleaser.com
+#
+# Triggered by a pushed `v*` tag via .github/workflows/release.yml. Builds the
+# cross-platform binaries and publishes a GitHub Release with archives and
+# checksums. Run `goreleaser check` to validate this file and
+# `goreleaser release --snapshot --clean` to dry-run a build locally.
+version: 2
+
+project_name: cherry-sync
+
+before:
+  hooks:
+    # Read-only; ensures modules are present before the build.
+    - go mod download
+
+builds:
+  - id: csync
+    main: ./cmd/csync
+    binary: csync
+    # csync shells out to rsync/ssh and uses no cgo, so a static cross-build is
+    # trivial across every target below.
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Strip debug info. Version injection (-X main.version=...) is intentionally
+    # deferred until a --version flag exists; until then the git tag and the
+    # archive names below identify a release.
+    ldflags:
+      - -s -w
+
+archives:
+  - id: csync
+    # Default format is tar.gz; the name embeds the version and target so a
+    # downloaded archive is self-identifying.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+# CHANGELOG.md is maintained by hand (Keep a Changelog), so suppress
+# GoReleaser's git-log-based changelog. Release notes are supplied from the
+# extracted CHANGELOG section via --release-notes in the workflow.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: dpassarelli
+    name: cherry-sync
