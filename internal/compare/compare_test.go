@@ -11,7 +11,7 @@ import (
 // rsync as an OPTION rather than a path — rsync's `-e`/`--rsh` can run an
 // arbitrary remote shell command. Guards against rsync argument injection.
 func TestRsyncArgs_SeparatesOptionsFromPaths(t *testing.T) {
-	got := rsyncArgs("-e/evil", "./dest")
+	got := rsyncArgs("-e/evil", "./dest", "")
 
 	tail := got[len(got)-3:]
 	want := []string{"--", "-e/evil/", "./dest/"}

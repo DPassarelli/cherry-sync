@@ -4,6 +4,7 @@ package compare
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -24,7 +25,13 @@ type Result struct {
 // Both paths get a trailing slash so rsync compares directory contents
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
-	args := rsyncArgs(source, destination)
+	excludeFrom, cleanup, err := excludeFile(source, destination)
+	if err != nil {
+		return Result{}, err
+	}
+	defer cleanup()
+
+	args := rsyncArgs(source, destination, excludeFrom)
 	// The variable args are safe by construction — see SECURITY.md: no shell
 	// (exec.Command, not sh -c), a `--` separator added by rsyncArgs, and path
 	// operands validated in cli.Parse. The guard is proven behaviorally by the
@@ -39,13 +46,55 @@ func Run(source, destination string) (Result, error) {
 	return Result{Actions: actions}, nil
 }
 
+// excludeFile writes the local side's gitignore patterns to a temp file and
+// returns its path (for rsync's --exclude-from), a cleanup func to remove it, and
+// any error. When the local side is not a git work tree — or ignores nothing — it
+// returns an empty path and a no-op cleanup, so compare runs exactly as before.
+//
+// The list is applied to the comparison ONLY. The transfer uses --files-from, and
+// rsync ignores --exclude-from when --files-from is present, so an exclude there
+// would be a no-op on some rsync builds and active on others — inconsistent. The
+// comparison is the single gate: ignored files never appear, so they can't be
+// selected, so --files-from never lists one.
+func excludeFile(source, destination string) (string, func(), error) {
+	noop := func() {}
+	dir, ok := localSyncDir(source, destination)
+	if !ok {
+		return "", noop, nil
+	}
+	patterns, err := gitignoreExcludes(dir)
+	if err != nil {
+		return "", noop, err
+	}
+	if len(patterns) == 0 {
+		return "", noop, nil
+	}
+	f, err := os.CreateTemp("", "csync-exclude-*")
+	if err != nil {
+		return "", noop, fmt.Errorf("create exclude file: %w", err)
+	}
+	cleanup := func() { os.Remove(f.Name()) }
+	_, err = f.WriteString(strings.Join(patterns, "\n") + "\n")
+	if err != nil {
+		f.Close()
+		cleanup()
+		return "", noop, fmt.Errorf("write exclude file: %w", err)
+	}
+	err = f.Close()
+	if err != nil {
+		cleanup()
+		return "", noop, fmt.Errorf("close exclude file: %w", err)
+	}
+	return f.Name(), cleanup, nil
+}
+
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`
 // end-of-options separator immediately before the paths ensures a source or
 // destination beginning with `-` is parsed by rsync as a path, never as an
 // option — closing off rsync argument injection (e.g. a path like `-e` or
 // `--rsh=…` that would otherwise hijack rsync's remote-shell command).
-func rsyncArgs(source, destination string) []string {
-	return []string{
+func rsyncArgs(source, destination, excludeFrom string) []string {
+	args := []string{
 		"--dry-run",
 		"--itemize-changes",
 		"--recursive",
@@ -56,10 +105,19 @@ func rsyncArgs(source, destination string) []string {
 		// in transfer preserving mtime. Kept here to stop the two flag sets
 		// drifting as fidelity flags (perms, links, …) are added later.
 		"--times",
-		"--",
-		source + "/",
-		destination + "/",
 	}
+	// --exclude-from drops gitignored paths from the comparison when the local
+	// side is a git work tree (empty otherwise). It's an option, so it precedes
+	// the `--`; and it's compare-only — see excludeFile for why transfer omits it.
+	if excludeFrom != "" {
+		args = append(args, "--exclude-from="+excludeFrom)
+	}
+	args = append(args,
+		"--",
+		source+"/",
+		destination+"/",
+	)
+	return args
 }
 
 // parseActions walks rsync's --itemize-changes output and returns one

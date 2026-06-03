@@ -111,16 +111,23 @@ func TestMain(m *testing.M) {
 // TestFeatures runs the godog feature suite under `go test`, excluding
 // @wip-tagged features. A non-zero suite result fails the test.
 func TestFeatures(t *testing.T) {
+	// Exclude @wip (scenarios drafted ahead of their step definitions and
+	// production code). @git scenarios set up a real git work tree; when git
+	// isn't on PATH, exclude them too rather than fail — they run wherever git
+	// is available.
+	tags := "~@wip"
+	_, err := exec.LookPath("git")
+	if err != nil {
+		tags = "~@wip && ~@git"
+	}
+
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
-			Format: "pretty",
-			Paths:  []string{"features"},
-			Strict: true,
-			// Exclude features tagged @wip — scenarios drafted ahead of their
-			// step definitions and production code. Drop the tag on a feature
-			// to bring it into the run.
-			Tags:     "~@wip",
+			Format:   "pretty",
+			Paths:    []string{"features"},
+			Strict:   true,
+			Tags:     tags,
 			TestingT: t,
 		},
 	}
@@ -144,6 +151,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
+	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
+	ctx.Step(`^the repository's "([^"]*)" contains:$`, theRepositorysFileContains)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
@@ -348,22 +357,76 @@ func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocStrin
 	if err != nil {
 		return ctx, fmt.Errorf("mktempdir: %w", err)
 	}
-	for line := range strings.SplitSeq(strings.TrimSpace(ds.Content), "\n") {
+	err = writeFiles(dir, ds.Content)
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// aLocalGitRepositoryContainingTheseFiles creates a local tempdir, initializes a
+// git work tree in it, and populates it with the (empty) files named in the
+// DocString — the local-side setup the .gitignore scenarios need so csync can ask
+// git what to ignore. The path is stashed under localPathKey, like its non-git
+// twin, so the remote-setup and file-mutation steps work against it unchanged.
+func aLocalGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync-local-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = dir
+	err = cmd.Run()
+	if err != nil {
+		return ctx, fmt.Errorf("git init: %w", err)
+	}
+	err = writeFiles(dir, ds.Content)
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// theRepositorysFileContains writes the DocString to the named file in the local
+// repository (e.g. ".gitignore"), establishing the ignore rules a scenario
+// exercises. A trailing newline is appended so each line stands on its own.
+func theRepositorysFileContains(ctx context.Context, name string, ds *godog.DocString) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	full := filepath.Join(local, name)
+	err := os.MkdirAll(filepath.Dir(full), 0o755)
+	if err != nil {
+		return ctx, fmt.Errorf("mkdir: %w", err)
+	}
+	err = os.WriteFile(full, []byte(strings.TrimSpace(ds.Content)+"\n"), 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+// writeFiles creates each newline-separated relative path in content as an empty
+// file under dir, making parent directories as needed; blank lines are skipped.
+// Shared by the plain-directory and git-repository setup steps.
+func writeFiles(dir, content string) error {
+	for line := range strings.SplitSeq(strings.TrimSpace(content), "\n") {
 		rel := strings.TrimSpace(line)
 		if rel == "" {
 			continue
 		}
 		full := filepath.Join(dir, rel)
-		err = os.MkdirAll(filepath.Dir(full), 0o755)
+		err := os.MkdirAll(filepath.Dir(full), 0o755)
 		if err != nil {
-			return ctx, fmt.Errorf("mkdir: %w", err)
+			return fmt.Errorf("mkdir: %w", err)
 		}
 		err = os.WriteFile(full, []byte(""), 0o644)
 		if err != nil {
-			return ctx, fmt.Errorf("write %s: %w", full, err)
+			return fmt.Errorf("write %s: %w", full, err)
 		}
 	}
-	return context.WithValue(ctx, localPathKey{}, dir), nil
+	return nil
 }
 
 // allFilesIdenticalBetweenLocalAndRemote copies the local tree into a fresh

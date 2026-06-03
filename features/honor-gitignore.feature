@@ -12,8 +12,8 @@ Feature: Honor .gitignore when comparing
 
   # The local side governs in both directions: csync runs `git ls-files` against
   # the local operand and uses that ignore set for push and pull alike. These
-  # scenarios set up the *local* directory as a git work tree; the remote is an
-  # ordinary directory with no git involvement.
+  # scenarios set up the *local* directory as a git work tree; git is run only
+  # against that side.
 
   Background:
     Given a local git repository containing these files:
@@ -26,7 +26,6 @@ Feature: Honor .gitignore when comparing
       *.log
       """
 
-  @wip
   Scenario: An ignored file is left out of the comparison
     # Teeth: README.md (tracked, changed) MUST report; debug.log (ignored, newly
     # added) MUST NOT. Remove the exclusion and debug.log surfaces as a `create`
