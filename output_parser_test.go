@@ -11,15 +11,18 @@ import (
 // between rendered output and test assertions — when the rendering changes,
 // parseOutput is the only thing that needs to change with it.
 type ReportedOutput struct {
-	Source         string
-	Destination    string
-	ChangeCount    int
-	HasChangeCount bool
-	Actions        []Action
-	SyncCount      int
-	HasSyncCount   bool
-	Message        string
-	Usage          string
+	Source           string
+	Destination      string
+	ChangeCount      int
+	HasChangeCount   bool
+	ExcludedCount    int
+	HasExcludedCount bool
+	ExcludedGitDir   bool
+	Actions          []Action
+	SyncCount        int
+	HasSyncCount     bool
+	Message          string
+	Usage            string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -40,6 +43,10 @@ type Action struct {
 var (
 	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
 	actionLineRE  = regexp.MustCompile(`(?m)^\s+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
+	// gitignoredCountRE pulls the gitignored-path count out of the Excluded line's
+	// value (e.g. "the .git directory and 3 gitignored paths"). The .git directory
+	// is disclosed separately and is not part of this count.
+	gitignoredCountRE = regexp.MustCompile(`(\d+) gitignored`)
 )
 
 // parseOutput translates csync's rendered stdout and stderr into a structured
@@ -64,6 +71,21 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			n, err := strconv.Atoi(m[2])
 			if err == nil {
 				out.SyncCount = n
+			}
+		case "Excluded":
+			// The value discloses what was held out of the comparison: the .git
+			// directory (when the local side is a repo) and/or a gitignored-path
+			// count, e.g. "the .git directory and 3 gitignored paths". The two are
+			// reported independently — .git/ exclusion can show with no gitignored
+			// paths at all — so parse them as separate signals rather than a single
+			// leading number.
+			out.ExcludedGitDir = strings.Contains(m[2], ".git directory")
+			if cm := gitignoredCountRE.FindStringSubmatch(m[2]); cm != nil {
+				out.HasExcludedCount = true
+				n, err := strconv.Atoi(cm[1])
+				if err == nil {
+					out.ExcludedCount = n
+				}
 			}
 		}
 	}

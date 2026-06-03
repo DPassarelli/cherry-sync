@@ -32,6 +32,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Disclose what was held out of the comparison. When the local side is a git
+	// repository, csync silently excludes both the .git/ metadata directory and any
+	// gitignored paths; with no opt-out flag, this line is the user's only signal.
+	// The .git directory is always excluded for a repo (even with nothing
+	// gitignored), so its disclosure is gated on GitDirExcluded, and the gitignored
+	// count is appended only when there is one. Omitted entirely for a non-repo, so
+	// that sync stays noise-free.
+	if result.GitDirExcluded {
+		line := "Excluded: the .git directory"
+		if result.Excluded > 0 {
+			noun := "paths"
+			if result.Excluded == 1 {
+				noun = "path"
+			}
+			line += fmt.Sprintf(" and %d gitignored %s", result.Excluded, noun)
+		}
+		fmt.Println(line)
+	}
+
 	fmt.Println("Changes:", len(result.Actions))
 	// Number each change from 1 in displayed order. The number is the selection
 	// affordance: it's the digit a user types at the prompt to pick that change,

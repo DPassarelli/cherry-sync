@@ -4,6 +4,7 @@ package compare
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -18,13 +19,28 @@ type Action struct {
 // Result is the structured outcome of comparing two paths.
 type Result struct {
 	Actions []Action
+	// Excluded is how many gitignored paths were dropped from the comparison
+	// (0 when the local side isn't a git work tree or ignores nothing). The CLI
+	// discloses this so the user knows files were hidden — there's no opt-out.
+	Excluded int
+	// GitDirExcluded reports whether the local side's .git directory was held out
+	// of the comparison — true whenever the local side is a git work tree. git
+	// never lists .git/ as ignored, so it's excluded explicitly; the CLI discloses
+	// it separately from the gitignored count (it can be true with Excluded == 0).
+	GitDirExcluded bool
 }
 
 // Run invokes rsync to compute the diff between source and destination.
 // Both paths get a trailing slash so rsync compares directory contents
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
-	args := rsyncArgs(source, destination)
+	excludeFrom, excluded, gitWorkTree, cleanup, err := excludeFile(source, destination)
+	if err != nil {
+		return Result{}, err
+	}
+	defer cleanup()
+
+	args := rsyncArgs(source, destination, excludeFrom)
 	// The variable args are safe by construction — see SECURITY.md: no shell
 	// (exec.Command, not sh -c), a `--` separator added by rsyncArgs, and path
 	// operands validated in cli.Parse. The guard is proven behaviorally by the
@@ -36,7 +52,74 @@ func Run(source, destination string) (Result, error) {
 	}
 	actions := parseActions(string(out))
 	sortActions(actions)
-	return Result{Actions: actions}, nil
+	// The --exclude-from pre-filter is built from `git ls-files`, which sees only
+	// the local tree, so on a pull a remote-only file matching a local ignore rule
+	// slips through. Re-check the surviving paths against the local repo's rules and
+	// drop any it ignores, folding them into the disclosed count. Skipped when the
+	// local side isn't a work tree (gitWorkTree false) — nothing to ask git about.
+	if gitWorkTree {
+		dir, _ := localSyncDir(source, destination)
+		kept, dropped, err := dropIgnoredActions(dir, actions)
+		if err != nil {
+			return Result{}, err
+		}
+		actions = kept
+		excluded += dropped
+	}
+	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitWorkTree}, nil
+}
+
+// excludeFile writes the local side's exclude patterns to a temp file and returns
+// its path (for rsync's --exclude-from), how many *gitignored* paths it holds (for
+// disclosure), whether the local side is a git work tree, a cleanup func to remove
+// the file, and any error. When the local side is not a git work tree it returns an
+// empty path, a zero count, false, and a no-op cleanup, so compare runs exactly as
+// before — no repo, no exclusions.
+//
+// When the local side IS a work tree, the list always begins with "/.git/": git
+// never reports its own metadata directory as ignored (it special-cases .git/), so
+// without an explicit, anchored exclude a push/pull from a repo would offer every
+// .git/ object for transfer — noise that would also clobber the other side's git
+// state. The returned count covers only the gitignored paths, not this .git/ entry,
+// which the CLI discloses separately. A leading "/" anchors it to the transfer root
+// (see the floating-".git" TODO in honor-gitignore.feature for the submodule case).
+//
+// The list is applied to the comparison ONLY. The transfer uses --files-from, and
+// rsync ignores --exclude-from when --files-from is present, so an exclude there
+// would be a no-op on some rsync builds and active on others — inconsistent. The
+// comparison is the single gate: excluded files never appear, so they can't be
+// selected, so --files-from never lists one.
+func excludeFile(source, destination string) (string, int, bool, func(), error) {
+	noop := func() {}
+	dir, ok := localSyncDir(source, destination)
+	if !ok {
+		return "", 0, false, noop, nil
+	}
+	if !isGitWorkTree(dir) {
+		return "", 0, false, noop, nil
+	}
+	gitignored, err := gitignoreExcludes(dir)
+	if err != nil {
+		return "", 0, false, noop, err
+	}
+	patterns := append([]string{"/.git/"}, gitignored...)
+	f, err := os.CreateTemp("", "csync-exclude-*")
+	if err != nil {
+		return "", 0, false, noop, fmt.Errorf("create exclude file: %w", err)
+	}
+	cleanup := func() { os.Remove(f.Name()) }
+	_, err = f.WriteString(strings.Join(patterns, "\n") + "\n")
+	if err != nil {
+		f.Close()
+		cleanup()
+		return "", 0, false, noop, fmt.Errorf("write exclude file: %w", err)
+	}
+	err = f.Close()
+	if err != nil {
+		cleanup()
+		return "", 0, false, noop, fmt.Errorf("close exclude file: %w", err)
+	}
+	return f.Name(), len(gitignored), true, cleanup, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`
@@ -44,8 +127,8 @@ func Run(source, destination string) (Result, error) {
 // destination beginning with `-` is parsed by rsync as a path, never as an
 // option — closing off rsync argument injection (e.g. a path like `-e` or
 // `--rsh=…` that would otherwise hijack rsync's remote-shell command).
-func rsyncArgs(source, destination string) []string {
-	return []string{
+func rsyncArgs(source, destination, excludeFrom string) []string {
+	args := []string{
 		"--dry-run",
 		"--itemize-changes",
 		"--recursive",
@@ -56,10 +139,19 @@ func rsyncArgs(source, destination string) []string {
 		// in transfer preserving mtime. Kept here to stop the two flag sets
 		// drifting as fidelity flags (perms, links, …) are added later.
 		"--times",
-		"--",
-		source + "/",
-		destination + "/",
 	}
+	// --exclude-from drops gitignored paths from the comparison when the local
+	// side is a git work tree (empty otherwise). It's an option, so it precedes
+	// the `--`; and it's compare-only — see excludeFile for why transfer omits it.
+	if excludeFrom != "" {
+		args = append(args, "--exclude-from="+excludeFrom)
+	}
+	args = append(args,
+		"--",
+		source+"/",
+		destination+"/",
+	)
+	return args
 }
 
 // parseActions walks rsync's --itemize-changes output and returns one

@@ -45,3 +45,29 @@ jobs:
           args: release --clean --release-notes=.release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GoReleaser already passes --release-notes when it creates the release, but
+      # the v0.1.0 run published with the commit message as the body instead of
+      # this file's contents — a discrepancy the run logs don't explain. Rather
+      # than depend on goreleaser's body-setting being the final word, re-assert
+      # the body from the same .release-notes.md after the release is published.
+      # Same source of truth, deterministic outcome, and the diff is visible in
+      # this step's log if the two ever disagree again.
+      #
+      # The same step pins the pre-release flag: anything in the 0.x series, or a
+      # tag carrying a SemVer pre-release suffix (e.g. -rc1), is marked
+      # pre-release; a stable 1.0.0+ tag clears the flag. Keyed off the version so
+      # it needs no attention when the project crosses 1.0.
+      - name: Enforce release notes and pre-release flag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          prerelease=false
+          case "$ver" in
+            0.*|*-*) prerelease=true ;;
+          esac
+          echo "version=${ver} prerelease=${prerelease}"
+          gh release edit "${GITHUB_REF_NAME}" \
+            --notes-file .release-notes.md \
+            --prerelease="${prerelease}"
