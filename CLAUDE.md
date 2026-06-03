@@ -60,30 +60,11 @@ See [SECURITY.md](SECURITY.md) for the threat model, trust boundaries, and the c
 
 ## Changelog & documentation
 
-The release process rolls `CHANGELOG.md`'s `[Unreleased]` section into the
-published GitHub Release notes, so that section is the single source of truth for
-what shipped and must always be current:
+The release process rolls `CHANGELOG.md`'s `[Unreleased]` section into the published GitHub Release notes, so that section is the single source of truth for what shipped and must always be current:
 
-- **Log user-visible changes in the same change that makes them.** Every PR that
-  adds, changes, fixes, or removes something a user would notice gets a Keep a
-  Changelog entry (Added/Changed/Fixed/Removed) under `[Unreleased]` — written
-  then, not reconstructed at release time. An empty `[Unreleased]` must mean
-  nothing user-facing landed, never that the log was skipped.
-- **Internal-only changes don't need an entry.** Refactors, test-harness, and CI
-  work that change no observable behavior stay out of the changelog.
-- **CHANGELOG owns version history; README must not duplicate it.** Keep
-  per-version status banners, "done" checklists, and hardcoded version numbers
-  out of `README.md`. README describes what the tool is and how to install and
-  use it — content that doesn't go stale every release. Anything of the form
-  "shipped in vX" lives only in CHANGELOG.
-- **This file holds durable rules, not plans.** What shipped lives in
-  `CHANGELOG.md`; what's planned lives in README's Roadmap. Don't add a
-  per-version scope or status section here — it goes stale the moment a release
-  ships (the original "Scope for v0.1" did exactly that).
-- **Don't reference gitignored / uncommitted files from committed files.** Code
-  comments, feature files, and committed docs must not cite paths that aren't in
-  the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF
-  reference docs). A clone won't have them, so the reference is a dead pointer that
-  leaks a private filename. State the reasoning inline instead, or cite a committed
-  doc. (CLAUDE.md, README, CHANGELOG, STYLE/TESTING/SECURITY are committed and fair
-  to cite.)
+- **Log user-visible changes in the same change that makes them.** Every PR that adds, changes, fixes, or removes something a user would notice gets a Keep a Changelog entry (Added/Changed/Fixed/Removed) under `[Unreleased]` — written then, not reconstructed at release time. An empty `[Unreleased]` must mean nothing user-facing landed, never that the log was skipped.
+- **Internal-only changes don't need an entry.** Refactors, test-harness, and CI work that change no observable behavior stay out of the changelog.
+- **CHANGELOG owns version history; README must not duplicate it.** Keep per-version status banners, "done" checklists, and hardcoded version numbers out of `README.md`. README describes what the tool is and how to install and use it — content that doesn't go stale every release. Anything of the form "shipped in vX" lives only in CHANGELOG.
+- **This file holds durable rules, not plans.** What shipped lives in `CHANGELOG.md`; what's planned lives in README's Roadmap. Don't add a per-version scope or status section here — it goes stale the moment a release ships (the original "Scope for v0.1" did exactly that).
+- **Don't reference gitignored / uncommitted files from committed files.** Code comments, feature files, and committed docs must not cite paths that aren't in the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF reference docs). A clone won't have them, so the reference is a dead pointer that leaks a private filename. State the reasoning inline instead, or cite a committed doc. (CLAUDE.md, README, CHANGELOG, STYLE/TESTING/SECURITY are committed and fair to cite.)
+- **Don't hard-wrap prose in Markdown.** In committed Markdown — README, CHANGELOG, CLAUDE/TESTING/STYLE/SECURITY, and the prose inside feature files — write each paragraph and list item as one logical line and let the editor soft-wrap; don't insert hard newlines to wrap at ~80 columns, since those breaks render as unwanted line breaks in some viewers. Prose only: keep the deliberate line structure of tables, code blocks, and list-item boundaries.
