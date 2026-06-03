@@ -1,6 +1,7 @@
 package compare
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -66,6 +67,79 @@ func gitignoreExcludes(dir string) ([]string, error) {
 		patterns = append(patterns, "/"+line)
 	}
 	return patterns, nil
+}
+
+// dropIgnoredActions removes from actions any whose path the git repository at dir
+// ignores, returning the surviving actions and how many were dropped. It closes a
+// gap the --exclude-from pre-filter cannot: that filter is built from `git
+// ls-files`, which lists only files present in the LOCAL tree, so on a pull a file
+// that exists only on the remote yet matches a local ignore rule slips past it and
+// would be pulled. checkIgnored evaluates each surviving path against the local
+// repo's ignore rules — file existence not required — catching exactly those
+// remote-only cases. The two filters are disjoint: the pre-filter removes ignored
+// LOCAL files before rsync ever walks them, so they never reach this list, and this
+// pass only ever removes paths that survived to the comparison. The dropped count
+// is added to the disclosed total, since these are gitignored paths held back too.
+func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
+	if len(actions) == 0 {
+		return actions, 0, nil
+	}
+	paths := make([]string, len(actions))
+	for i, a := range actions {
+		paths[i] = a.Path
+	}
+	ignored, err := checkIgnored(dir, paths)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(ignored) == 0 {
+		return actions, 0, nil
+	}
+	kept := make([]Action, 0, len(actions))
+	dropped := 0
+	for _, a := range actions {
+		if ignored[a.Path] {
+			dropped++
+			continue
+		}
+		kept = append(kept, a)
+	}
+	return kept, dropped, nil
+}
+
+// checkIgnored returns the set of paths (from the given list) that the git
+// repository at dir ignores, per its .gitignore / .git/info/exclude / global
+// rules. It drives `git check-ignore -z --stdin`, run with dir as the working
+// directory so the paths are read relative to the transfer root. The check is
+// rule-based, not filesystem-based: it matches a path that does not exist locally —
+// the property that lets a remote-only ignored file be caught on a pull — yet it
+// respects the index, so a tracked path (e.g. one force-added past its ignore rule)
+// is reported as NOT ignored. Both verified by experiment.
+//
+// Paths are written and read NUL-delimited (-z): a newline inside a filename then
+// cannot split one entry into two — the same smuggling guard SECURITY.md requires
+// for --files-from. check-ignore exits 0 when at least one path is ignored, 1 when
+// none are (NOT an error: returned as an empty set), and anything else is a real
+// failure (e.g. dir not a work tree) surfaced to the caller.
+func checkIgnored(dir string, paths []string) (map[string]bool, error) {
+	cmd := exec.Command("git", "check-ignore", "-z", "--stdin")
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git check-ignore: %w", err)
+	}
+	ignored := map[string]bool{}
+	for p := range strings.SplitSeq(strings.Trim(string(out), "\x00"), "\x00") {
+		if p != "" {
+			ignored[p] = true
+		}
+	}
+	return ignored, nil
 }
 
 // isGitWorkTree reports whether dir lies inside a git working tree. A missing git

@@ -222,6 +222,39 @@ Feature: Honor .gitignore when comparing
       | create | notes.txt |
     And   the reported change count should be 1
 
+  @remote
+  Scenario: Pull direction — a remote-only file the local repo ignores is held back
+    # Sibling to the pull scenario above, which covers a file present on BOTH sides.
+    # Here the ignored file exists ONLY on the remote and not yet locally. `git
+    # ls-files` lists only files in the LOCAL tree, so the pre-comparison
+    # --exclude-from can't see secret.log and it would be pulled. csync additionally
+    # runs the comparison's result paths through `git check-ignore` in the local
+    # repo, which evaluates a path against the ignore rules WITHOUT the file needing
+    # to exist locally — so the remote-only secret.log is dropped while notes.txt
+    # (not ignored) is offered. Teeth: remove the check-ignore post-filter and
+    # secret.log returns as a second create, the change count becomes 2, and the
+    # excluded count vanishes (no gitignored path reported) — red on all three.
+    # Verified by experiment that `git check-ignore` flags a non-existent path yet
+    # honors the index (a force-added tracked *.log would NOT be dropped).
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "secret.log" has been added on the remote
+    And   that the file "notes.txt" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path      |
+      | create | notes.txt |
+    And   the reported change count should be 1
+    And   the reported excluded count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
@@ -238,10 +271,3 @@ Feature: Honor .gitignore when comparing
   #   submodules carries nested .git dirs/files that an anchored exclude misses.
   #   Decide whether to add a floating ".git" exclude (matches at any depth) for the
   #   submodule case. Captured 2026-06-03.
-  #
-  # - Remote-ONLY ignored file on a pull: a file the local repo would ignore but
-  #   that does NOT yet exist locally can't be excluded — `git ls-files` lists only
-  #   files present in the local tree, so today such a file WOULD be pulled (it'll
-  #   be gitignored locally once it lands, so it's low-harm, but it's still noise in
-  #   the diff). Decide: accept it, or additionally filter the remote listing
-  #   through the local ignore rules. Captured 2026-06-03.

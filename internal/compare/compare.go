@@ -52,6 +52,20 @@ func Run(source, destination string) (Result, error) {
 	}
 	actions := parseActions(string(out))
 	sortActions(actions)
+	// The --exclude-from pre-filter is built from `git ls-files`, which sees only
+	// the local tree, so on a pull a remote-only file matching a local ignore rule
+	// slips through. Re-check the surviving paths against the local repo's rules and
+	// drop any it ignores, folding them into the disclosed count. Skipped when the
+	// local side isn't a work tree (gitWorkTree false) — nothing to ask git about.
+	if gitWorkTree {
+		dir, _ := localSyncDir(source, destination)
+		kept, dropped, err := dropIgnoredActions(dir, actions)
+		if err != nil {
+			return Result{}, err
+		}
+		actions = kept
+		excluded += dropped
+	}
 	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitWorkTree}, nil
 }
 
