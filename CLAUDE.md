@@ -58,12 +58,25 @@ See [SECURITY.md](SECURITY.md) for the threat model, trust boundaries, and the c
 - **Validate every path operand** before use — at minimum reject empty strings (an empty path becomes `/`).
 - **NUL-delimit (`--from0`) any `--files-from` list** once the transfer phase exists; newlines in filenames otherwise smuggle extra entries.
 
-## Scope for v0.1
+## Changelog & documentation
 
-A minimal first version that's useful immediately:
+The release process rolls `CHANGELOG.md`'s `[Unreleased]` section into the
+published GitHub Release notes, so that section is the single source of truth for
+what shipped and must always be current:
 
-- Single direction per invocation (push or pull, specified by argument or inferred from args order like rsync does with `src dest`)
-- Dry-run comparison with human-readable output
-- Interactive file selection (checkbox-style multi-select)
-- Execute transfer for selected files
-- Respect `.gitignore` or a custom exclude file
+- **Log user-visible changes in the same change that makes them.** Every PR that
+  adds, changes, fixes, or removes something a user would notice gets a Keep a
+  Changelog entry (Added/Changed/Fixed/Removed) under `[Unreleased]` — written
+  then, not reconstructed at release time. An empty `[Unreleased]` must mean
+  nothing user-facing landed, never that the log was skipped.
+- **Internal-only changes don't need an entry.** Refactors, test-harness, and CI
+  work that change no observable behavior stay out of the changelog.
+- **CHANGELOG owns version history; README must not duplicate it.** Keep
+  per-version status banners, "done" checklists, and hardcoded version numbers
+  out of `README.md`. README describes what the tool is and how to install and
+  use it — content that doesn't go stale every release. Anything of the form
+  "shipped in vX" lives only in CHANGELOG.
+- **This file holds durable rules, not plans.** What shipped lives in
+  `CHANGELOG.md`; what's planned lives in README's Roadmap. Don't add a
+  per-version scope or status section here — it goes stale the moment a release
+  ships (the original "Scope for v0.1" did exactly that).

@@ -4,8 +4,6 @@ An interactive rsync wrapper for moving files selectively between a local machin
 
 [![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
 
-> **Status: v0.1.0 — first release.** The core select-then-sync loop works end to end — `csync` reports the changes between two directories, numbers them, lets you pick which to sync (all, none, or one by number), and transfers the selected files. Multi-select grammar (ranges/lists) and exclude support are still planned. See [Status](#status) for a feature-by-feature breakdown, [Known limitations](#known-limitations) for current gotchas, and the [CHANGELOG](CHANGELOG.md) for release history.
-
 ## Problem
 
 When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is clumsy. Plain `rsync` transfers everything or nothing. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves and in which direction.
@@ -28,31 +26,13 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 - **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display is a post-v0.1 goal.
 - **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
 
-## Status
+## Roadmap
 
-**Done:**
+Near-term: fixing transfer of non-ASCII filenames (see [Known limitations](#known-limitations)), bounding rsync with a timeout so a stalled transfer can't hang the tool, a multi-select grammar (ranges like `1-3`, lists like `1,3`), honoring `.gitignore` or a custom exclude file, and a `--version` flag.
 
-- [x] ~~Two-positional-arg CLI; usage error → stderr + exit 2~~
-- [x] ~~Dry-run diff via `rsync --dry-run --itemize-changes`~~
-- [x] ~~Human-readable change list (create / update), in stable tree order~~
-- [x] ~~Each change numbered for selection~~
-- [x] ~~Interactive selection (Enter / `a` = all, `n` = none, a number = one change)~~
-- [x] ~~Selective transfer via `rsync --files-from` (NUL-delimited)~~
-- [x] ~~Works with both GNU rsync and macOS openrsync~~
-- [x] ~~Cross-platform CI matrix (Linux + macOS, GNU rsync + openrsync; `go vet`, `go test`)~~
-- [x] ~~Conventional Commits enforced on PR titles~~
-- [x] ~~Lefthook git hooks (`commit-msg`, `pre-push`)~~
-- [x] ~~Tagged releases with prebuilt binaries (GoReleaser) and a Keep a Changelog [CHANGELOG](CHANGELOG.md)~~
+Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
 
-**Planned next:**
-
-- [ ] Fix transfer of non-ASCII filenames (see [Known limitations](#known-limitations))
-- [ ] Bound rsync with a timeout so a stalled transfer can't hang the tool
-- [ ] Multi-select grammar (ranges like `1-3`, lists like `1,3`)
-- [ ] Honor `.gitignore` or a custom exclude file
-- [ ] `--version` flag
-
-Beyond that: bidirectional diff (showing which side is newer), delete detection (`*deleting` rsync entries), and conflict flagging when a file has changed on both sides.
+See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 ## Requirements
 
@@ -64,7 +44,7 @@ Beyond that: bidirectional diff (showing which side is newer), delete detection 
 Download the archive for your platform from the [latest release](https://github.com/dpassarelli/cherry-sync/releases/latest) — Linux and macOS, `amd64` and `arm64` — then extract `csync` onto your `PATH`:
 
 ```sh
-tar -xzf cherry-sync_0.1.0_darwin_arm64.tar.gz
+tar -xzf cherry-sync_<version>_darwin_arm64.tar.gz   # match the version and platform you downloaded
 sudo mv csync /usr/local/bin/
 ```
 
@@ -108,7 +88,7 @@ Missing or wrong number of arguments prints a usage message on stderr and exits 
 ## Known limitations
 
 - **Non-ASCII filenames don't transfer yet.** Names containing non-ASCII bytes — accented characters, emoji, or the narrow no-break space in macOS screenshot names — are escaped in rsync's diff output, and `csync` doesn't yet round-trip the escaped name back to the transfer. The change is listed but the transfer fails. Fix targeted for the next release.
-- **No exclude support yet.** `csync` doesn't honor `.gitignore` or a custom exclude file, so pointing it at a repository directory will list `.git/` and build artifacts among the changes. Excludes are planned (see [Status](#status)).
+- **No exclude support yet.** `csync` doesn't honor `.gitignore` or a custom exclude file, so pointing it at a repository directory will list `.git/` and build artifacts among the changes. Excludes are planned (see [Roadmap](#roadmap)).
 
 ## Development
 
