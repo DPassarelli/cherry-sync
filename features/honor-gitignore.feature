@@ -118,14 +118,47 @@ Feature: Honor .gitignore when comparing
       | update | README.md |
     And   the reported change count should be 1
 
+  Scenario: A top-level ignore does not float onto a same-named nested path
+    # Teeth — the leading-"/" anchoring in gitignoreExcludes. The repo ignores the
+    # top-level build/ (via "/build/", anchored to the repo root by git), but a
+    # *different* src/build/ is NOT ignored. Both hold a changed file. Anchoring
+    # each emitted exclude with a leading "/" pins it to the transfer root, so the
+    # exclude hits the real top-level build/artifact.o (absent) yet leaves
+    # src/build/keep.go (present). Drop the "/" prefix and rsync reads "build/" as
+    # a floating basename match at any depth — it swallows src/build/ too and
+    # keep.go vanishes (red). Break exclusion entirely and build/artifact.o
+    # reappears as a second change (also red). Verified against GNU rsync 3.4.1 and
+    # openrsync v29: both float an unanchored "build/" and both honor "/build/".
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      src/build/keep.go
+      build/artifact.o
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      /build/
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "build/artifact.o" has been changed locally
+    And   that the file "src/build/keep.go" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path              |
+      | update | src/build/keep.go |
+    And   the reported change count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
   #
-  # - Syncing a subdirectory of the repo: ignored paths still resolve correctly.
-  #   Guards the recipe — run `git ls-files` in the sync dir and anchor each
-  #   emitted path with a leading "/", so a top-level ignore can't float onto a
-  #   same-named nested path.
+  # - Syncing a *subdirectory* of the repo (csync ./repo/sub host:/dst): the
+  #   emitted ignore paths must resolve relative to the sync root, not the repo
+  #   root — `git ls-files` is run in the sync dir for exactly this reason. The
+  #   anchoring half is covered above; this is the run-git-in-the-sync-dir half,
+  #   still untested. Needs harness support for a sync operand below the repo root
+  #   (today the runCsync placeholder maps only the bare "./project" token).
   #
   # - Pull direction (remote -> local): the local repo's ignore set still governs;
   #   a remote file that the local repo would ignore is not pulled.
