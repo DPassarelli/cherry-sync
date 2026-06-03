@@ -202,7 +202,8 @@ Feature: Honor .gitignore when comparing
     # Verified the pull exclude behavior by experiment (GNU rsync 3.4.1).
     #
     # Scope: covers a file present on BOTH sides (ignored locally). A remote-ONLY
-    # ignored file can't be excluded this way — see the TODO below.
+    # ignored file isn't caught by this ls-files pre-filter — the next scenario
+    # covers that case via a git check-ignore pass.
     Given a local git repository containing these files:
       """
       src/main.go
