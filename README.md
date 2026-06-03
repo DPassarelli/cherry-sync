@@ -1,9 +1,11 @@
-<div style="text-align:center;width:100%">
-  <p style="font-size:250%;font-weight:bold;">cherry-sync</p>
-  <img src="csync-logo.gif" alt="Cherry-Sync logo" style="width:150px;"/>
-  <p style="margin:auto;padding:1rem 0;width:60%">An interactive `rsync` wrapper (CLI-based) for moving files selectively between a local machine and a remote dev environment over SSH. Cherry-pick your sync!</p>
+<div align="center">
 
-  [![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
+<img src="csync-logo.gif" alt="cherry-sync logo" />
+
+An interactive `rsync` wrapper (CLI-based) for moving files selectively between a local machine and a remote dev environment over SSH. Cherry-pick your sync!
+
+[![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
+
 </div>
 
 ## Problem
@@ -97,6 +99,7 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 ## Known limitations
 
 - **Non-ASCII filenames don't transfer yet.** Names containing non-ASCII bytes — accented characters, emoji, or the narrow no-break space in macOS screenshot names — are escaped in rsync's diff output, and `csync` doesn't yet round-trip the escaped name back to the transfer. The change is listed but the transfer fails. Fix targeted for the next release.
+- **Submodules' nested `.git` is not excluded.** Only the top-level `.git/` directory is held out of a sync. A repository containing submodules carries nested `.git` directories (or `.git` files) deeper in the tree, and those are still offered for transfer. If you sync a superproject, expect that metadata in the diff and deselect it.
 
 ## Development
 
