@@ -152,7 +152,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
-	ctx.Step(`^the repository's "([^"]*)" contains:$`, theRepositorysFileContains)
+	ctx.Step(`^the repository's "([^"]*)" contains:$`, theLocalFileContains)
+	ctx.Step(`^the directory's "([^"]*)" contains:$`, theLocalFileContains)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
@@ -163,6 +164,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
 	ctx.Step(`^the reported changes should be numbered, in order:$`, theReportedChangesShouldBeNumberedInOrder)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
+	ctx.Step(`^the reported excluded count should be (\d+)$`, theReportedExcludedCountShouldBe)
+	ctx.Step(`^no gitignored paths should be reported as excluded$`, noGitignoredPathsShouldBeReportedAsExcluded)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
@@ -387,10 +390,13 @@ func aLocalGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.DocS
 	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
-// theRepositorysFileContains writes the DocString to the named file in the local
-// repository (e.g. ".gitignore"), establishing the ignore rules a scenario
-// exercises. A trailing newline is appended so each line stands on its own.
-func theRepositorysFileContains(ctx context.Context, name string, ds *godog.DocString) (context.Context, error) {
+// theLocalFileContains writes the DocString to the named file in the local
+// directory (e.g. ".gitignore"), establishing the ignore rules a scenario
+// exercises. A trailing newline is appended so each line stands on its own. It
+// backs both the "repository's" and the "directory's" phrasings: the same write
+// serves a git work tree and a plain directory (the non-repo no-op scenario uses
+// the latter to prove the gate is work-tree membership, not .gitignore presence).
+func theLocalFileContains(ctx context.Context, name string, ds *godog.DocString) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
@@ -656,6 +662,35 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	}
 	if parsed.ChangeCount != want {
 		return fmt.Errorf("Changes: got %d, want %d in output:\n%s", parsed.ChangeCount, want, r.Stdout)
+	}
+	return nil
+}
+
+// theReportedExcludedCountShouldBe asserts csync printed an "Excluded:" line and
+// that its count equals want. The line is the user's only disclosure that ignored
+// paths were hidden, so its absence (HasExcludedCount false) is itself a failure.
+func theReportedExcludedCountShouldBe(ctx context.Context, want int) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.HasExcludedCount {
+		return fmt.Errorf("no Excluded line in output:\n%s", r.Stdout)
+	}
+	if parsed.ExcludedCount != want {
+		return fmt.Errorf("Excluded: got %d, want %d in output:\n%s", parsed.ExcludedCount, want, r.Stdout)
+	}
+	return nil
+}
+
+// noGitignoredPathsShouldBeReportedAsExcluded asserts csync printed no
+// "Excluded:" line at all — the disclosure is omitted entirely when nothing was
+// hidden, so a non-repo (or empty-ignore) sync stays free of "Excluded: 0" noise.
+func noGitignoredPathsShouldBeReportedAsExcluded(ctx context.Context) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if parsed.HasExcludedCount {
+		return fmt.Errorf("Excluded line present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
 	}
 	return nil
 }

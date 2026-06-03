@@ -41,16 +41,51 @@ Feature: Honor .gitignore when comparing
       | update | README.md |
     And   the reported change count should be 1
 
+  Scenario: The comparison discloses how many ignored paths it hid
+    # Teeth: hiding debug.log is silent unless csync says so, and disclosure is
+    # the user's only signal since there's no opt-out flag. The count is 1 — just
+    # debug.log — even though the action list (README.md only) is identical to the
+    # scenario above. Drop the disclosure line and this goes red while the actions
+    # stay green, proving the count is reported in its own right.
+    Given that all of the files are identical between local and remote
+    And   that the file "README.md" has been changed locally
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported excluded count should be 1
+
+  Scenario: A non-repository local side excludes nothing
+    # Teeth: this local directory is NOT a git work tree, yet it carries a
+    # .gitignore naming *.log. Because the trigger is "is a git work tree?" — not
+    # "does a .gitignore exist?" — nothing is excluded: debug.log surfaces as a
+    # create alongside the README.md update, and no disclosure line is printed.
+    # Drop the work-tree guard and `git ls-files` runs against a non-repo, which
+    # errors — the comparison fails outright and reports no actions at all (red).
+    # The guard is what keeps a non-repo a clean no-op. Runs only where git is
+    # installed (@git), so a pass proves the gate is work-tree membership, not the
+    # git binary simply being absent.
+    Given a local directory containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the directory's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "README.md" has been changed locally
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
+      | create | debug.log |
+    And   the reported change count should be 2
+    And   no gitignored paths should be reported as excluded
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
-  #
-  # - Disclosure: compare announces the count of excluded paths
-  #   (e.g. "excluding N gitignored paths"). The user's only signal that files
-  #   were hidden, since there's no opt-out flag.
-  #
-  # - Local side is NOT a git repository: nothing is excluded — the feature is a
-  #   pure no-op and every differing file reports as before.
   #
   # - Ignored via .git/info/exclude (no matching .gitignore line): still excluded.
   #   Guards that the trigger is "is a git work tree?" + --exclude-standard, not

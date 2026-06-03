@@ -11,15 +11,17 @@ import (
 // between rendered output and test assertions — when the rendering changes,
 // parseOutput is the only thing that needs to change with it.
 type ReportedOutput struct {
-	Source         string
-	Destination    string
-	ChangeCount    int
-	HasChangeCount bool
-	Actions        []Action
-	SyncCount      int
-	HasSyncCount   bool
-	Message        string
-	Usage          string
+	Source           string
+	Destination      string
+	ChangeCount      int
+	HasChangeCount   bool
+	ExcludedCount    int
+	HasExcludedCount bool
+	Actions          []Action
+	SyncCount        int
+	HasSyncCount     bool
+	Message          string
+	Usage            string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -64,6 +66,18 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			n, err := strconv.Atoi(m[2])
 			if err == nil {
 				out.SyncCount = n
+			}
+		case "Excluded":
+			// The value reads "N gitignored path(s)"; pull the leading count off
+			// the human-readable phrasing so a wording tweak doesn't break the
+			// assertion as long as the number still leads.
+			out.HasExcludedCount = true
+			fields := strings.Fields(m[2])
+			if len(fields) > 0 {
+				n, err := strconv.Atoi(fields[0])
+				if err == nil {
+					out.ExcludedCount = n
+				}
 			}
 		}
 	}

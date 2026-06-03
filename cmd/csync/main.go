@@ -32,6 +32,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Disclose hidden files: when the local side is a git repository, ignored
+	// paths are dropped from the comparison silently. With no opt-out flag, this
+	// line is the user's only signal that anything was withheld. Omitted entirely
+	// when nothing was excluded, so a non-repo sync stays noise-free.
+	if result.Excluded > 0 {
+		noun := "paths"
+		if result.Excluded == 1 {
+			noun = "path"
+		}
+		fmt.Printf("Excluded: %d gitignored %s\n", result.Excluded, noun)
+	}
+
 	fmt.Println("Changes:", len(result.Actions))
 	// Number each change from 1 in displayed order. The number is the selection
 	// affordance: it's the digit a user types at the prompt to pick that change,

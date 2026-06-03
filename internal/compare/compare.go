@@ -19,13 +19,17 @@ type Action struct {
 // Result is the structured outcome of comparing two paths.
 type Result struct {
 	Actions []Action
+	// Excluded is how many gitignored paths were dropped from the comparison
+	// (0 when the local side isn't a git work tree or ignores nothing). The CLI
+	// discloses this so the user knows files were hidden — there's no opt-out.
+	Excluded int
 }
 
 // Run invokes rsync to compute the diff between source and destination.
 // Both paths get a trailing slash so rsync compares directory contents
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
-	excludeFrom, cleanup, err := excludeFile(source, destination)
+	excludeFrom, excluded, cleanup, err := excludeFile(source, destination)
 	if err != nil {
 		return Result{}, err
 	}
@@ -43,49 +47,50 @@ func Run(source, destination string) (Result, error) {
 	}
 	actions := parseActions(string(out))
 	sortActions(actions)
-	return Result{Actions: actions}, nil
+	return Result{Actions: actions, Excluded: excluded}, nil
 }
 
 // excludeFile writes the local side's gitignore patterns to a temp file and
-// returns its path (for rsync's --exclude-from), a cleanup func to remove it, and
-// any error. When the local side is not a git work tree — or ignores nothing — it
-// returns an empty path and a no-op cleanup, so compare runs exactly as before.
+// returns its path (for rsync's --exclude-from), how many patterns it holds (for
+// disclosure), a cleanup func to remove it, and any error. When the local side is
+// not a git work tree — or ignores nothing — it returns an empty path, a zero
+// count, and a no-op cleanup, so compare runs exactly as before.
 //
 // The list is applied to the comparison ONLY. The transfer uses --files-from, and
 // rsync ignores --exclude-from when --files-from is present, so an exclude there
 // would be a no-op on some rsync builds and active on others — inconsistent. The
 // comparison is the single gate: ignored files never appear, so they can't be
 // selected, so --files-from never lists one.
-func excludeFile(source, destination string) (string, func(), error) {
+func excludeFile(source, destination string) (string, int, func(), error) {
 	noop := func() {}
 	dir, ok := localSyncDir(source, destination)
 	if !ok {
-		return "", noop, nil
+		return "", 0, noop, nil
 	}
 	patterns, err := gitignoreExcludes(dir)
 	if err != nil {
-		return "", noop, err
+		return "", 0, noop, err
 	}
 	if len(patterns) == 0 {
-		return "", noop, nil
+		return "", 0, noop, nil
 	}
 	f, err := os.CreateTemp("", "csync-exclude-*")
 	if err != nil {
-		return "", noop, fmt.Errorf("create exclude file: %w", err)
+		return "", 0, noop, fmt.Errorf("create exclude file: %w", err)
 	}
 	cleanup := func() { os.Remove(f.Name()) }
 	_, err = f.WriteString(strings.Join(patterns, "\n") + "\n")
 	if err != nil {
 		f.Close()
 		cleanup()
-		return "", noop, fmt.Errorf("write exclude file: %w", err)
+		return "", 0, noop, fmt.Errorf("write exclude file: %w", err)
 	}
 	err = f.Close()
 	if err != nil {
 		cleanup()
-		return "", noop, fmt.Errorf("close exclude file: %w", err)
+		return "", 0, noop, fmt.Errorf("close exclude file: %w", err)
 	}
-	return f.Name(), cleanup, nil
+	return f.Name(), len(patterns), cleanup, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`
