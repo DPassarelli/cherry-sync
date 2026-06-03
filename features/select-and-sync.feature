@@ -5,7 +5,8 @@
 # @remote runs every scenario here over a fake SSH remote (RSYNC_RSH + a
 # `fakehost:` operand), so rsync transfers in real sender/receiver mode and emits
 # the `<f`/`>f` direction codes a true push/pull would. Local-to-local always
-# itemizes `>`, which structurally hid the push-direction bug — see NOTES.md.
+# itemizes `>`, which structurally hid a push-direction bug until this harness
+# exposed it.
 @remote
 Feature: Select and sync files
 

@@ -43,7 +43,7 @@ var fakeRsh string
 // locally makes a `fakehost:` transfer run on this machine yet still travel
 // rsync's remote (sender/receiver) code path — so it emits the `<f`/`>f`
 // direction codes a real push/pull would, which local-to-local never does and
-// the suite was therefore blind to (see NOTES.md "harness blind spots").
+// the suite was therefore structurally blind to.
 const fakeRshScript = `#!/bin/sh
 shift
 exec "$@"

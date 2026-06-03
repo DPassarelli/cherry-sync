@@ -80,3 +80,10 @@ what shipped and must always be current:
   `CHANGELOG.md`; what's planned lives in README's Roadmap. Don't add a
   per-version scope or status section here — it goes stale the moment a release
   ships (the original "Scope for v0.1" did exactly that).
+- **Don't reference gitignored / uncommitted files from committed files.** Code
+  comments, feature files, and committed docs must not cite paths that aren't in
+  the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF
+  reference docs). A clone won't have them, so the reference is a dead pointer that
+  leaks a private filename. State the reasoning inline instead, or cite a committed
+  doc. (CLAUDE.md, README, CHANGELOG, STYLE/TESTING/SECURITY are committed and fair
+  to cite.)
