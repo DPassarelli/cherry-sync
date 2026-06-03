@@ -11,11 +11,18 @@ Feature: Honor .gitignore when comparing
   so the diff shows only files I'd actually consider moving.
 
   # The local side governs in both directions: csync runs `git ls-files` against
-  # the local operand and uses that ignore set for push and pull alike. These
-  # scenarios set up the *local* directory as a git work tree; git is run only
-  # against that side.
+  # the local operand and uses that ignore set for push and pull alike. Each
+  # scenario sets up its own local side — most as a git work tree, the no-op case
+  # as a plain directory — because the setups diverge enough that a shared
+  # Background would mask the very thing some scenarios test (e.g. a Background
+  # .gitignore would hide whether .git/info/exclude is honored).
 
-  Background:
+  Scenario: An ignored file is left out of the comparison
+    # Teeth: README.md (tracked, changed) MUST report; debug.log (ignored, newly
+    # added) MUST NOT. Remove the exclusion and debug.log surfaces as a `create`
+    # and the count becomes 2 — red. Break compare entirely and the README.md row
+    # vanishes — also red. So this fails for the right reason and proves the
+    # exclusion is *targeted*, not a blanket "report nothing".
     Given a local git repository containing these files:
       """
       src/main.go
@@ -25,14 +32,7 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-
-  Scenario: An ignored file is left out of the comparison
-    # Teeth: README.md (tracked, changed) MUST report; debug.log (ignored, newly
-    # added) MUST NOT. Remove the exclusion and debug.log surfaces as a `create`
-    # and the count becomes 2 — red. Break compare entirely and the README.md row
-    # vanishes — also red. So this fails for the right reason and proves the
-    # exclusion is *targeted*, not a blanket "report nothing".
-    Given that all of the files are identical between local and remote
+    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -47,7 +47,16 @@ Feature: Honor .gitignore when comparing
     # debug.log — even though the action list (README.md only) is identical to the
     # scenario above. Drop the disclosure line and this goes red while the actions
     # stay green, proving the count is reported in its own right.
-    Given that all of the files are identical between local and remote
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -83,13 +92,35 @@ Feature: Honor .gitignore when comparing
     And   the reported change count should be 2
     And   no gitignored paths should be reported as excluded
 
+  Scenario: A file ignored via .git/info/exclude is left out
+    # Teeth: this repository has NO .gitignore at all — the ignore rule lives only
+    # in .git/info/exclude (git's per-clone, uncommitted ignore list). debug.log
+    # must still be excluded, because csync drives `git ls-files --exclude-standard`,
+    # which honors .gitignore, .git/info/exclude, and global excludes alike. Key the
+    # exclusion on the literal presence of a .gitignore file and this repo has none,
+    # so debug.log would surface and the count become 2 — red. Proves the trigger is
+    # "is a git work tree?" + --exclude-standard, not "is there a .gitignore?".
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".git/info/exclude" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "README.md" has been changed locally
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
+    And   the reported change count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
-  #
-  # - Ignored via .git/info/exclude (no matching .gitignore line): still excluded.
-  #   Guards that the trigger is "is a git work tree?" + --exclude-standard, not
-  #   the literal presence of a .gitignore file.
   #
   # - Syncing a subdirectory of the repo: ignored paths still resolve correctly.
   #   Guards the recipe — run `git ls-files` in the sync dir and anchor each
