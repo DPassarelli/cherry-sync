@@ -6,6 +6,9 @@
 *.test
 *.out
 
+# GoReleaser build output
+/dist/
+
 # Coverage
 coverage.txt
 coverage.html
@@ -18,6 +21,9 @@ coverage.html
 # Scratchpad for Claude
 /.claude
 /NOTES.md
+
+# Release notes extracted from CHANGELOG.md by the release workflow (transient)
+/.release-notes.md
 
 # Editor / OS
 .DS_Store
