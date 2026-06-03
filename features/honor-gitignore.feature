@@ -149,6 +149,40 @@ Feature: Honor .gitignore when comparing
       | update | src/build/keep.go |
     And   the reported change count should be 1
 
+  @remote
+  Scenario: Pull direction — the local repo's ignore set still governs
+    # "Local repo governs both directions": on a pull (remote -> local) csync still
+    # derives the ignore set from the LOCAL side — here the destination — because
+    # localSyncDir picks the non-remote operand. The remote-only notes.txt is
+    # pulled (create); debug.log, which differs and would otherwise be received, is
+    # held back because the local repo ignores *.log. @remote keeps the source's
+    # host: spec so csync sees it as remote and localSyncDir resolves to the local
+    # destination. Teeth: make localSyncDir always pick the source and git runs
+    # against the remote spec (not a local dir) -> no exclusion -> debug.log pulled
+    # and the count becomes 2 (red); breaking exclusion entirely does the same.
+    # Verified the pull exclude behavior by experiment (GNU rsync 3.4.1).
+    #
+    # Scope: covers a file present on BOTH sides (ignored locally). A remote-ONLY
+    # ignored file can't be excluded this way — see the TODO below.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      debug.log
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "debug.log" has been changed locally
+    And   that the file "notes.txt" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path      |
+      | create | notes.txt |
+    And   the reported change count should be 1
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
@@ -160,5 +194,9 @@ Feature: Honor .gitignore when comparing
   #   still untested. Needs harness support for a sync operand below the repo root
   #   (today the runCsync placeholder maps only the bare "./project" token).
   #
-  # - Pull direction (remote -> local): the local repo's ignore set still governs;
-  #   a remote file that the local repo would ignore is not pulled.
+  # - Remote-ONLY ignored file on a pull: a file the local repo would ignore but
+  #   that does NOT yet exist locally can't be excluded — `git ls-files` lists only
+  #   files present in the local tree, so today such a file WOULD be pulled (it'll
+  #   be gitignored locally once it lands, so it's low-harm, but it's still noise in
+  #   the diff). Decide: accept it, or additionally filter the remote listing
+  #   through the local ignore rules. Captured 2026-06-03.
