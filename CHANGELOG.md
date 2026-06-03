@@ -13,9 +13,10 @@ While the project is pre-1.0, the public interface may change in minor releases.
 - When the local side is a git repository, files it ignores (per `.gitignore`,
   `.git/info/exclude`, and global excludes) are left out of the comparison, so the
   diff shows only files worth moving. The local repository's ignore rules apply in
-  both directions; no git is required on the remote. csync reports how many
-  ignored paths it hid (`Excluded: N gitignored path(s)`) so nothing is withheld
-  silently.
+  both directions; no git is required on the remote. The `.git` directory itself is
+  always excluded for a repository, so a sync never offers git's internal metadata
+  for transfer. csync discloses what it held back (`Excluded: the .git directory
+  and N gitignored path(s)`) so nothing is withheld silently.
 
 ## [0.1.0] - 2026-06-02
 

@@ -91,6 +91,7 @@ Feature: Honor .gitignore when comparing
       | create | debug.log |
     And   the reported change count should be 2
     And   no gitignored paths should be reported as excluded
+    And   the .git directory should not be reported as excluded
 
   Scenario: A file ignored via .git/info/exclude is left out
     # Teeth: this repository has NO .gitignore at all — the ignore rule lives only
@@ -149,6 +150,44 @@ Feature: Honor .gitignore when comparing
       | update | src/build/keep.go |
     And   the reported change count should be 1
 
+  Scenario: The local .git directory is never offered for sync
+    # Teeth — the explicit "/.git/" exclude. git never reports its own .git/ as
+    # ignored (it special-cases that directory), so without an explicit exclude a
+    # push from a repo offers every .git/ object for transfer — pure noise, and it
+    # would clobber the other side's git state (HEAD, index, refs, hooks). Pushing
+    # a fresh repo (real .git/ from git init) to an empty remote, only the working
+    # files are offered; the whole .git/ tree is gone. Drop the "/.git/" pattern and
+    # dozens of .git/ creates flood the list (red). Verified on GNU rsync 3.4.1 that
+    # an anchored "/.git/" exclude zeroes them out.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path        |
+      | create | README.md   |
+      | create | src/main.go |
+    And   the reported change count should be 2
+
+  Scenario: The .git exclusion is disclosed even when nothing is gitignored
+    # The .git/ exclusion is invisible by mechanism — git never lists it — so csync
+    # must announce it, and must do so even when there's no .gitignore at all (zero
+    # gitignored paths). This repo has no .gitignore; the disclosure still reports
+    # the .git directory, with no gitignored-path count. Drop the disclosure, or
+    # gate it on a gitignored count > 0, and this goes red.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  the .git directory should be reported as excluded
+    And   no gitignored paths should be reported as excluded
+
   @remote
   Scenario: Pull direction — the local repo's ignore set still governs
     # "Local repo governs both directions": on a pull (remote -> local) csync still
@@ -193,6 +232,12 @@ Feature: Honor .gitignore when comparing
   #   anchoring half is covered above; this is the run-git-in-the-sync-dir half,
   #   still untested. Needs harness support for a sync operand below the repo root
   #   (today the runCsync placeholder maps only the bare "./project" token).
+  #
+  # - Floating ".git" exclude: today only the top-level "/.git/" is excluded
+  #   (anchored, consistent with the gitignore-path anchoring). A repo with
+  #   submodules carries nested .git dirs/files that an anchored exclude misses.
+  #   Decide whether to add a floating ".git" exclude (matches at any depth) for the
+  #   submodule case. Captured 2026-06-03.
   #
   # - Remote-ONLY ignored file on a pull: a file the local repo would ignore but
   #   that does NOT yet exist locally can't be excluded — `git ls-files` lists only

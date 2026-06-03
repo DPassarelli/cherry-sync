@@ -166,6 +166,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 	ctx.Step(`^the reported excluded count should be (\d+)$`, theReportedExcludedCountShouldBe)
 	ctx.Step(`^no gitignored paths should be reported as excluded$`, noGitignoredPathsShouldBeReportedAsExcluded)
+	ctx.Step(`^the \.git directory should be reported as excluded$`, theGitDirectoryShouldBeReportedAsExcluded)
+	ctx.Step(`^the \.git directory should not be reported as excluded$`, theGitDirectoryShouldNotBeReportedAsExcluded)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
@@ -691,6 +693,32 @@ func noGitignoredPathsShouldBeReportedAsExcluded(ctx context.Context) error {
 
 	if parsed.HasExcludedCount {
 		return fmt.Errorf("Excluded line present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
+	}
+	return nil
+}
+
+// theGitDirectoryShouldBeReportedAsExcluded asserts csync's Excluded line
+// announces the .git directory. git never lists .git/ as ignored, so this
+// disclosure is the user's only signal that the VCS metadata dir was held back.
+func theGitDirectoryShouldBeReportedAsExcluded(ctx context.Context) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.ExcludedGitDir {
+		return fmt.Errorf("expected the .git directory to be reported as excluded, but it was not, in output:\n%s", r.Stdout)
+	}
+	return nil
+}
+
+// theGitDirectoryShouldNotBeReportedAsExcluded asserts csync did NOT announce a
+// .git exclusion — the case where the local side is not a git work tree, so there
+// is no .git/ to exclude and nothing to disclose.
+func theGitDirectoryShouldNotBeReportedAsExcluded(ctx context.Context) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if parsed.ExcludedGitDir {
+		return fmt.Errorf("the .git directory was reported as excluded but should not be, in output:\n%s", r.Stdout)
 	}
 	return nil
 }

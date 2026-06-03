@@ -17,6 +17,7 @@ type ReportedOutput struct {
 	HasChangeCount   bool
 	ExcludedCount    int
 	HasExcludedCount bool
+	ExcludedGitDir   bool
 	Actions          []Action
 	SyncCount        int
 	HasSyncCount     bool
@@ -42,6 +43,10 @@ type Action struct {
 var (
 	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
 	actionLineRE  = regexp.MustCompile(`(?m)^\s+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
+	// gitignoredCountRE pulls the gitignored-path count out of the Excluded line's
+	// value (e.g. "the .git directory and 3 gitignored paths"). The .git directory
+	// is disclosed separately and is not part of this count.
+	gitignoredCountRE = regexp.MustCompile(`(\d+) gitignored`)
 )
 
 // parseOutput translates csync's rendered stdout and stderr into a structured
@@ -68,13 +73,16 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 				out.SyncCount = n
 			}
 		case "Excluded":
-			// The value reads "N gitignored path(s)"; pull the leading count off
-			// the human-readable phrasing so a wording tweak doesn't break the
-			// assertion as long as the number still leads.
-			out.HasExcludedCount = true
-			fields := strings.Fields(m[2])
-			if len(fields) > 0 {
-				n, err := strconv.Atoi(fields[0])
+			// The value discloses what was held out of the comparison: the .git
+			// directory (when the local side is a repo) and/or a gitignored-path
+			// count, e.g. "the .git directory and 3 gitignored paths". The two are
+			// reported independently — .git/ exclusion can show with no gitignored
+			// paths at all — so parse them as separate signals rather than a single
+			// leading number.
+			out.ExcludedGitDir = strings.Contains(m[2], ".git directory")
+			if cm := gitignoredCountRE.FindStringSubmatch(m[2]); cm != nil {
+				out.HasExcludedCount = true
+				n, err := strconv.Atoi(cm[1])
 				if err == nil {
 					out.ExcludedCount = n
 				}
