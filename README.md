@@ -1,38 +1,33 @@
-# Cherry-Sync
+<div style="text-align:center;width:100%">
+  <p style="font-size:250%;font-weight:bold;">cherry-sync</p>
+  <img src="csync-logo.gif" alt="Cherry-Sync logo"/>
+  <p style="margin:auto;padding:1rem 0;width:60%">An interactive `rsync` wrapper (CLI-based) for moving files selectively between a local machine and a remote dev environment over SSH. Cherry-pick your sync!</p>
 
-An interactive rsync wrapper for moving files selectively between a local machine and a remote dev environment over SSH.
-
-[![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
+  [![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
+</div>
 
 ## Problem
 
-When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is clumsy. Plain `rsync` transfers everything or nothing. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves and in which direction.
+When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is a little clumsy. You either have to memorize `rsync` parameters or just move everything and sort through the details later. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves, and in which direction.
 
-This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc.
+This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc. [At least one macOS app](https://github.com/rsyncOSX/RsyncUI) exists for this purpose, but nothing that is cross-platform, runs directly on the command line, and has a rich UX ⌨️
 
 ## What this tool does
 
 An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 1. Compare local and remote directories (using `rsync --dry-run --itemize-changes`).
-2. Show a human-readable list of differences (new, modified, deleted — with direction).
-3. Let the user choose: sync all, or select individual files.
-4. Execute the transfer for only the selected files (using `rsync --files-from`).
+2. Automatically exclude `.git/` folder and honor `.gitignore`/`.git/info/exclude`
+3. Show a human-readable list of differences (new, modified, deleted — with direction).
+4. Let the user choose: sync all, none, or individual files.
+5. Execute the transfer for only the selected files (using `rsync --files-from`) and report the outcome.
 
 ## Design principles
 
 - **rsync does the heavy lifting.** This tool is a UX layer, not a reimplementation. It parses rsync's output and drives rsync's `--files-from` for selective transfer.
 - **SSH is the transport.** No additional daemon or agent on the remote side. If you can `ssh` to it, this tool works.
-- **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display is a post-v0.1 goal.
+- **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display is a future goal.
 - **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
-
-## Roadmap
-
-Near-term: fixing transfer of non-ASCII filenames (see [Known limitations](#known-limitations)), bounding rsync with a timeout so a stalled transfer can't hang the tool, a multi-select grammar (ranges like `1-3`, lists like `1,3`), honoring `.gitignore` or a custom exclude file, and a `--version` flag.
-
-Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
-
-See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 ## Requirements
 
@@ -41,7 +36,7 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 ## Install
 
-Download the archive for your platform from the [latest release](https://github.com/dpassarelli/cherry-sync/releases/latest) — Linux and macOS, `amd64` and `arm64` — then extract `csync` onto your `PATH`:
+Download the archive for your platform from the [latest release](https://github.com/dpassarelli/cherry-sync/releases/latest), then extract `csync` onto your `PATH`:
 
 ```sh
 tar -xzf cherry-sync_<version>_darwin_arm64.tar.gz   # match the version and platform you downloaded
@@ -71,7 +66,7 @@ Press Enter to sync all changes:
 Synced: 2
 ```
 
-At the prompt: press **Enter** (or `a`) to sync every change, `n` to cancel without transferring anything, or a **number** to sync just that one change. The prompt is written to stderr, so the report on stdout stays clean and parseable.
+At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or a **number** to sync just that one change. The prompt is written to stderr, so the report on stdout stays clean and parseable.
 
 If the two directories are identical:
 
@@ -85,14 +80,27 @@ No changes to sync.
 
 Missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
 
+## Roadmap
+
+Near-term:
+
+* fixing transfer of non-ASCII filenames
+* bounding rsync with a timeout so a stalled transfer can't hang the tool
+* a multi-select grammar (ranges like `1-3`, lists like `1,3`)
+* UX improvements
+* ``--version` flag
+
+Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
+
+See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
+
 ## Known limitations
 
 - **Non-ASCII filenames don't transfer yet.** Names containing non-ASCII bytes — accented characters, emoji, or the narrow no-break space in macOS screenshot names — are escaped in rsync's diff output, and `csync` doesn't yet round-trip the escaped name back to the transfer. The change is listed but the transfer fails. Fix targeted for the next release.
-- **No exclude support yet.** `csync` doesn't honor `.gitignore` or a custom exclude file, so pointing it at a repository directory will list `.git/` and build artifacts among the changes. Excludes are planned (see [Roadmap](#roadmap)).
 
 ## Development
 
-Run all tests (unit + godog scenarios):
+Run all tests (unit + Gherkin scenarios):
 
 ```sh
 go test ./...
