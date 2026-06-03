@@ -1,6 +1,6 @@
 <div style="text-align:center;width:100%">
   <p style="font-size:250%;font-weight:bold;">cherry-sync</p>
-  <img src="csync-logo.gif" alt="Cherry-Sync logo"/>
+  <img src="csync-logo.gif" alt="Cherry-Sync logo" style="width:150px;"/>
   <p style="margin:auto;padding:1rem 0;width:60%">An interactive `rsync` wrapper (CLI-based) for moving files selectively between a local machine and a remote dev environment over SSH. Cherry-pick your sync!</p>
 
   [![test](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml/badge.svg)](https://github.com/dpassarelli/cherry-sync/actions/workflows/test.yml)
@@ -10,7 +10,7 @@
 
 When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is a little clumsy. You either have to memorize `rsync` parameters or just move everything and sort through the details later. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves, and in which direction.
 
-This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc. [At least one macOS app](https://github.com/rsyncOSX/RsyncUI) exists for this purpose, but nothing that is cross-platform, runs directly on the command line, and has a rich UX ⌨️
+This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc. [At least one macOS app](https://github.com/rsyncOSX/RsyncUI) exists for this purpose, but nothing that is cross-platform, runs directly on the command line, and has a rich terminal UX ⌨️ 🤓
 
 ## What this tool does
 
@@ -100,21 +100,15 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 ## Development
 
-Run all tests (unit + Gherkin scenarios):
+**Disclaimer:** I am a real person with many years of software engineering experience. I personally came up with this idea on my own, and I am the one driving the product design, monitoring the development process, writing the commit messages, and approving releases; however, I am heavily relying on [Claude](https://www.anthropic.com/product/claude-code) to write code and analyze security issues on this project. The evidence of this is sprinkled throughout.
+
+The development process is mainly described in [TESTING](TESTING.md), with additional concerns covered in [STYLE](STYLE.md) and [SECURITY](SECURITY.md). Automated testing and a thorough CI workflow have been in place since the beginning in order to assure quality and reliability. The Gherkin specifications found under `features/` are the canonical definition of expected behavior and usage for this application.
+
+### Run tests:
 
 ```sh
 go test ./...
 ```
-
-The `features/` directory holds the Gherkin specification and acts as the canonical TODO list — every scenario maps to a desired behavior. See [TESTING.md](TESTING.md) for the testing philosophy and [STYLE.md](STYLE.md) for code style rules that aren't enforced by `gofmt` or `go vet`.
-
-After cloning, activate the git hooks once:
-
-```sh
-lefthook install
-```
-
-This installs a `commit-msg` hook that enforces Conventional Commits, and a `pre-push` hook that runs `go vet ./...` and `gosec ./...`. See [`lefthook.yml`](lefthook.yml) for details.
 
 ## License
 
