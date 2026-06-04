@@ -91,11 +91,14 @@ Test-only helpers live in `_test.go` files at the repo root or alongside the pac
 
 ## Running tests
 
-| Command           | Purpose                                              |
-|-------------------|------------------------------------------------------|
-| `go test ./...`   | Run the full suite (godog scenarios + unit tests)    |
-| `gofmt -l .`      | List files needing formatting (silent = all clean)   |
-| `go vet ./...`    | Runs automatically in lefthook pre-push              |
-| `gosec ./...`     | Static security analysis; runs in lefthook pre-push  |
+| Command                     | Purpose                                                              |
+|-----------------------------|---------------------------------------------------------------------|
+| `go test ./...`             | Run the full suite (godog scenarios + unit tests)                   |
+| `./scripts/test-report.sh`  | Run the suite and print the same compact report CI publishes (needs [`gotestsum`](https://github.com/gotestyourself/gotestsum); see below) |
+| `gofmt -l .`                | List files needing formatting (silent = all clean)                  |
+| `go vet ./...`              | Runs automatically in lefthook pre-push                             |
+| `gosec ./...`               | Static security analysis; runs in lefthook pre-push                |
+
+`scripts/test-report.sh` is the single source of the test report shown in the GitHub Actions job summary, so running it locally previews exactly what CI will show (raw Markdown — pipe to a renderer such as `glow` if you want it formatted). It needs `gotestsum` on `PATH`; install the version CI pins with `go install gotest.tools/gotestsum@v1.13.0`. Extra arguments are forwarded to `go test` (e.g. `./scripts/test-report.sh -run TestParse`).
 
 godog's default pretty formatter prints feature-file line numbers on failure, which makes it easy to navigate from a failing assertion back to the scenario that triggered it.
