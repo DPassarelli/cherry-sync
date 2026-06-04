@@ -85,22 +85,23 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # gotestsum wraps the same `go test` run but emits a compact, human-readable
-      # summary (total count, and the name of every test that failed or skipped).
-      # Pinned, not @latest, so a CI run is reproducible. GOPATH/bin isn't
-      # guaranteed on PATH across all runner images, so add it explicitly.
+      # The test runner. Pinned, not @latest, so a CI run is reproducible.
+      # GOPATH/bin isn't guaranteed on PATH across all runner images, so add it
+      # explicitly (scripts/test-report.sh resolves it the same way for local use).
       - name: Install gotestsum
         run: |
           go install gotest.tools/gotestsum@v1.13.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      # The report is built by scripts/test-report.sh — the same script you can
-      # run locally — so the job-summary panel and the local preview can't drift.
-      # With $GITHUB_STEP_SUMMARY set, it appends the report there and streams the
-      # run to this log. REPORT_LABEL names the panel for this matrix leg. The
-      # script exits with gotestsum's status, so a red run still emits its report
+      # Run the suite and publish the dashboard panel. scripts/test-report.sh is
+      # the same script you can run locally, so the job-summary panel and the
+      # local preview can't drift. It streams gotestsum's live output to this log
+      # and writes the panel (environment, Gherkin-vs-unit breakdown, failures,
+      # per-package detail) to $GITHUB_STEP_SUMMARY. REPORT_LABEL names the panel
+      # for this matrix leg; rsync/Go/runner identity is gathered by the script.
+      # It exits with gotestsum's status, so a red run still publishes its panel
       # and then fails this step (and thus the job and ci-gate).
-      - name: go test
+      - name: Run tests & publish report
         env:
           REPORT_LABEL: ${{ matrix.name }}
         run: ./scripts/test-report.sh
