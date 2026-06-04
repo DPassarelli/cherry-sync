@@ -48,6 +48,20 @@ Feature: Compare directories
       | create | src/remote_only.go |
     And   the reported change count should be 1
 
+  Scenario: A file that differs only in modification time is not a change
+    # A file whose content is byte-identical but whose mtime differs (e.g. git
+    # checkout stamps a different mtime per machine) must not surface as a change.
+    # rsync's size+mtime quick-check flags it for transfer; --checksum on the
+    # compare pass settles it by content, so the row itemizes as `.f..t......`
+    # (no content bit) and is dropped. Remove --checksum and this goes red:
+    # README.md reports as a phantom "update". Rationale and the experiments
+    # behind it live in NOTES #18 (the diagnosed phantom-changes item).
+    Given that all of the files are identical between local and remote
+    And   that the file "README.md" has a different modification time but identical content
+    When  I run "csync ./project user@host:/project"
+    Then  no actions should be reported
+    And   the reported change count should be 0
+
   Scenario: A source that looks like an rsync option is treated as a path
     # Security regression guard. rsyncArgs puts `--` before the operands, so an
     # option-looking source (here `-e`, rsync's remote-shell flag) reaches rsync

@@ -139,6 +139,18 @@ func rsyncArgs(source, destination, excludeFrom string) []string {
 		// in transfer preserving mtime. Kept here to stop the two flag sets
 		// drifting as fidelity flags (perms, links, …) are added later.
 		"--times",
+		// --checksum compares by content hash instead of rsync's default
+		// size+mtime quick-check. Without it, a file that is byte-identical but
+		// carries a different mtime (e.g. git stamps a fresh mtime on every
+		// checkout, so it varies per machine) itemizes as `>f..t......` and is
+		// reported as a phantom "update" — indistinguishable from a real same-size
+		// edit, which produces the identical code. With --checksum the phantom
+		// drops to `.f..t......` (no content bit), which parseActions ignores,
+		// while a real edit keeps the `c` bit and is still reported. Compare-only:
+		// the transfer uses --files-from and never re-derives this set. Cost is a
+		// content hash of each candidate on both ends; acceptable for this tool's
+		// dev-sync use. See NOTES #18 for the experiment that settled this.
+		"--checksum",
 	}
 	// --exclude-from drops gitignored paths from the comparison when the local
 	// side is a git work tree (empty otherwise). It's an option, so it precedes

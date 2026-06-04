@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Files that are byte-identical but carry a different modification time are no longer reported as phantom changes. This is common after a git checkout, which restamps every file's mtime and so differs per machine. The comparison now settles each file by content hash (`rsync --checksum`) rather than rsync's default size-and-mtime quick-check, so the change list reflects real content differences — a file whose only difference is its timestamp is correctly treated as unchanged.
+
 ## [0.2.0] - 2026-06-03
 
 ### Added

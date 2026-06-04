@@ -157,6 +157,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
+	ctx.Step(`^that the file "([^"]*)" has a different modification time but identical content$`, theFileHasADifferentMtimeButIdenticalContent)
 	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
 	ctx.Step(`^that the file "([^"]*)" has been added on the remote$`, theFileHasBeenAddedOnTheRemote)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
@@ -479,6 +480,26 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 		return ctx, fmt.Errorf("write %s: %w", full, err)
 	}
 	err = os.Chtimes(full, localChangeMtime, localChangeMtime)
+	if err != nil {
+		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+// theFileHasADifferentMtimeButIdenticalContent stamps the named local file with a
+// past modification time WITHOUT rewriting its bytes, so it differs from the remote
+// copy in mtime alone. rsync's size+mtime quick-check then flags it for transfer
+// even though the content is identical — the "phantom change" csync must not report
+// (NOTES #18). The harness otherwise creates and copies files within the same
+// wall-clock second, so their mtimes compare equal at rsync's 1-second granularity;
+// dating this one to the past forces the mtime-only delta the scenario needs.
+func theFileHasADifferentMtimeButIdenticalContent(ctx context.Context, relPath string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	full := filepath.Join(local, relPath)
+	err := os.Chtimes(full, localChangeMtime, localChangeMtime)
 	if err != nil {
 		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
 	}
