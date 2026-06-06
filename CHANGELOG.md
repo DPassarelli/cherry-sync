@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+(none)
+
+## [0.2.1] - 2026-06-06
+
 ### Fixed
 
 - Files that are byte-identical but carry a different modification time are no longer reported as phantom changes. This is common after a git checkout, which restamps every file's mtime and so differs per machine. The comparison now settles each file by content hash (`rsync --checksum`) rather than rsync's default size-and-mtime quick-check, so the change list reflects real content differences — a file whose only difference is its timestamp is correctly treated as unchanged.
@@ -29,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...0.2.1
 [0.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dpassarelli/cherry-sync/releases/tag/v0.1.0
