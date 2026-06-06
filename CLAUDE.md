@@ -39,6 +39,7 @@ See [TESTING.md](TESTING.md) for the philosophy, the development loop in full, t
 - **Verify external-tool behavior by experiment, not memory.** Check what `rsync`/`ssh` actually emit before encoding it in a test or parser.
 - **Agree the scenario before wiring it.** Gherkin scenarios are the spec; review them before writing step definitions or production code.
 - **One scenario, one behavior.** Don't bundle expectations into a single scenario.
+- **Unit-test logic, not command assembly.** A unit test pins a decision the code makes — parsing, ordering, classification. Never assert the argument vector handed to an external tool (that a specific flag or path is in the slice passed to `rsync`/`ssh`): the outside-in scenario that runs the real command already gates that, and a slice assertion only breaks on a correct refactor. If a unit test's failure couldn't mean a user-visible behavior changed, delete it.
 - **Green before refactor; verify before done.** Minimal code to pass, refactor only on green, and run `go test ./...` and `gofmt -l .` before calling it done.
 
 ## Style
