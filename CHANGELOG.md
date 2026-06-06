@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - Files that are byte-identical but carry a different modification time are no longer reported as phantom changes. This is common after a git checkout, which restamps every file's mtime and so differs per machine. The comparison now settles each file by content hash (`rsync --checksum`) rather than rsync's default size-and-mtime quick-check, so the change list reflects real content differences — a file whose only difference is its timestamp is correctly treated as unchanged.
+- Files whose names contain non-ASCII characters (accents, emoji, CJK, or the narrow no-break space in a macOS screenshot name) now transfer correctly instead of failing. rsync escapes such bytes in its comparison output by default; csync now requests the raw bytes (`rsync -8`) so the selected path matches the real file and the transfer succeeds.
 
 ## [0.2.0] - 2026-06-03
 

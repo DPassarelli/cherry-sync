@@ -45,6 +45,20 @@ Feature: Select and sync files
     And   the file "README.md" should be identical between local and remote
     And   the file "src/adder.go" should be identical between local and remote
 
+  Scenario: A filename containing non-ASCII bytes transfers intact
+    # rsync's --itemize-changes octal-escapes non-ASCII bytes by default (a UTF-8
+    # name like café.txt prints as \#nnn...). csync parsed that escaped text and
+    # fed it back via --files-from, which wants the literal bytes, so rsync looked
+    # for a file that doesn't exist and the transfer failed (exit 23). Passing -8
+    # on the compare makes rsync emit the raw bytes, which round-trip cleanly.
+    # Real-use trigger: a macOS screenshot whose name carries a narrow no-break
+    # space (U+202F). Distinct from the @wip embedded-newline scenario below: -8
+    # covers high-bit bytes only — rsync still escapes true control chars.
+    Given that the file "café.txt" has been added locally
+    When  I run "csync ./project user@host:/project" and respond with "a"
+    Then  the reported sync count should be 1
+    And   the file "café.txt" should be identical between local and remote
+
   Scenario: A completed sync leaves nothing to re-sync
     # Idempotence guard: after csync transfers a set of changes, re-running the
     # same compare must report nothing left to do. A second run that still finds
