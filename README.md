@@ -86,11 +86,10 @@ Missing or wrong number of arguments prints a usage message on stderr and exits 
 
 Near-term:
 
-* fixing transfer of non-ASCII filenames
 * bounding rsync with a timeout so a stalled transfer can't hang the tool
 * a multi-select grammar (ranges like `1-3`, lists like `1,3`)
 * UX improvements
-* ``--version` flag
+* `--version` flag
 
 Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
 
@@ -98,7 +97,6 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 ## Known limitations
 
-- **Non-ASCII filenames don't transfer yet.** Names containing non-ASCII bytes — accented characters, emoji, or the narrow no-break space in macOS screenshot names — are escaped in rsync's diff output, and `csync` doesn't yet round-trip the escaped name back to the transfer. The change is listed but the transfer fails. Fix targeted for the next release.
 - **Submodules' nested `.git` is not excluded.** Only the top-level `.git/` directory is held out of a sync. A repository containing submodules carries nested `.git` directories (or `.git` files) deeper in the tree, and those are still offered for transfer. If you sync a superproject, expect that metadata in the diff and deselect it.
 
 ## Development
