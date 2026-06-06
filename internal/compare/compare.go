@@ -151,6 +151,19 @@ func rsyncArgs(source, destination, excludeFrom string) []string {
 		// content hash of each candidate on both ends; acceptable for this tool's
 		// dev-sync use. See NOTES #18 for the experiment that settled this.
 		"--checksum",
+		// -8 (--8-bit-output) makes rsync emit the raw bytes of a non-ASCII path
+		// in its --itemize-changes output. By default rsync octal-escapes high-bit
+		// bytes (a UTF-8 name like café.txt prints as `\#303\#251`); parseActions
+		// would carry that escaped text through to the transfer's --files-from,
+		// which wants the literal bytes, so rsync looks for a file that doesn't
+		// exist and fails (exit 23) — breaking ANY accented/emoji/CJK name, and the
+		// macOS-screenshot narrow-no-break-space that surfaced it. The short form is
+		// used over --8-bit-output because openrsync (the Mac's rsync) lists only
+		// -8. Scope: -8 covers high-bit bytes only; rsync still escapes true control
+		// chars (newline/tab) regardless, which keeps the space/line parser safe but
+		// is why an embedded-newline name is a separate, harder problem. See NOTES
+		// #2 for the round-trip experiment that settled this.
+		"-8",
 	}
 	// --exclude-from drops gitignored paths from the comparison when the local
 	// side is a git work tree (empty otherwise). It's an option, so it precedes
