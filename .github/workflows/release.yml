@@ -83,7 +83,7 @@ jobs:
   # Tier 1 (Phase 1) pre-publish smoke: prove each native-runner artifact
   # actually executes on its target OS/arch and honors its no-argument contract
   # before the release goes public. Each leg downloads its own artifact from the
-  # draft release and runs scripts/smoke.sh against it. No Go toolchain — the
+  # draft release and runs _scripts/smoke.sh against it. No Go toolchain — the
   # smoke test runs the released binary, it does not build one.
   #
   # fail-fast: false so one platform's failure doesn't mask another's signal.
@@ -104,7 +104,7 @@ jobs:
     name: smoke ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
-      # Only scripts/smoke.sh is needed from the tree.
+      # Only _scripts/smoke.sh is needed from the tree.
       - uses: actions/checkout@v6
 
       # Download this leg's artifact from the DRAFT release by tag and unpack the
@@ -121,7 +121,7 @@ jobs:
           tar -xzf "$archive" -C smoke-bin
 
       - name: Smoke test
-        run: ./scripts/smoke.sh smoke-bin/csync
+        run: ./_scripts/smoke.sh smoke-bin/csync
 
   # Reveal the release only if every smoke leg passed. `needs: smoke` gates this
   # on the whole matrix succeeding; on any failure the release stays a draft

@@ -51,7 +51,7 @@ These were settled in design discussion and are treated as fixed for this spec:
 3. **Gating mechanism is draft-then-promote** (§7): GoReleaser publishes the release as a *draft* (invisible to users); smoke jobs run against the draft's assets; the release is flipped to non-draft only if every smoke job is green.
 4. **Trigger is the `v*` tag** (pre-publish, in `release.yml`), and the same work must be **drivable by hand** so a CI failure can be reproduced and investigated. This forces a script-first architecture (§7).
 5. **Tier 1 ships in two phases**, split along execution-host difficulty:
-   - **Phase 1 — native GitHub runners only:** linux/amd64 (`ubuntu-latest`) and darwin/arm64 (`macos-latest`). No Azure, no Rosetta, no new cloud credential. This phase proves the full draft → smoke → promote machinery and `scripts/smoke.sh` on the two hosts that run for free.
+   - **Phase 1 — native GitHub runners only:** linux/amd64 (`ubuntu-latest`) and darwin/arm64 (`macos-latest`). No Azure, no Rosetta, no new cloud credential. This phase proves the full draft → smoke → promote machinery and `_scripts/smoke.sh` on the two hosts that run for free.
    - **Phase 2 — the harder hosts:** darwin/amd64 (Rosetta on `macos-latest`) and linux/arm64 (ephemeral Azure arm64 VM). This phase adds only execution hosts to an already-proven gate.
 
 ## 6. Tier 1 — definition and execution-host matrix
@@ -86,18 +86,18 @@ Mirrors the pattern already used for the test-report dashboard: **the script is 
 
 ### 7.1 Scripts (the source of truth)
 
-- **`scripts/smoke.sh <path-to-csync-binary>`** — the assertion runner. Executes the given binary with no arguments and asserts the §6.1 contract (exit `2`, `usage:` on stderr). Prints a clear pass/fail line and exits non-zero on failure. Host-agnostic: it does not care whether the binary arrived via download, `scp`, or a local build. This is the entire Tier 1 behavior; a human runs `./scripts/smoke.sh ./csync` directly.
+- **`_scripts/smoke.sh <path-to-csync-binary>`** — the assertion runner. Executes the given binary with no arguments and asserts the §6.1 contract (exit `2`, `usage:` on stderr). Prints a clear pass/fail line and exits non-zero on failure. Host-agnostic: it does not care whether the binary arrived via download, `scp`, or a local build. This is the entire Tier 1 behavior; a human runs `./_scripts/smoke.sh ./csync` directly.
 
   *Teeth requirement (house testing rule):* `smoke.sh` must be verified against both a known-good binary (real `csync` → green) and a degenerate stand-in that violates the contract (e.g. `/bin/true`, which exits `0` and prints nothing → the script must go red). Confirm the failure is for the right reason before trusting the gate.
 
-- **`scripts/azure-smoke-vm.sh up|down`** — provisions / tears down the ephemeral arm64 VM and prints connection details (public IP, SSH user). Parameterized (resource-group name, region, VM size, SSH key path) so a human can stand the same environment up locally for debugging and tear it down when done.
+- **`_scripts/azure-smoke-vm.sh up|down`** — provisions / tears down the ephemeral arm64 VM and prints connection details (public IP, SSH user). Parameterized (resource-group name, region, VM size, SSH key path) so a human can stand the same environment up locally for debugging and tear it down when done.
 
 ### 7.2 Workflow wiring (`release.yml`)
 
 The release job is split so the smoke gate sits between build and publish:
 
 1. **Build (draft).** Set `release.draft: true` in `.goreleaser.yaml`. GoReleaser builds all four artifacts and creates the GitHub Release as a **draft** with assets attached — invisible to users. The existing release-notes extraction and pre-release-flag enforcement stay here, applied to the draft.
-2. **Smoke (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>.tar.gz'`), unpacks the `csync` binary, and runs `scripts/smoke.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or (Phase 2 only) by `scp`-then-SSH onto the Azure arm64 VM (`scripts/azure-smoke-vm.sh up`). In Phase 1 this is two jobs, both on native GitHub runners.
+2. **Smoke (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>.tar.gz'`), unpacks the `csync` binary, and runs `_scripts/smoke.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or (Phase 2 only) by `scp`-then-SSH onto the Azure arm64 VM (`_scripts/azure-smoke-vm.sh up`). In Phase 1 this is two jobs, both on native GitHub runners.
 3. **Promote (gated).** A final job that `needs` every smoke job. On success it flips the release live: `gh release edit <tag> --draft=false` (folded into the existing `gh release edit` enforcement step). If any smoke job failed, the release stays a draft and the workflow fails.
 
 Downloading from the draft release (rather than reusing GoReleaser's local `dist/`) means the bytes smoked are the bytes that promotion reveals — the upload itself is covered.
@@ -115,7 +115,7 @@ Phase 1 has no Azure dependency; this section applies only when Phase 2 adds the
 
 ### 7.4 Failure handling and manual replication
 
-A red smoke job (a) leaves the release unpublished as a draft, (b) on the Azure leg, leaves the VM up with printed connection details, and (c) is reproducible by hand: download the same artifact and run `./scripts/smoke.sh ./csync`, or stand up the VM with `./scripts/azure-smoke-vm.sh up` and repeat there. There is no CI-only state.
+A red smoke job (a) leaves the release unpublished as a draft, (b) on the Azure leg, leaves the VM up with printed connection details, and (c) is reproducible by hand: download the same artifact and run `./_scripts/smoke.sh ./csync`, or stand up the VM with `./_scripts/azure-smoke-vm.sh up` and repeat there. There is no CI-only state.
 
 ## 8. Tier 1 — cost and risk summary
 
