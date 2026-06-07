@@ -106,19 +106,62 @@ jobs:
           REPORT_LABEL: ${{ matrix.name }}
         run: ./scripts/test-report.sh
 
+  # Static security analysis. Kept out of the matrix: gosec analyzes source and
+  # is platform-independent, so it runs once rather than per-leg (unlike go vet,
+  # which is per-GOOS and stays in the matrix). Pinned to the same version and
+  # invocation as the lefthook pre-push hook (lefthook.yml) so the local gate and
+  # CI can't drift — CI is the authoritative backstop for when the local hook
+  # isn't installed or gets bypassed.
+  gosec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gosec
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -quiet ./...
+
+  # Formatting gate — the gofmt rule from CLAUDE.md. Like gosec it's
+  # platform-independent and runs once, and is the CI backstop for a local check
+  # that nothing currently enforces. `gofmt -l` lists files that aren't
+  # formatted; a non-empty list is the failure, and it's printed so the log names
+  # the offending files.
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
   # Single stable status check to require in branch protection. The matrix leg
   # names can change freely underneath this gate without breaking the required
-  # check. `needs.test.result` is the aggregate of every matrix leg — "success"
-  # only if all legs passed. `if: always()` makes the gate run even when a leg
-  # fails (a skipped required check would itself block the merge).
+  # check. `needs.*.result` aggregates the gating jobs — "success" only if the
+  # whole test matrix, gosec, and gofmt all passed. `if: always()` makes the gate
+  # run even when a dependency fails (a skipped required check would itself block
+  # the merge).
   ci-gate:
     name: ci-gate
-    needs: [test]
+    needs: [test, gosec, gofmt]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Require all matrix legs to have succeeded
+      - name: Require all gating jobs to have succeeded
         run: |
-          result="${{ needs.test.result }}"
-          echo "matrix aggregate result: $result"
-          [ "$result" = "success" ]
+          echo "test=${{ needs.test.result }} gosec=${{ needs.gosec.result }} gofmt=${{ needs.gofmt.result }}"
+          [ "${{ needs.test.result }}" = "success" ] && [ "${{ needs.gosec.result }}" = "success" ] && [ "${{ needs.gofmt.result }}" = "success" ]
