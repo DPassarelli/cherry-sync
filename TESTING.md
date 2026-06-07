@@ -83,7 +83,7 @@ Tests assert against csync's output, but they should not parse it inline in ever
 ## File organization
 
 ```
-features/*.feature              Gherkin specs — the behavior catalog
+_features/*.feature             Gherkin specs — the behavior catalog
 features_test.go                godog wiring and step definitions
 output_parser_test.go           parseOutput / ReportedOutput facade
 internal/<pkg>/*_test.go        Unit tests next to the code they cover
