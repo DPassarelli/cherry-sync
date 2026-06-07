@@ -5,12 +5,18 @@ on:
     tags:
       - 'v*'
 
-# GoReleaser needs to create the GitHub Release and upload assets.
+# build creates the GitHub Release and uploads assets (write); the smoke jobs
+# download those assets from the draft (read); promote flips the release live
+# (write). contents: write covers all three.
 permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  # Build every artifact and publish the GitHub Release as a DRAFT — invisible to
+  # users (release.draft: true in .goreleaser.yaml). Release notes and the
+  # pre-release flag are set here, on the draft. The release is only revealed by
+  # the promote job, and only after every smoke leg passes.
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -39,6 +45,7 @@ jobs:
           cat .release-notes.md
           test -s .release-notes.md || { echo "no CHANGELOG section for ${ver}"; exit 1; }
 
+      # Creates a DRAFT release with assets attached (release.draft: true).
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
@@ -50,9 +57,10 @@ jobs:
       # the v0.1.0 run published with the commit message as the body instead of
       # this file's contents — a discrepancy the run logs don't explain. Rather
       # than depend on goreleaser's body-setting being the final word, re-assert
-      # the body from the same .release-notes.md after the release is published.
-      # Same source of truth, deterministic outcome, and the diff is visible in
-      # this step's log if the two ever disagree again.
+      # the body from the same .release-notes.md. Same source of truth,
+      # deterministic outcome, and the diff is visible in this step's log if the
+      # two ever disagree again. This operates on the DRAFT — it does not reveal
+      # the release; promote does that after smoke passes.
       #
       # The same step pins the pre-release flag: anything in the 0.x series, or a
       # tag carrying a SemVer pre-release suffix (e.g. -rc1), is marked
@@ -71,3 +79,60 @@ jobs:
           gh release edit "${GITHUB_REF_NAME}" \
             --notes-file .release-notes.md \
             --prerelease="${prerelease}"
+
+  # Tier 1 (Phase 1) pre-publish smoke: prove each native-runner artifact
+  # actually executes on its target OS/arch and honors its no-argument contract
+  # before the release goes public. Each leg downloads its own artifact from the
+  # draft release and runs _scripts/smoke.sh against it. No Go toolchain — the
+  # smoke test runs the released binary, it does not build one.
+  #
+  # fail-fast: false so one platform's failure doesn't mask another's signal.
+  # Phase 2 will add darwin/amd64 (Rosetta) and linux/arm64 (an ephemeral Azure
+  # arm64 VM) as further matrix legs.
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux/amd64
+            runs-on: ubuntu-latest
+            pattern: cherry-sync_*_linux_amd64.tar.gz
+          - name: darwin/arm64
+            runs-on: macos-latest
+            pattern: cherry-sync_*_darwin_arm64.tar.gz
+    name: smoke ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      # Only _scripts/smoke.sh is needed from the tree.
+      - uses: actions/checkout@v6
+
+      # Download this leg's artifact from the DRAFT release by tag and unpack the
+      # csync binary. gh is preinstalled on GitHub-hosted runners.
+      - name: Download and unpack artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p smoke-bin
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern '${{ matrix.pattern }}' \
+            --dir smoke-bin
+          archive="$(find smoke-bin -name '*.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C smoke-bin
+
+      - name: Smoke test
+        run: ./_scripts/smoke.sh smoke-bin/csync
+
+  # Reveal the release only if every smoke leg passed. `needs: smoke` gates this
+  # on the whole matrix succeeding; on any failure the release stays a draft
+  # (invisible) for inspection and this job does not run.
+  promote:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "All smoke legs passed; publishing ${GITHUB_REF_NAME}"
+          gh release edit "${GITHUB_REF_NAME}" --draft=false
