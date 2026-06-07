@@ -107,10 +107,12 @@ func excludeFile(source, destination string) (string, int, bool, func(), error) 
 	if err != nil {
 		return "", 0, false, noop, fmt.Errorf("create exclude file: %w", err)
 	}
-	cleanup := func() { os.Remove(f.Name()) }
+	// Best-effort removal of the temp file; a failure (in the temp dir) isn't actionable.
+	cleanup := func() { _ = os.Remove(f.Name()) }
 	_, err = f.WriteString(strings.Join(patterns, "\n") + "\n")
 	if err != nil {
-		f.Close()
+		// Already returning the write error; the close error here is secondary, so discard it.
+		_ = f.Close()
 		cleanup()
 		return "", 0, false, noop, fmt.Errorf("write exclude file: %w", err)
 	}
