@@ -130,9 +130,13 @@ jobs:
     needs: smoke
     runs-on: ubuntu-latest
     steps:
+      # No actions/checkout here: this job only calls the GitHub API. gh infers
+      # the target repo from the local git remote, which a checkout-less job
+      # doesn't have ("fatal: not a git repository"), so name it explicitly with
+      # --repo "$GITHUB_REPOSITORY" instead of paying for a checkout.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "All smoke legs passed; publishing ${GITHUB_REF_NAME}"
-          gh release edit "${GITHUB_REF_NAME}" --draft=false
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
