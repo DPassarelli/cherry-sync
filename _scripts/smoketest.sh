@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — Tier 1 pre-publish smoke test for a single csync binary.
+# smoketest.sh — Tier 1 pre-publish smoketest for a single csync binary.
 #
 # Proves a built artifact is SOUND in the minimal sense: it executes on this
 # host's OS/arch and honors its documented no-argument contract. It does NOT
@@ -12,27 +12,27 @@
 # arguments, csync writes a line containing "usage:" to stderr and exits 2.
 #
 # Usage:
-#   smoke.sh <path-to-csync-binary>
+#   smoketest.sh <path-to-csync-binary>
 #
 # Exit status: 0 if the binary passes every check; 2 for misuse of this script;
-# 1 for a smoke failure. The script is deliberately self-contained — it depends
-# on nothing in the repository, so it can be copied to a bare host and run
-# there (Phase 2 scp's it onto an Azure VM).
+# 1 for a smoketest failure. The script is deliberately self-contained — it
+# depends on nothing in the repository, so it can be copied to a bare host and
+# run there (Phase 2 scp's it onto an Azure VM).
 set -euo pipefail
 
 # Argument handling. All input is untrusted: require exactly one operand and
 # confirm it names an executable file before running it.
 if [ "$#" -ne 1 ]; then
-  echo "usage: smoke.sh <path-to-csync-binary>" >&2
+  echo "usage: smoketest.sh <path-to-csync-binary>" >&2
   exit 2
 fi
 bin="$1"
 if [ ! -f "$bin" ]; then
-  echo "smoke.sh: binary not found: $bin" >&2
+  echo "smoketest.sh: binary not found: $bin" >&2
   exit 1
 fi
 if [ ! -x "$bin" ]; then
-  echo "smoke.sh: binary is not executable: $bin" >&2
+  echo "smoketest.sh: binary is not executable: $bin" >&2
   exit 1
 fi
 
@@ -66,7 +66,7 @@ if ! grep -qF 'usage:' "$err"; then
 fi
 
 if [ "$failures" -ne 0 ]; then
-  echo "SMOKE FAIL ($failures check(s) failed): $bin" >&2
+  echo "SMOKETEST FAIL ($failures check(s) failed): $bin" >&2
   exit 1
 fi
-echo "SMOKE PASS: $bin"
+echo "SMOKETEST PASS: $bin"
