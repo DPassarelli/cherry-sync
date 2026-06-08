@@ -113,8 +113,9 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 		return nil, nil
 	}
 	// A single 1-based index selects just that change from the displayed list.
-	// (Multi-select grammars like "1-3" or "1,3", and out-of-range handling,
-	// are separate not-yet-drilled scenarios in select-and-sync.feature.)
+	// An index outside 1..len falls through to the error below, rejected like any
+	// unrecognized response. (Multi-select grammars like "1-3" or "1,3" remain
+	// not-yet-drilled scenarios in select-and-sync.feature.)
 	n, convErr := strconv.Atoi(response)
 	if convErr == nil && n >= 1 && n <= len(actions) {
 		return []compare.Action{actions[n-1]}, nil

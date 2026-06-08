@@ -103,7 +103,6 @@ Feature: Select and sync files
     Then  csync should return a non-zero exit code
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: An out-of-range number is rejected like an unrecognized response
     # Sibling to "An unrecognized response is rejected": with a single change in
     # the list, the only valid pick is 1, so "2" names no row. It gets the same
