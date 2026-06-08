@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 (none)
 
+## [0.2.2-rc1] - 2026-06-07
+
+Dry run of smoke test.
+
 ## [0.2.1] - 2026-06-06
 
 ### Fixed
