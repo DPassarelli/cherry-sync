@@ -172,18 +172,25 @@ jobs:
           archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
           tar -xzf "$archive" -C smoketest-bin
 
-      # Generate a throwaway SSH key, provision the VM (open to just this
-      # runner's IP), copy the binary + smoketest.sh over, and run the smoketest
-      # on the VM. The VM is always torn down by the next step.
-      - name: Provision VM and smoketest over SSH
+      # Generate a throwaway SSH key and provision the VM (port 22 open only to
+      # this runner's IP). The up script publishes host/user as step outputs
+      # (via $GITHUB_OUTPUT), so a provisioning failure fails THIS step rather
+      # than surfacing later as a confusing SSH/DNS error.
+      - name: Provision the arm64 VM
+        id: provision
         run: |
           ssh-keygen -t ed25519 -N '' -f ./id
-          AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up | tee vm.out
-          host="$(sed -n 's/^host=//p' vm.out)"
-          user="$(sed -n 's/^user=//p' vm.out)"
+          AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up
+
+      # Copy the binary + smoketest.sh to the VM and run the smoketest over SSH.
+      - name: Smoketest over SSH
+        env:
+          VM_HOST: ${{ steps.provision.outputs.host }}
+          VM_USER: ${{ steps.provision.outputs.user }}
+        run: |
           scp -i ./id -o StrictHostKeyChecking=accept-new \
-            smoketest-bin/csync _scripts/smoketest.sh "${user}@${host}:."
-          ssh -i ./id -o StrictHostKeyChecking=accept-new "${user}@${host}" \
+            smoketest-bin/csync _scripts/smoketest.sh "${VM_USER}@${VM_HOST}:."
+          ssh -i ./id -o StrictHostKeyChecking=accept-new "${VM_USER}@${VM_HOST}" \
             'chmod +x ./csync && bash ./smoketest.sh ./csync'
 
       - name: Tear down VM
@@ -206,5 +213,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "All smoke test legs passed; publishing ${GITHUB_REF_NAME}"
+          echo "All smoketest legs passed; publishing ${GITHUB_REF_NAME}"
           gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false

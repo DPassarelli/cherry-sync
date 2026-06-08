@@ -130,13 +130,20 @@ case "${1:-}" in
   down)
     # Best-effort teardown: warn and continue so one missing resource can't
     # strand the others, and so an `if: always()` teardown step never fails the
-    # job. Deleting the VM reclaims the NIC and OS disk (delete-options); the
-    # public IP and NSG are deleted explicitly, after the NIC that referenced
-    # them is gone. Anything missed here is caught by the sweeper within an hour.
+    # job. Anything missed here is caught by the sweeper within the hour.
+    #
+    # Delete in dependency order: VM, then NIC, then the public IP and NSG the
+    # NIC referenced. The NIC is deleted EXPLICITLY rather than relying on the
+    # VM's --nic-delete-option: if `up` failed at `az vm create` (e.g. a quota
+    # error), the VM never existed but the NIC did, and an orphaned NIC blocks
+    # deletion of the public IP and NSG it holds. On the happy path the VM
+    # delete already reaped the NIC (and OS disk) via delete-options, so this NIC
+    # delete simply warns "not found" and moves on.
     warn_delete() {
       "$@" || echo "azure-smoketest-vm.sh: warning: '$*' failed (continuing)" >&2
     }
     warn_delete az vm delete --resource-group "$AZ_RG" --name "$vm" --yes
+    warn_delete az network nic delete --resource-group "$AZ_RG" --name "$nic"
     warn_delete az network public-ip delete --resource-group "$AZ_RG" --name "$pip"
     warn_delete az network nsg delete --resource-group "$AZ_RG" --name "$nsg"
     ;;
