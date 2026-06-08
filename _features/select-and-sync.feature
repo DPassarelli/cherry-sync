@@ -131,6 +131,23 @@ Feature: Select and sync files
     And   the file "src/main.go" should be identical between local and remote
     And   the file "src/parser.go" should still differ between local and remote
 
+  Scenario: A comma list selects exactly the named changes
+    # Unlike a hyphen span, a comma list picks only the rows named: "1,3" must
+    # select rows 1 and 3 and skip row 2 entirely. The skipped middle is what
+    # distinguishes the list "1,3" from the span "1-3". Row order follows the
+    # tree-order contract (see order-reported-actions.feature): top-level files
+    # before subdir entries, alphabetical within each, so the three staged
+    # changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1,3"
+    Then  the reported sync count should be 2
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+    And   the file "README.md" should still differ between local and remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file

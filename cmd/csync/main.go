@@ -121,15 +121,34 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	}
 	// A hyphen range like "1-3" selects an inclusive span of rows. A reversed
 	// (3-1), out-of-range, or otherwise malformed range fails one of the guards
-	// and falls through to the error below. (The fuller comma-list grammar — and
-	// its dedup and explicit malformed-input rejection — are drilled in by later
-	// scenarios in select-and-sync.feature.)
+	// and falls through to the error below.
 	lo, hi, found := strings.Cut(response, "-")
 	if found {
 		loN, errLo := strconv.Atoi(lo)
 		hiN, errHi := strconv.Atoi(hi)
 		if errLo == nil && errHi == nil && loN >= 1 && loN <= hiN && hiN <= len(actions) {
 			return append([]compare.Action(nil), actions[loN-1:hiN]...), nil
+		}
+	}
+	// A comma list like "1,3" selects exactly the rows named. Each member must be
+	// a single 1-based index; if any member is out of range or not a bare index
+	// (e.g. a range member as in "1-2,4"), the whole response is rejected. The
+	// combined range-and-list grammar, dedup of overlapping members, and explicit
+	// malformed-input rejection are drilled in by later scenarios.
+	if strings.Contains(response, ",") {
+		parts := strings.Split(response, ",")
+		selected := make([]compare.Action, 0, len(parts))
+		valid := true
+		for _, p := range parts {
+			m, err := strconv.Atoi(p)
+			if err != nil || m < 1 || m > len(actions) {
+				valid = false
+				break
+			}
+			selected = append(selected, actions[m-1])
+		}
+		if valid {
+			return selected, nil
 		}
 	}
 	return nil, fmt.Errorf("unrecognized selection: %q", response)
