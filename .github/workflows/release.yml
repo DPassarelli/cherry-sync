@@ -136,11 +136,66 @@ jobs:
       - name: Smoketest
         run: ./_scripts/smoketest.sh smoketest-bin/csync
 
-  # Reveal the release only if every smoketest leg passed. `needs: smoketest` gates this
-  # on the whole matrix succeeding; on any failure the release stays a draft
-  # (invisible) for inspection and this job does not run.
+  # Tier 1 (Phase 2) linux/arm64 leg. GitHub has no native arm64 Linux runner,
+  # so this job stands up an ephemeral Azure arm64 VM, runs the released binary
+  # on it over SSH, and tears it down — the same no-argument contract the matrix
+  # legs above assert, just on a host we provision. It runs in the `release`
+  # Environment so the Azure OIDC subject is the stable `…:environment:release`
+  # (a per-tag subject would be unworkable). No client secret is stored;
+  # azure/login authenticates via OIDC. Scripts do the work so the same steps
+  # are reproducible by hand (see SMOKE-TEST.md §7.3).
+  smoketest-linux-arm64:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write     # mint the OIDC token for azure/login
+      contents: write     # gh release download from the draft release
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download and unpack artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p smoketest-bin
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern 'cherry-sync_*_linux_arm64.tar.gz' \
+            --dir smoketest-bin
+          archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C smoketest-bin
+
+      # Generate a throwaway SSH key, provision the VM (open to just this
+      # runner's IP), copy the binary + smoketest.sh over, and run the smoketest
+      # on the VM. The VM is always torn down by the next step.
+      - name: Provision VM and smoketest over SSH
+        run: |
+          ssh-keygen -t ed25519 -N '' -f ./id
+          AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up | tee vm.out
+          host="$(sed -n 's/^host=//p' vm.out)"
+          user="$(sed -n 's/^user=//p' vm.out)"
+          scp -i ./id -o StrictHostKeyChecking=accept-new \
+            smoketest-bin/csync _scripts/smoketest.sh "${user}@${host}:."
+          ssh -i ./id -o StrictHostKeyChecking=accept-new "${user}@${host}" \
+            'chmod +x ./csync && bash ./smoketest.sh ./csync'
+
+      - name: Tear down VM
+        if: always()
+        run: _scripts/azure-smoketest-vm.sh down
+
+  # Reveal the release only if every smoketest leg passed — the native matrix
+  # AND the Azure arm64 leg. `needs` gates this on all of them succeeding; on any
+  # failure the release stays a draft (invisible) for inspection and this job
+  # does not run.
   promote:
-    needs: smoketest
+    needs: [smoketest, smoketest-linux-arm64]
     runs-on: ubuntu-latest
     steps:
       # No actions/checkout here: this job only calls the GitHub API. gh infers

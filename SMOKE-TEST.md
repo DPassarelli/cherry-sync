@@ -1,6 +1,6 @@
 # Smoke Testing for Binaries Before Publishing — Design Spec
 
-Status: **Tier 1** (artifact-execution gate) is specified in full and partly built — Phase 1 (both native legs) and the darwin/amd64 (Rosetta) leg are implemented and dry-run-validated through promote; the linux/arm64 (Azure) leg is now fully designed in §7.3 but not yet built, pending the one-time Azure setup it requires (§7.3.2). **Tier 2** (real-transfer gate) remains a sketch (§9) so the architecture is coherent end-to-end, committed to detail in a later pass.
+Status: **Tier 1** (artifact-execution gate) is fully built — Phase 1 (both native legs) and the darwin/amd64 (Rosetta) leg are implemented and dry-run-validated through promote; the linux/arm64 (Azure) leg is now implemented too (§7.3) and awaits its first real tag-triggered run, which needs the one-time Azure setup in §7.3.2 completed under the `csync-smoketest` names. **Tier 2** (real-transfer gate) remains a sketch (§9) so the architecture is coherent end-to-end, committed to detail in a later pass.
 
 This document is self-contained on purpose — it can be reviewed in isolation without reading the rest of the project's design notes.
 
@@ -80,7 +80,7 @@ The artifact under test is the *local* csync. For Tier 1 it only needs a host th
 
 **Phase 1** covers the two artifacts that run natively on GitHub-hosted runners — no Azure, no Rosetta, no cloud credential. **Phase 2** adds the two harder hosts: darwin/amd64 (Rosetta) and linux/arm64 (the only artifact needing Azure, and only to *execute* the binary — no Go toolchain, no rsync peer). The Phase 2 cloud footprint is **one short-lived arm64 VM, alive for minutes.**
 
-**Implementation status:** Phase 1 (both native legs) and the darwin/amd64 (Rosetta) leg are implemented in `release.yml`; the latter awaits green confirmation on a real runner (§10). The linux/arm64 (Azure) leg is fully designed in §7.3 but not yet built — it depends on the one-time Azure setup in §7.3.2.
+**Implementation status:** all four legs are implemented in `release.yml`. Phase 1 (both native legs) and darwin/amd64 (Rosetta) are dry-run-validated green. The linux/arm64 (Azure) leg (`smoketest-linux-arm64` job + `_scripts/azure-smoketest-vm.sh`) is implemented and awaits its first real tag-triggered run, which requires the one-time Azure setup in §7.3.2 done under the `csync-smoketest` names.
 
 ## 7. Tier 1 — architecture (scripts + workflow)
 
@@ -194,8 +194,8 @@ Self-contained (no repo dependencies, like `smoketest.sh`) so a human can drive 
 | `AZ_RG` | the stable resource group to work in | `rg-csync-smoketest-${AZ_REGION_ABBR}` |
 | `AZ_REGION_ABBR` | CAF region abbreviation, for resource names | (decision — §10) |
 | `AZ_LOCATION` | region | (decision — §10) |
-| `AZ_VM_SIZE` | arm64 VM size | (decision — §10) |
-| `AZ_IMAGE` | arm64 Ubuntu image URN | (decision — §10) |
+| `AZ_VM_SIZE` | arm64 VM size | `Standard_B2pts_v2` |
+| `AZ_IMAGE` | arm64 Ubuntu image URN | `Canonical:ubuntu-24_04-lts:server-arm64:latest` |
 | `AZ_INSTANCE` | per-run instance token (name suffix) | `${GITHUB_RUN_ID:-local}` |
 | `AZ_ADMIN` | admin username | `csync` |
 | `AZ_SSH_PUBKEY` | path to the public key to inject | (required) |
@@ -210,42 +210,14 @@ The ephemeral resource names are derived once from `AZ_REGION_ABBR` and `AZ_INST
 
 #### 7.3.4 The smoketest job (separate job in `release.yml`)
 
-```yaml
-smoketest-linux-arm64:
-  needs: build
-  runs-on: ubuntu-latest
-  environment: release          # stable OIDC subject + optional approval gate
-  permissions:
-    id-token: write             # mint the OIDC token for azure/login
-    contents: write             # gh release download from the draft
-  steps:
-    - uses: actions/checkout@v6
-    - uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZURE_CLIENT_ID }}
-        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-    - name: Download and unpack artifact   # same shape as the other legs
-      env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
-      run: |
-        mkdir -p smoketest-bin
-        gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
-          --pattern 'cherry-sync_*_linux_arm64.tar.gz' --dir smoketest-bin
-        tar -xzf "$(find smoketest-bin -name '*.tar.gz' -print -quit)" -C smoketest-bin
-    - name: Provision, smoketest, and tear down
-      run: |
-        ssh-keygen -t ed25519 -N '' -f ./id   # ephemeral, per-run keypair
-        eval "$(AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up)"  # sets host/user
-        scp -i ./id -o StrictHostKeyChecking=accept-new \
-          smoketest-bin/csync _scripts/smoketest.sh "${user}@${host}:."
-        ssh -i ./id -o StrictHostKeyChecking=accept-new "${user}@${host}" \
-          'bash smoketest.sh ./csync'
-    - name: Tear down
-      if: always()                 # see §7.3.5 — Tier 1 always deletes
-      run: _scripts/azure-smoketest-vm.sh down
-```
+Implemented as the `smoketest-linux-arm64` job in `.github/workflows/release.yml` (see there for the exact YAML, kept single-sourced rather than duplicated here). Its shape:
 
-`promote` must then gate on this job too: `needs: [smoketest, smoketest-linux-arm64]`. (Sketch above — exact step boundaries firmed up at implementation; the teardown likely splits from the provision step so it runs even if the smoketest command fails.)
+- `needs: build`, `runs-on: ubuntu-latest`, `environment: release` (the stable OIDC subject), and job-level `permissions: { id-token: write, contents: write }` — the OIDC token for `azure/login`, and draft-release download.
+- **Steps:** checkout → `azure/login@v2` (OIDC, no stored secret) → download + unpack the `cherry-sync_*_linux_arm64.tar.gz` artifact from the draft → *provision + smoketest* → *tear down*.
+- The **provision + smoketest** step generates an ephemeral ed25519 keypair, runs `_scripts/azure-smoketest-vm.sh up` (capturing `host=`/`user=` from its stdout), `scp`s the binary and `smoketest.sh` to the VM, and runs the smoketest over SSH.
+- The **tear-down** step is separate and `if: always()`, so the VM is deleted even when the smoketest step fails (§7.3.5) — it just calls `_scripts/azure-smoketest-vm.sh down`, which reconstructs the same resource names from `GITHUB_RUN_ID`.
+
+`promote` gates on this job alongside the matrix: `needs: [smoketest, smoketest-linux-arm64]`.
 
 #### 7.3.5 Teardown — for Tier 1, always delete
 
@@ -258,7 +230,7 @@ So Tier 1 tears down unconditionally (`if: always()`) — `down` deletes the run
 
 #### 7.3.6 Sweeper — independent backstop
 
-A separate scheduled workflow (`.github/workflows/azure-smoketest-sweep.yml`, daily `cron`) logs in with the same OIDC identity and deletes any resource **tagged `lifecycle=ephemeral`** whose `created` tag is older than a threshold (e.g. 6h — comfortably longer than a run, short enough to bound cost). Keying on `lifecycle=ephemeral` means it reaps only orphaned per-run resources (VM, disk, NIC, public IP, NSG) and never the stable RG/vnet/subnet (tagged `lifecycle=persistent`). Logic lives in `_scripts/azure-sweep.sh` (list within the RG by tag + age, delete each), so it's runnable by hand too. This catches leaks the inline teardown can't — a job cancelled mid-provision, a runner that died. An Azure **budget alert** on the subscription is a further, out-of-band net.
+A separate scheduled workflow (`.github/workflows/azure-smoketest-sweep.yml`, **hourly** `cron`) logs in with the same OIDC identity and deletes any resource **tagged `lifecycle=ephemeral`** whose `created` tag is older than the threshold (1h — comfortably longer than a run, short enough to bound cost). The cadence is hourly rather than daily on purpose: a 1h age threshold only bounds cost if the sweep runs about that often, otherwise an orphan from a crashed run could live until the next daily pass. Keying on `lifecycle=ephemeral` means it reaps only orphaned per-run resources (VM, disk, NIC, public IP, NSG) and never the stable RG/vnet/subnet (tagged `lifecycle=persistent`). Logic lives in `_scripts/azure-smoketest-sweep.sh` (list within the RG by type, tag, and age; delete each in dependency order), with a `--dry-run` mode to list-without-deleting so the age logic can be eyeballed by hand. This catches leaks the inline teardown can't — a job cancelled mid-provision, a runner that died. An Azure **budget alert** on the subscription is a further, out-of-band net.
 
 #### 7.3.7 Manual drive
 
@@ -304,11 +276,11 @@ Phase 2 — darwin/amd64:
 
 - **Rosetta on `macos-latest`:** the leg is implemented with an unconditional `softwareupdate --install-rosetta` step; confirm on a real rc run that it goes green (whether Rosetta is preinstalled or the install step suffices).
 
-Phase 2 — linux/arm64 (Azure), to settle before building §7.3:
+Phase 2 — linux/arm64 (Azure), all resolved; the leg is built (§7.3). Recorded here for provenance:
 
 - **Region** (`AZ_LOCATION` + `AZ_REGION_ABBR`) — *resolved:* `eastus`/`eus`. The stable RG and vnet/subnet are already provisioned there.
-- **VM size** (`AZ_VM_SIZE`) — cheapest arm64 that boots quickly; a burstable like `Standard_B2pts_v2` is the likely pick.
-- **Image** (`AZ_IMAGE`) — an arm64 Ubuntu URN that ships an SSH server (e.g. a `Canonical … ubuntu-24_04-lts … arm64` SKU); pin the exact URN.
+- **VM size** (`AZ_VM_SIZE`) — *resolved:* `Standard_B2pts_v2` (cheap arm64 burstable).
+- **Image** (`AZ_IMAGE`) — *resolved:* `Canonical:ubuntu-24_04-lts:server-arm64:latest`. Verify the URN resolves in `eastus` (`az vm image show --urn …`) before the first run; `:latest` floats to the newest patch, which is fine for a throwaway VM.
 - **Role scope** — *resolved:* Contributor scoped to a single dedicated resource group, `rg-csync-smoketest-<region>` (no spare subscription exists; RG scope is the least-privilege boundary — §7.3.1). A custom role omitting RG self-delete remains an optional tightening.
-- **Environment** — confirm the `release` GitHub Environment + the federated subject `repo:…:environment:release` authenticates on a *tag-triggered* run; decide whether to require a reviewer on it.
-- **Sweeper threshold** — the max RG age before the scheduled sweeper deletes (proposed 6h).
+- **Environment** — *resolved:* use the `release` GitHub Environment (required for the stable federated subject `repo:…:environment:release`), **no required reviewer**. The federation subject restriction + RG-scoped Contributor + 1h sweeper already bound the risk, so a manual approval gate would only add friction to an otherwise-unattended tag-triggered release. (A reviewer can be added later if a manual "approve the spend" checkpoint is ever wanted.) Still to confirm on the first real run: that the subject authenticates on a *tag-triggered* job running in the environment.
+- **Sweeper threshold** — *resolved:* 1h (comfortably longer than a run, short enough to bound cost).
