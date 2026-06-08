@@ -6,11 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-(none)
+### Added
 
-## [0.2.2-rc1] - 2026-06-07
-
-Dry run of smoke test.
+- The selection prompt now accepts a hyphen range like `1-3` to pick an inclusive span of changes in one response, instead of only a single number. The range is bounded to the listed changes; a reversed or out-of-range range is rejected like any other unrecognized entry.
 
 ## [0.2.1] - 2026-06-06
 

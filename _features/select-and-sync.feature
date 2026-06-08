@@ -112,6 +112,25 @@ Feature: Select and sync files
     Then  csync should return a non-zero exit code
     And   the file "README.md" should still differ between local and remote
 
+  Scenario: A hyphen range selects an inclusive span of changes
+    # The hyphen fills in the span: "1-3" must select rows 1, 2 AND 3 — not just
+    # the two endpoints, which is what the comma list "1,3" would mean. A fourth
+    # change sits at row 4 as the upper bound; it must stay unsynced, proving the
+    # range is bounded and stops at 3. Row order follows the tree-order contract
+    # (see order-reported-actions.feature): top-level files before subdir entries,
+    # alphabetical within each, so the four staged changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+    And   the file "src/parser.go" should still differ between local and remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file

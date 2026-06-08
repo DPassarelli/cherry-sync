@@ -114,11 +114,23 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	}
 	// A single 1-based index selects just that change from the displayed list.
 	// An index outside 1..len falls through to the error below, rejected like any
-	// unrecognized response. (Multi-select grammars like "1-3" or "1,3" remain
-	// not-yet-drilled scenarios in select-and-sync.feature.)
+	// unrecognized response.
 	n, convErr := strconv.Atoi(response)
 	if convErr == nil && n >= 1 && n <= len(actions) {
 		return []compare.Action{actions[n-1]}, nil
+	}
+	// A hyphen range like "1-3" selects an inclusive span of rows. A reversed
+	// (3-1), out-of-range, or otherwise malformed range fails one of the guards
+	// and falls through to the error below. (The fuller comma-list grammar — and
+	// its dedup and explicit malformed-input rejection — are drilled in by later
+	// scenarios in select-and-sync.feature.)
+	lo, hi, found := strings.Cut(response, "-")
+	if found {
+		loN, errLo := strconv.Atoi(lo)
+		hiN, errHi := strconv.Atoi(hi)
+		if errLo == nil && errHi == nil && loN >= 1 && loN <= hiN && hiN <= len(actions) {
+			return append([]compare.Action(nil), actions[loN-1:hiN]...), nil
+		}
 	}
 	return nil, fmt.Errorf("unrecognized selection: %q", response)
 }
