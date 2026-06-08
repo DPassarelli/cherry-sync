@@ -148,6 +148,40 @@ Feature: Select and sync files
     And   the file "src/main.go" should be identical between local and remote
     And   the file "README.md" should still differ between local and remote
 
+  Scenario: A combined range and list selects the span plus the named change
+    # The two grammars compose in one response: "1-2,4" selects the span 1-2 and
+    # the single member 4, while row 3 — between the span's end and member 4 —
+    # stays unsynced, proving the gap is skipped. Row order follows the tree-order
+    # contract (see order-reported-actions.feature): top-level files before subdir
+    # entries, alphabetical within each, so the four staged changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-2,4"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/parser.go" should be identical between local and remote
+    And   the file "src/main.go" should still differ between local and remote
+
+  Scenario: Overlapping members are synced once, not twice
+    # A row named by more than one member — here row 2, covered by both the span
+    # "1-3" and the single "2" — must be selected once, so the reported count is
+    # the number of distinct changes (3), not the number of members written (4).
+    # Row order follows the tree-order contract (see order-reported-actions.feature):
+    # top-level files before subdir entries, alphabetical within each:
+    #   1. LICENSE   2. README.md   3. src/main.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3,2"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file
