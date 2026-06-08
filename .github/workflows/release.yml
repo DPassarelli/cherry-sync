@@ -206,5 +206,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "All smoketest legs passed; publishing ${GITHUB_REF_NAME}"
+          echo "All smoke test legs passed; publishing ${GITHUB_REF_NAME}"
           gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
