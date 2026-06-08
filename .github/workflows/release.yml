@@ -87,8 +87,9 @@ jobs:
   # smoke test runs the released binary, it does not build one.
   #
   # fail-fast: false so one platform's failure doesn't mask another's signal.
-  # Phase 2 will add darwin/amd64 (Rosetta) and linux/arm64 (an ephemeral Azure
-  # arm64 VM) as further matrix legs.
+  # Phase 2 adds darwin/amd64 (run via Rosetta on the Apple-silicon runner). The
+  # remaining linux/arm64 leg needs an ephemeral Azure arm64 VM and lands once
+  # that infrastructure exists.
   smoke:
     needs: build
     strategy:
@@ -101,11 +102,23 @@ jobs:
           - name: darwin/arm64
             runs-on: macos-latest
             pattern: cherry-sync_*_darwin_arm64.tar.gz
+          - name: darwin/amd64
+            runs-on: macos-latest
+            pattern: cherry-sync_*_darwin_amd64.tar.gz
+            rosetta: true
     name: smoke ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
       # Only _scripts/smoke.sh is needed from the tree.
       - uses: actions/checkout@v6
+
+      # darwin/amd64 runs on an Apple-silicon runner, so executing the x86_64
+      # binary needs Rosetta 2 (macOS invokes it transparently on exec once it's
+      # installed). The runner image may or may not ship it, so ensure it here;
+      # softwareupdate is a no-op when Rosetta is already present.
+      - name: Ensure Rosetta 2
+        if: ${{ matrix.rosetta }}
+        run: softwareupdate --install-rosetta --agree-to-license
 
       # Download this leg's artifact from the DRAFT release by tag and unpack the
       # csync binary. gh is preinstalled on GitHub-hosted runners.
@@ -130,9 +143,13 @@ jobs:
     needs: smoke
     runs-on: ubuntu-latest
     steps:
+      # No actions/checkout here: this job only calls the GitHub API. gh infers
+      # the target repo from the local git remote, which a checkout-less job
+      # doesn't have ("fatal: not a git repository"), so name it explicitly with
+      # --repo "$GITHUB_REPOSITORY" instead of paying for a checkout.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "All smoke legs passed; publishing ${GITHUB_REF_NAME}"
-          gh release edit "${GITHUB_REF_NAME}" --draft=false
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
