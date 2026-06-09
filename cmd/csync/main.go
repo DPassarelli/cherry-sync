@@ -1,3 +1,7 @@
+// Command csync is cherry-sync's CLI: it compares a source and destination with
+// rsync, prints the changes rsync would make, asks which to sync, and transfers
+// the chosen files. It is the thin orchestration layer over the internal
+// packages (cli, compare, selection, transfer) that do the work.
 package main
 
 import (

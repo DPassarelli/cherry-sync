@@ -49,6 +49,7 @@ See [STYLE.md](STYLE.md) for the rationale, scope, and worked examples behind ea
 - **No assignment inside an `if` condition.** Lift the init statement onto its own line above the `if`. (`for` loops and type switches keep their init — see STYLE.md for the exact scope.)
 - **Doc-comment every top-level declaration** — `type`, `var`, `const`, `func`, exported or not.
 - **Start each doc comment with the identifier name, then an active verb** (`Run invokes…`); data types may use "X is a…" / "holds…" instead.
+- **Head every production `.go` file with a purpose comment.** Exactly one file per package carries the `// Package X …` doc (directly above `package`); every other file opens with a blank-line-separated comment naming what that file holds. `main` packages use `// Command <name> …`. Test files are exempt. (See STYLE.md for the Go mechanics.)
 
 ## Security
 
