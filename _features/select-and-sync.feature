@@ -103,7 +103,6 @@ Feature: Select and sync files
     Then  csync should return a non-zero exit code
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: An out-of-range number is rejected like an unrecognized response
     # Sibling to "An unrecognized response is rejected": with a single change in
     # the list, the only valid pick is 1, so "2" names no row. It gets the same
@@ -112,6 +111,121 @@ Feature: Select and sync files
     When  I run "csync ./project user@host:/project" and respond with "2"
     Then  csync should return a non-zero exit code
     And   the file "README.md" should still differ between local and remote
+
+  Scenario: A hyphen range selects an inclusive span of changes
+    # The hyphen fills in the span: "1-3" must select rows 1, 2 AND 3 — not just
+    # the two endpoints, which is what the comma list "1,3" would mean. A fourth
+    # change sits at row 4 as the upper bound; it must stay unsynced, proving the
+    # range is bounded and stops at 3. Row order follows the tree-order contract
+    # (see order-reported-actions.feature): top-level files before subdir entries,
+    # alphabetical within each, so the four staged changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+    And   the file "src/parser.go" should still differ between local and remote
+
+  Scenario: A comma list selects exactly the named changes
+    # Unlike a hyphen span, a comma list picks only the rows named: "1,3" must
+    # select rows 1 and 3 and skip row 2 entirely. The skipped middle is what
+    # distinguishes the list "1,3" from the span "1-3". Row order follows the
+    # tree-order contract (see order-reported-actions.feature): top-level files
+    # before subdir entries, alphabetical within each, so the three staged
+    # changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1,3"
+    Then  the reported sync count should be 2
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+    And   the file "README.md" should still differ between local and remote
+
+  Scenario: A combined range and list selects the span plus the named change
+    # The two grammars compose in one response: "1-2,4" selects the span 1-2 and
+    # the single member 4, while row 3 — between the span's end and member 4 —
+    # stays unsynced, proving the gap is skipped. Row order follows the tree-order
+    # contract (see order-reported-actions.feature): top-level files before subdir
+    # entries, alphabetical within each, so the four staged changes number:
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-2,4"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/parser.go" should be identical between local and remote
+    And   the file "src/main.go" should still differ between local and remote
+
+  Scenario: Overlapping members are synced once, not twice
+    # A row named by more than one member — here row 2, covered by both the span
+    # "1-3" and the single "2" — must be selected once, so the reported count is
+    # the number of distinct changes (3), not the number of members written (4).
+    # Row order follows the tree-order contract (see order-reported-actions.feature):
+    # top-level files before subdir entries, alphabetical within each:
+    #   1. LICENSE   2. README.md   3. src/main.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3,2"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/main.go" should be identical between local and remote
+
+  Scenario: An out-of-range member rejects the whole selection
+    # When any member names a row past the end of the list, the entire response is
+    # rejected — not clamped to the valid rows. With two changes, "1-3" reaches
+    # past row 2, so nothing transfers and csync exits non-zero, like an
+    # unrecognized response. Asserting NEITHER file syncs rules out a partial
+    # selection of rows 1-2.
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3"
+    Then  csync should return a non-zero exit code
+    And   the file "LICENSE" should still differ between local and remote
+    And   the file "README.md" should still differ between local and remote
+
+  Scenario: A reversed range is rejected
+    # A range whose endpoints are both in bounds but descend ("3-1") is malformed,
+    # not a backwards span — it is rejected like any unrecognized response rather
+    # than silently reordered to "1-3". Both endpoints name valid rows here, so the
+    # rejection isolates the reversal itself, not an out-of-range bound.
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "3-1"
+    Then  csync should return a non-zero exit code
+    And   the file "LICENSE" should still differ between local and remote
+    And   the file "README.md" should still differ between local and remote
+    And   the file "src/main.go" should still differ between local and remote
+
+  Scenario: Whitespace around members and range operands is ignored
+    # Spaces inside a selection — after a comma, or around a hyphen — are
+    # tolerated, so "1 - 2, 4" reads the same as "1-2,4": rows 1, 2, and 4, with
+    # row 3 left unsynced. (Leading and trailing whitespace on the whole response
+    # is already trimmed; this covers the whitespace between members.) Row order
+    # follows the tree-order contract (see order-reported-actions.feature):
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1 - 2, 4"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/parser.go" should be identical between local and remote
+    And   the file "src/main.go" should still differ between local and remote
 
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
@@ -144,10 +258,6 @@ Feature: Select and sync files
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - Range selection: a response like "1-3" or "1,3" selects multiple files by
-  #   number. Decide the grammar (comma list, hyphen ranges, both) before
-  #   drilling in.
   #
   # - Non-interactive escape hatch: a future --all/-y flag skips the prompt and
   #   syncs everything. Tied to the tabled flag-parsing work; out of MVP scope.
