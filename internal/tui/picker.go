@@ -30,6 +30,23 @@ func newModel(actions []compare.Action) pickerModel {
 	}
 }
 
+// RunPicker shows the interactive picker over actions and returns the actions the
+// user chose to sync. Cancelling (Ctrl-C/Esc/q) — or confirming with nothing
+// checked — returns no actions; both mean "sync nothing". It drives a Bubble Tea
+// program and so needs a terminal: main selects it only when stdin and stdout are
+// TTYs.
+func RunPicker(actions []compare.Action) ([]compare.Action, error) {
+	final, err := tea.NewProgram(newModel(actions)).Run()
+	if err != nil {
+		return nil, err
+	}
+	m, ok := final.(pickerModel)
+	if !ok || !m.accepted {
+		return nil, nil
+	}
+	return m.sel.Selected(), nil
+}
+
 // Init is part of tea.Model; the picker needs no startup command.
 func (m pickerModel) Init() tea.Cmd {
 	return nil
