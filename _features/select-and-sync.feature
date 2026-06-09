@@ -209,6 +209,24 @@ Feature: Select and sync files
     And   the file "README.md" should still differ between local and remote
     And   the file "src/main.go" should still differ between local and remote
 
+  Scenario: Whitespace around members and range operands is ignored
+    # Spaces inside a selection — after a comma, or around a hyphen — are
+    # tolerated, so "1 - 2, 4" reads the same as "1-2,4": rows 1, 2, and 4, with
+    # row 3 left unsynced. (Leading and trailing whitespace on the whole response
+    # is already trimmed; this covers the whitespace between members.) Row order
+    # follows the tree-order contract (see order-reported-actions.feature):
+    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    And   that the file "src/parser.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1 - 2, 4"
+    Then  the reported sync count should be 3
+    And   the file "LICENSE" should be identical between local and remote
+    And   the file "README.md" should be identical between local and remote
+    And   the file "src/parser.go" should be identical between local and remote
+    And   the file "src/main.go" should still differ between local and remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file

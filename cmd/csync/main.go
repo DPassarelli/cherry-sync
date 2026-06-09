@@ -130,10 +130,14 @@ func selectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 		}
 	}
 	for member := range strings.SplitSeq(response, ",") {
+		// Tolerate whitespace between members and around a range's operands, so
+		// "1 - 2, 4" reads the same as "1-2,4". (The whole response is already
+		// trimmed above; this handles the spaces a user leaves inside the list.)
+		member = strings.TrimSpace(member)
 		lo, hi, isRange := strings.Cut(member, "-")
 		if isRange {
-			loN, errLo := strconv.Atoi(lo)
-			hiN, errHi := strconv.Atoi(hi)
+			loN, errLo := strconv.Atoi(strings.TrimSpace(lo))
+			hiN, errHi := strconv.Atoi(strings.TrimSpace(hi))
 			if errLo != nil || errHi != nil || loN < 1 || loN > hiN || hiN > len(actions) {
 				return nil, fmt.Errorf("unrecognized selection: %q", response)
 			}
