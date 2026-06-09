@@ -182,6 +182,33 @@ Feature: Select and sync files
     And   the file "README.md" should be identical between local and remote
     And   the file "src/main.go" should be identical between local and remote
 
+  Scenario: An out-of-range member rejects the whole selection
+    # When any member names a row past the end of the list, the entire response is
+    # rejected — not clamped to the valid rows. With two changes, "1-3" reaches
+    # past row 2, so nothing transfers and csync exits non-zero, like an
+    # unrecognized response. Asserting NEITHER file syncs rules out a partial
+    # selection of rows 1-2.
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "1-3"
+    Then  csync should return a non-zero exit code
+    And   the file "LICENSE" should still differ between local and remote
+    And   the file "README.md" should still differ between local and remote
+
+  Scenario: A reversed range is rejected
+    # A range whose endpoints are both in bounds but descend ("3-1") is malformed,
+    # not a backwards span — it is rejected like any unrecognized response rather
+    # than silently reordered to "1-3". Both endpoints name valid rows here, so the
+    # rejection isolates the reversal itself, not an out-of-range bound.
+    Given that the file "LICENSE" has been changed locally
+    And   that the file "README.md" has been changed locally
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "3-1"
+    Then  csync should return a non-zero exit code
+    And   the file "LICENSE" should still differ between local and remote
+    And   the file "README.md" should still differ between local and remote
+    And   the file "src/main.go" should still differ between local and remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file
@@ -213,10 +240,6 @@ Feature: Select and sync files
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - Range selection: a response like "1-3" or "1,3" selects multiple files by
-  #   number. Decide the grammar (comma list, hyphen ranges, both) before
-  #   drilling in.
   #
   # - Non-interactive escape hatch: a future --all/-y flag skips the prompt and
   #   syncs everything. Tied to the tabled flag-parsing work; out of MVP scope.
