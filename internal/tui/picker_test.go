@@ -132,7 +132,8 @@ func TestUpdate_A_DeselectsAllWhenAllChecked(t *testing.T) {
 
 	m = applyKey(m, runeKey('a'))
 
-	if n := len(m.sel.Selected()); n != 0 {
+	n := len(m.sel.Selected())
+	if n != 0 {
 		t.Errorf("Selected = %d rows, want 0", n)
 	}
 }
@@ -144,7 +145,8 @@ func TestUpdate_A_SelectsAllWhenNotAllChecked(t *testing.T) {
 
 	m = applyKey(m, runeKey('a'))
 
-	if n := len(m.sel.Selected()); n != len(sampleActions()) {
+	n := len(m.sel.Selected())
+	if n != len(sampleActions()) {
 		t.Errorf("Selected = %d rows, want %d", n, len(sampleActions()))
 	}
 }

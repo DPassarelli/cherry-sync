@@ -156,3 +156,32 @@ func TestSelection_IsChecked_OutOfRangeIsFalse(t *testing.T) {
 		t.Errorf("out-of-range IsChecked returned true, want false")
 	}
 }
+
+// AllChecked reports true when every row is checked — the New default.
+func TestSelection_AllChecked_TrueWhenEveryRowChecked(t *testing.T) {
+	s := New(sampleActions())
+
+	if !s.AllChecked() {
+		t.Errorf("AllChecked() = false on a fresh Selection, want true")
+	}
+}
+
+// AllChecked reports false as soon as any row is unchecked.
+func TestSelection_AllChecked_FalseWhenAnyRowUnchecked(t *testing.T) {
+	s := New(sampleActions())
+
+	s.Toggle(1)
+
+	if s.AllChecked() {
+		t.Errorf("AllChecked() = true with row 1 unchecked, want false")
+	}
+}
+
+// AllChecked is vacuously true for a Selection with no rows.
+func TestSelection_AllChecked_TrueWhenEmpty(t *testing.T) {
+	s := New(nil)
+
+	if !s.AllChecked() {
+		t.Errorf("AllChecked() = false for an empty Selection, want true")
+	}
+}

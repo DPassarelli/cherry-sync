@@ -73,9 +73,9 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.sel.Toggle(m.cursor)
 	case "a":
-		// Toggle the whole list: if every row is checked, clear it; otherwise
-		// check every row. SetAll's argument is "are we not already all-checked?".
-		m.sel.SetAll(len(m.sel.Selected()) != len(m.actions))
+		// Toggle the whole list: clear it if every row is checked, otherwise check
+		// every row.
+		m.sel.SetAll(!m.sel.AllChecked())
 	case "enter":
 		m.accepted = true
 		return m, tea.Quit

@@ -139,3 +139,15 @@ func (s *Selection) Selected() []compare.Action {
 func (s *Selection) IsChecked(i int) bool {
 	return i >= 0 && i < len(s.checked) && s.checked[i]
 }
+
+// AllChecked reports whether every row is currently checked; it is vacuously true
+// for a Selection with no rows. The picker uses it to make 'a' toggle the whole
+// list (all↔none) without materializing the selection just to count it.
+func (s *Selection) AllChecked() bool {
+	for _, c := range s.checked {
+		if !c {
+			return false
+		}
+	}
+	return true
+}
