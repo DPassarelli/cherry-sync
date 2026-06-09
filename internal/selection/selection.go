@@ -83,3 +83,59 @@ func SelectActions(r io.Reader, actions []compare.Action) ([]compare.Action, err
 	}
 	return selected, nil
 }
+
+// Selection is the in-memory checkbox state of the interactive file picker: the
+// actions to choose among, and which are currently checked. It is the pure core
+// the Bubble Tea model drives — toggling rows, selecting all or none — so the
+// model's Update stays thin and this logic is unit-tested without a terminal.
+type Selection struct {
+	actions []compare.Action
+	checked []bool
+}
+
+// New returns a Selection over actions with every row checked. Checked-by-default
+// mirrors the typed prompt, where a bare Enter syncs every change.
+func New(actions []compare.Action) *Selection {
+	checked := make([]bool, len(actions))
+	for i := range checked {
+		checked[i] = true
+	}
+	return &Selection{actions: actions, checked: checked}
+}
+
+// Toggle flips the checked state of row i. An out-of-range index is a no-op, so a
+// stray cursor position can't panic the picker or alter the selection.
+func (s *Selection) Toggle(i int) {
+	if i < 0 || i >= len(s.checked) {
+		return
+	}
+	s.checked[i] = !s.checked[i]
+}
+
+// SetAll checks (true) or unchecks (false) every row at once — the 'a' key's
+// select-all / select-none.
+func (s *Selection) SetAll(checked bool) {
+	for i := range s.checked {
+		s.checked[i] = checked
+	}
+}
+
+// Selected returns the checked actions in their original order — the set handed to
+// the transfer. It is freshly built, so the caller may keep or mutate the result
+// without affecting the Selection.
+func (s *Selection) Selected() []compare.Action {
+	var out []compare.Action
+	for i, a := range s.actions {
+		if s.checked[i] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// IsChecked reports whether row i is currently checked. It is total: an
+// out-of-range index reads false, so a stray cursor position can't panic the
+// renderer. The picker's View uses it to draw each row's checkbox.
+func (s *Selection) IsChecked(i int) bool {
+	return i >= 0 && i < len(s.checked) && s.checked[i]
+}
