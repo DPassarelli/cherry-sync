@@ -68,7 +68,7 @@ Press Enter to sync all changes:
 Synced: 2
 ```
 
-At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or a **number** to sync just that one change. The prompt is written to stderr, so the report on stdout stays clean and parseable.
+At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or pick a subset by number — a single number, a range like `1-3`, a comma list like `1,3`, or any combination (`1-2,4`); whitespace around the numbers is ignored. The prompt is written to stderr, so the report on stdout stays clean and parseable.
 
 If the two directories are identical:
 
@@ -87,7 +87,6 @@ Missing or wrong number of arguments prints a usage message on stderr and exits 
 Near-term:
 
 * bounding rsync with a timeout so a stalled transfer can't hang the tool
-* a multi-select grammar (ranges like `1-3`, lists like `1,3`)
 * UX improvements
 * `--version` flag
 
