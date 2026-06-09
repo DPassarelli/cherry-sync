@@ -151,7 +151,7 @@ func rsyncArgs(source, destination, excludeFrom string) []string {
 		// while a real edit keeps the `c` bit and is still reported. Compare-only:
 		// the transfer uses --files-from and never re-derives this set. Cost is a
 		// content hash of each candidate on both ends; acceptable for this tool's
-		// dev-sync use. See NOTES #18 for the experiment that settled this.
+		// dev-sync use.
 		"--checksum",
 		// -8 (--8-bit-output) makes rsync emit the raw bytes of a non-ASCII path
 		// in its --itemize-changes output. By default rsync octal-escapes high-bit
@@ -163,8 +163,7 @@ func rsyncArgs(source, destination, excludeFrom string) []string {
 		// used over --8-bit-output because openrsync (the Mac's rsync) lists only
 		// -8. Scope: -8 covers high-bit bytes only; rsync still escapes true control
 		// chars (newline/tab) regardless, which keeps the space/line parser safe but
-		// is why an embedded-newline name is a separate, harder problem. See NOTES
-		// #2 for the round-trip experiment that settled this.
+		// is why an embedded-newline name is a separate, harder problem.
 		"-8",
 	}
 	// --exclude-from drops gitignored paths from the comparison when the local

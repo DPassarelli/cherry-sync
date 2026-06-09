@@ -21,6 +21,7 @@ coverage.html
 # Scratchpad for Claude
 /.claude
 /NOTES.md
+/MOCKUP.md
 
 # Release notes extracted from CHANGELOG.md by the release workflow (transient)
 /.release-notes.md
