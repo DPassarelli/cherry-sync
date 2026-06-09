@@ -1,11 +1,72 @@
+// gitignore.go holds the git-authoritative exclusion logic: building the rsync
+// exclude list from the local repo's ignore rules, dropping ignored remote-only
+// paths that slip past that pre-filter on a pull, and the git interrogation
+// helpers (`ls-files`, `check-ignore`, `rev-parse`) behind both.
+
 package compare
 
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
+
+// excludeFile writes the local side's exclude patterns to a temp file and returns
+// its path (for rsync's --exclude-from), how many *gitignored* paths it holds (for
+// disclosure), whether the local side is a git work tree, a cleanup func to remove
+// the file, and any error. When the local side is not a git work tree it returns an
+// empty path, a zero count, false, and a no-op cleanup, so compare runs exactly as
+// before — no repo, no exclusions.
+//
+// When the local side IS a work tree, the list always begins with "/.git/": git
+// never reports its own metadata directory as ignored (it special-cases .git/), so
+// without an explicit, anchored exclude a push/pull from a repo would offer every
+// .git/ object for transfer — noise that would also clobber the other side's git
+// state. The returned count covers only the gitignored paths, not this .git/ entry,
+// which the CLI discloses separately. A leading "/" anchors it to the transfer root
+// (see the floating-".git" TODO in honor-gitignore.feature for the submodule case).
+//
+// The list is applied to the comparison ONLY. The transfer uses --files-from, and
+// rsync ignores --exclude-from when --files-from is present, so an exclude there
+// would be a no-op on some rsync builds and active on others — inconsistent. The
+// comparison is the single gate: excluded files never appear, so they can't be
+// selected, so --files-from never lists one.
+func excludeFile(source, destination string) (string, int, bool, func(), error) {
+	noop := func() {}
+	dir, ok := localSyncDir(source, destination)
+	if !ok {
+		return "", 0, false, noop, nil
+	}
+	if !isGitWorkTree(dir) {
+		return "", 0, false, noop, nil
+	}
+	gitignored, err := gitignoreExcludes(dir)
+	if err != nil {
+		return "", 0, false, noop, err
+	}
+	patterns := append([]string{"/.git/"}, gitignored...)
+	f, err := os.CreateTemp("", "csync-exclude-*")
+	if err != nil {
+		return "", 0, false, noop, fmt.Errorf("create exclude file: %w", err)
+	}
+	// Best-effort removal of the temp file; a failure (in the temp dir) isn't actionable.
+	cleanup := func() { _ = os.Remove(f.Name()) }
+	_, err = f.WriteString(strings.Join(patterns, "\n") + "\n")
+	if err != nil {
+		// Already returning the write error; the close error here is secondary, so discard it.
+		_ = f.Close()
+		cleanup()
+		return "", 0, false, noop, fmt.Errorf("write exclude file: %w", err)
+	}
+	err = f.Close()
+	if err != nil {
+		cleanup()
+		return "", 0, false, noop, fmt.Errorf("close exclude file: %w", err)
+	}
+	return f.Name(), len(gitignored), true, cleanup, nil
+}
 
 // localSyncDir returns the local operand of a source/destination pair — the side
 // rsync reads or writes on this machine — and whether one exists. A remote
