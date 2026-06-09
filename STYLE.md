@@ -62,3 +62,42 @@ The CLAUDE.md rule puts a doc comment on every package-level declaration — `ty
 A comment should still earn its place where it can — note a non-obvious contract, a side effect, or how this declaration differs from a similar one — rather than echoing the signature. But when the name truly says it all, a one-line comment that says the same thing is fine; it is not a reason to omit the comment.
 
 This rule covers top-level declarations only. Comments *inside* a function body stay by judgment: add them where intent isn't obvious, skip them where the code speaks for itself.
+
+## File header comments
+
+Every production `.go` file opens with a comment stating that file's purpose, so a reader can tell what a file is for — and how a package's files divide the work — without reading the declarations. The CLAUDE.md rule makes this uniform; the Go mechanics decide *how*:
+
+- **A package's doc comment lives on exactly one file.** A comment sitting directly above `package X` (no blank line) is the package doc. Put it on the package's primary/orchestrator file (`compare.go`, `selection.go`); `main` packages describe the command instead (`// Command csync …`), matching `go doc`'s convention for executables.
+- **Every other file gets a file comment, separated from `package` by a blank line.** The blank line is what stops Go's tooling from reading it as a *second* package doc — multiple package comments in one package conflict (the tool picks one arbitrarily and `staticcheck` flags it). So:
+
+  ```go
+  // parse.go translates rsync's --itemize-changes output into Actions.
+
+  package compare
+  ```
+
+  The leading `parse.go` is optional but reads well — it names the file the comment is scoped to, distinguishing it at a glance from the package doc.
+- **Test files are exempt.** A `_test.go` file's purpose is given by its name (it tests the same-named production file) and the package it's in; a header there would be noise. This keeps the rule aimed where it earns its place — splitting a package's production surface into self-describing files.
+
+The payoff shows up when a package grows past one file: `compare`'s `Run` orchestration, itemize `parse`, display `order`, and `gitignore` exclusion each announce themselves, so the package reads as four narrow concerns rather than one long file.
+
+## Returning many values
+
+Go lets a function return any number of values, but a long return list is a design smell. The CLAUDE.md rule caps it: three or more results bundle into a named struct, and a cleanup `func()` is never a return value.
+
+**Why a struct past two values:**
+
+- The call site is positional — `path, count, ok, cleanup, err := f()` — and nothing but order distinguishes the `string` from the `bool` from the `func()`. Reorder the returns and every caller silently binds the wrong names. A struct names each field at the call site (`exc.patterns`, `exc.inWorkTree`), so a reader doesn't reverse-engineer position, and adding a field doesn't churn every caller.
+- A long signature is usually a function doing several jobs. Naming the bundle (`exclusions`) makes the seam explicit and often reveals that the jobs should split.
+
+**Why never a cleanup `func()`:**
+
+- Returning `cleanup func()` leaks a resource's lifecycle to the caller and depends on them remembering `defer cleanup()` — a forgotten defer is a leak the function could have prevented. Own the resource inside the function; if a resource genuinely must outlive the call, return a value with a `Close` method (the `io.Closer` convention) rather than a bare func, so the obligation is typed and discoverable.
+
+**The worked example.** `compare`'s exclusion step used to be `excludeFile(source, destination) (string, int, bool, func(), error)` — five returns, one a temp-file cleanup func the caller had to defer. The func existed only because the patterns were written to a temp file for rsync's `--exclude-from`. Passing them as repeated `--exclude=` args instead removed the file (and the cleanup, and three I/O error paths), collapsing the signature to `localExclusions(source, destination) (exclusions, error)` — an idiomatic value-plus-error, the data named in a struct.
+
+**Exceptions:**
+
+- `(T, error)` — the everyday Go pattern; two values, always fine.
+- comma-ok `(T, bool)` — `v, ok := m[k]`, `v, ok := x.(T)`; idiomatic and clear.
+- A small, well-known positional tuple where order is self-evident — e.g. `strings.Cut`'s `(before, after, found string, bool)`. Three values, but the names are obvious from the operation; a struct would read worse. Reach for this sparingly: when in doubt, the struct is the safer default.

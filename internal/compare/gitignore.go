@@ -1,3 +1,8 @@
+// gitignore.go holds the git-authoritative exclusion logic: building the rsync
+// exclude list from the local repo's ignore rules, dropping ignored remote-only
+// paths that slip past that pre-filter on a pull, and the git interrogation
+// helpers (`ls-files`, `check-ignore`, `rev-parse`) behind both.
+
 package compare
 
 import (
@@ -6,6 +11,52 @@ import (
 	"os/exec"
 	"strings"
 )
+
+// exclusions holds what csync withholds from the comparison for the local side of
+// a sync: the rsync --exclude patterns to apply, how many of them are gitignored
+// paths (the count the CLI discloses), and whether the local side is a git work
+// tree at all. Its zero value means "not a work tree" — no patterns, nothing hidden.
+type exclusions struct {
+	patterns   []string
+	gitignored int
+	inWorkTree bool
+}
+
+// localExclusions gathers the exclusions for the local side of a sync. When the
+// local side is not a git work tree it returns the zero value, so compare runs with
+// no exclusions — no repo, nothing hidden.
+//
+// When the local side IS a work tree, patterns always begins with "/.git/": git
+// never reports its own metadata directory as ignored (it special-cases .git/), so
+// without an explicit, anchored exclude a push/pull from a repo would offer every
+// .git/ object for transfer — noise that would also clobber the other side's git
+// state. The leading "/" anchors it to the transfer root (see the floating-".git"
+// TODO in honor-gitignore.feature for the submodule case). The gitignored count
+// covers only the gitignored paths, not this .git/ entry, which the CLI discloses
+// separately.
+//
+// The patterns are applied to the comparison ONLY; the transfer uses --files-from
+// and never re-derives them. That's safe because the comparison is the single gate:
+// an excluded file never appears, so it can't be selected, so --files-from never
+// lists one.
+func localExclusions(source, destination string) (exclusions, error) {
+	dir, ok := localSyncDir(source, destination)
+	if !ok {
+		return exclusions{}, nil
+	}
+	if !isGitWorkTree(dir) {
+		return exclusions{}, nil
+	}
+	gitignored, err := gitignoreExcludes(dir)
+	if err != nil {
+		return exclusions{}, err
+	}
+	return exclusions{
+		patterns:   append([]string{"/.git/"}, gitignored...),
+		gitignored: len(gitignored),
+		inWorkTree: true,
+	}, nil
+}
 
 // localSyncDir returns the local operand of a source/destination pair — the side
 // rsync reads or writes on this machine — and whether one exists. A remote
@@ -43,8 +94,9 @@ func isRemote(path string) bool {
 // unanchored entry as a basename match at any depth, which would let a top-level
 // ignore (e.g. `build/`) wrongly suppress a same-named nested path (`src/build/`);
 // the leading '/' pins it to the transfer root. git escapes any newline within a
-// path in its own output, so joining the patterns with newlines for
-// --exclude-from cannot smuggle extra entries.
+// path in its own output, so splitting that output on newlines yields one pattern
+// per ignored path; each then reaches rsync as its own --exclude arg, so a newline
+// in a filename can neither split a pattern here nor smuggle a second one there.
 func gitignoreExcludes(dir string) ([]string, error) {
 	if !isGitWorkTree(dir) {
 		return nil, nil
@@ -71,7 +123,7 @@ func gitignoreExcludes(dir string) ([]string, error) {
 
 // dropIgnoredActions removes from actions any whose path the git repository at dir
 // ignores, returning the surviving actions and how many were dropped. It closes a
-// gap the --exclude-from pre-filter cannot: that filter is built from `git
+// gap the --exclude pre-filter cannot: that filter is built from `git
 // ls-files`, which lists only files present in the LOCAL tree, so on a pull a file
 // that exists only on the remote yet matches a local ignore rule slips past it and
 // would be pulled. checkIgnored evaluates each surviving path against the local

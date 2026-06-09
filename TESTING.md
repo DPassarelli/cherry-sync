@@ -25,7 +25,7 @@ One round of behavior, from idea to merged code:
    **A unit test pins logic, not command assembly.** The thing worth a focused test is a *decision the code makes* — how a line parses, how paths order, how a code classifies. The argument vector handed to an external tool is not such a decision: a test asserting "`-8` is in the slice passed to `rsync`" or "`--` precedes the operands" pins the implementation's shape, not an observable behavior. It's brittle (a correct refactor — `-8` → `--8-bit-output`, reordering flags — turns it red while the tool behaves identically) and redundant (the outside-in scenario that *runs* the real command is what proves the flag does its job: the `café.txt` round-trip proves `-8`; the "treated as a path" scenario proves `--`). A useful litmus: if a unit test could go red without any user-visible behavior changing, it's testing the wrong thing — delete it and lean on the scenario. Two such `rsyncArgs` tests were written and later removed for exactly this reason.
 6. **Make it pass.** Write the minimum production code to satisfy the failing tests. No speculative features, no unused fields.
 7. **Refactor on green.** Rename, extract, simplify — but only with all tests passing. The suite is the safety net.
-8. **Verify.** Run `go test ./...` and `gofmt -l .` before committing.
+8. **Verify.** Run `go test -count=1 ./...` and `gofmt -l .` before committing. The `-count=1` is not optional after a production change — see [Why `-count=1` matters](#running-tests) below for why a plain `go test ./...` can report a stale pass.
 
 ## Gherkin style
 
@@ -95,7 +95,7 @@ Test-only helpers live in `_test.go` files at the repo root or alongside the pac
 
 | Command                     | Purpose                                                              |
 |-----------------------------|---------------------------------------------------------------------|
-| `go test ./...`             | Run the full suite (godog scenarios + unit tests)                   |
+| `go test -count=1 ./...`    | Run the full suite (godog scenarios + unit tests); `-count=1` defeats stale caching — see below |
 | `./_scripts/test-report.sh`  | Run the suite and print the same dashboard panel CI publishes (needs [`gotestsum`](https://github.com/gotestyourself/gotestsum); see below) |
 | `gofmt -l .`                | List files needing formatting (silent = all clean)                  |
 | `go vet ./...`              | Runs automatically in lefthook pre-push                             |
@@ -104,3 +104,5 @@ Test-only helpers live in `_test.go` files at the repo root or alongside the pac
 `_scripts/test-report.sh` is the single source of the dashboard panel shown in the GitHub Actions job summary, so running it locally previews exactly what CI will show: the environment (which rsync implementation, Go, host), a Gherkin-scenario-vs-unit-test breakdown, any failures by name, and per-package detail. It streams gotestsum's live output and then prints the panel as raw Markdown (pipe to a renderer such as `glow` if you want it formatted). The panel is rendered by `cmd/testreport` from gotestsum's `--jsonfile`; that summarizing logic lives in `internal/testreport` and is unit-tested like any other code. The script needs `gotestsum` on `PATH` (or installed in your Go bin dir); install the version CI pins with `go install gotest.tools/gotestsum@v1.13.0`. Extra arguments are forwarded to `go test` (e.g. `./_scripts/test-report.sh -run TestParse`).
 
 godog's default pretty formatter prints feature-file line numbers on failure, which makes it easy to navigate from a failing assertion back to the scenario that triggered it.
+
+**Why `-count=1` matters.** The godog suite builds the `csync` binary in `TestMain` and drives it by exec — the test package imports none of the production packages. Go's test cache keys a package's result on that package's own sources and its imported packages, so **no production-code change invalidates the godog cache**: edit `cmd/csync`, `internal/compare`, `internal/selection`, or anything else the binary uses, and a plain `go test ./...` can still print a green `ok (cached)` from a stale build — only changes to the test files themselves bust it. This bites because the suite execs a binary rather than calling production code in-process, which is otherwise the right design (it tests the real artifact a user runs). Pass `-count=1` (or run `go clean -testcache`) to force a real run whenever you've touched production code; the suite is fast enough that `-count=1` is a fine everyday default.

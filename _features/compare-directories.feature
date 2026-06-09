@@ -54,8 +54,7 @@ Feature: Compare directories
     # rsync's size+mtime quick-check flags it for transfer; --checksum on the
     # compare pass settles it by content, so the row itemizes as `.f..t......`
     # (no content bit) and is dropped. Remove --checksum and this goes red:
-    # README.md reports as a phantom "update". Rationale and the experiments
-    # behind it live in NOTES #18 (the diagnosed phantom-changes item).
+    # README.md reports as a phantom "update".
     Given that all of the files are identical between local and remote
     And   that the file "README.md" has a different modification time but identical content
     When  I run "csync ./project user@host:/project"

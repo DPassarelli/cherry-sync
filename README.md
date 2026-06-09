@@ -107,8 +107,10 @@ The development process is mainly described in [TESTING](TESTING.md), with addit
 ### Run tests:
 
 ```sh
-go test ./...
+go test -count=1 ./...
 ```
+
+The `-count=1` is deliberate: the suite builds and execs the `csync` binary rather than importing it, so Go's test cache doesn't notice production-code changes and a plain `go test ./...` can report a stale pass. See [TESTING](TESTING.md#running-tests) for the details.
 
 ## License
 

@@ -228,7 +228,7 @@ Feature: Honor .gitignore when comparing
     # Sibling to the pull scenario above, which covers a file present on BOTH sides.
     # Here the ignored file exists ONLY on the remote and not yet locally. `git
     # ls-files` lists only files in the LOCAL tree, so the pre-comparison
-    # --exclude-from can't see secret.log and it would be pulled. csync additionally
+    # --exclude pre-filter can't see secret.log and it would be pulled. csync additionally
     # runs the comparison's result paths through `git check-ignore` in the local
     # repo, which evaluates a path against the ignore rules WITHOUT the file needing
     # to exist locally — so the remote-only secret.log is dropped while notes.txt

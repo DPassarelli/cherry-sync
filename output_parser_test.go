@@ -80,7 +80,8 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			// paths at all — so parse them as separate signals rather than a single
 			// leading number.
 			out.ExcludedGitDir = strings.Contains(m[2], ".git directory")
-			if cm := gitignoredCountRE.FindStringSubmatch(m[2]); cm != nil {
+			cm := gitignoredCountRE.FindStringSubmatch(m[2])
+			if cm != nil {
 				out.HasExcludedCount = true
 				n, err := strconv.Atoi(cm[1])
 				if err == nil {

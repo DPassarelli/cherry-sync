@@ -489,8 +489,8 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 // theFileHasADifferentMtimeButIdenticalContent stamps the named local file with a
 // past modification time WITHOUT rewriting its bytes, so it differs from the remote
 // copy in mtime alone. rsync's size+mtime quick-check then flags it for transfer
-// even though the content is identical — the "phantom change" csync must not report
-// (NOTES #18). The harness otherwise creates and copies files within the same
+// even though the content is identical — the "phantom change" csync must not report.
+// The harness otherwise creates and copies files within the same
 // wall-clock second, so their mtimes compare equal at rsync's 1-second granularity;
 // dating this one to the past forces the mtime-only delta the scenario needs.
 func theFileHasADifferentMtimeButIdenticalContent(ctx context.Context, relPath string) (context.Context, error) {
