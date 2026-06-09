@@ -31,13 +31,12 @@ type Result struct {
 // Both paths get a trailing slash so rsync compares directory contents
 // rather than nesting source under destination.
 func Run(source, destination string) (Result, error) {
-	excludeFrom, excluded, gitWorkTree, cleanup, err := excludeFile(source, destination)
+	exc, err := localExclusions(source, destination)
 	if err != nil {
 		return Result{}, err
 	}
-	defer cleanup()
 
-	args := rsyncArgs(source, destination, excludeFrom)
+	args := rsyncArgs(source, destination, exc.patterns)
 	// The variable args are safe by construction — see SECURITY.md: no shell
 	// (exec.Command, not sh -c), a `--` separator added by rsyncArgs, and path
 	// operands validated in cli.Parse. The guard is proven behaviorally by the
@@ -49,12 +48,13 @@ func Run(source, destination string) (Result, error) {
 	}
 	actions := parseActions(string(out))
 	sortActions(actions)
-	// The --exclude-from pre-filter is built from `git ls-files`, which sees only
-	// the local tree, so on a pull a remote-only file matching a local ignore rule
+	excluded := exc.gitignored
+	// The --exclude pre-filter is built from `git ls-files`, which sees only the
+	// local tree, so on a pull a remote-only file matching a local ignore rule
 	// slips through. Re-check the surviving paths against the local repo's rules and
 	// drop any it ignores, folding them into the disclosed count. Skipped when the
-	// local side isn't a work tree (gitWorkTree false) — nothing to ask git about.
-	if gitWorkTree {
+	// local side isn't a work tree (inWorkTree false) — nothing to ask git about.
+	if exc.inWorkTree {
 		dir, _ := localSyncDir(source, destination)
 		kept, dropped, err := dropIgnoredActions(dir, actions)
 		if err != nil {
@@ -63,7 +63,7 @@ func Run(source, destination string) (Result, error) {
 		actions = kept
 		excluded += dropped
 	}
-	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitWorkTree}, nil
+	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: exc.inWorkTree}, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`
@@ -71,7 +71,7 @@ func Run(source, destination string) (Result, error) {
 // destination beginning with `-` is parsed by rsync as a path, never as an
 // option — closing off rsync argument injection (e.g. a path like `-e` or
 // `--rsh=…` that would otherwise hijack rsync's remote-shell command).
-func rsyncArgs(source, destination, excludeFrom string) []string {
+func rsyncArgs(source, destination string, excludes []string) []string {
 	args := []string{
 		"--dry-run",
 		"--itemize-changes",
@@ -108,11 +108,14 @@ func rsyncArgs(source, destination, excludeFrom string) []string {
 		// is why an embedded-newline name is a separate, harder problem.
 		"-8",
 	}
-	// --exclude-from drops gitignored paths from the comparison when the local
-	// side is a git work tree (empty otherwise). It's an option, so it precedes
-	// the `--`; and it's compare-only — see excludeFile for why transfer omits it.
-	if excludeFrom != "" {
-		args = append(args, "--exclude-from="+excludeFrom)
+	// Each gitignored path (and "/.git/") drops out of the comparison via its own
+	// --exclude; the patterns are options, so they precede the `--`. Empty when the
+	// local side isn't a git work tree. Passing them as args rather than an
+	// --exclude-from file keeps the patterns inert literals (a newline inside one
+	// can't split it into two entries) and means no temp file to write or clean up.
+	// Compare-only — see localExclusions for why the transfer omits them.
+	for _, pattern := range excludes {
+		args = append(args, "--exclude="+pattern)
 	}
 	args = append(args,
 		"--",
