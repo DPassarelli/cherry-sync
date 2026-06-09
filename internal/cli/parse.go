@@ -1,3 +1,6 @@
+// Package cli parses csync's command-line arguments into a validated Args value
+// — for v0.1, the source and destination paths — leaving how to report a parse
+// error to the caller.
 package cli
 
 import "fmt"

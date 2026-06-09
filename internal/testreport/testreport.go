@@ -75,7 +75,8 @@ func Parse(r io.Reader) (Summary, error) {
 			continue
 		}
 		var e event
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
+		err := json.Unmarshal([]byte(line), &e)
+		if err != nil {
 			continue // tolerate the occasional non-event line
 		}
 		if e.Action != "pass" && e.Action != "fail" && e.Action != "skip" {
@@ -108,7 +109,8 @@ func Parse(r io.Reader) (Summary, error) {
 			}
 		}
 	}
-	if err := sc.Err(); err != nil {
+	err := sc.Err()
+	if err != nil {
 		return s, err
 	}
 	shortenPackages(&s)
@@ -170,7 +172,8 @@ func shortPkg(pkg, root string) string {
 		}
 		return strings.TrimPrefix(pkg, root+"/")
 	}
-	if i := strings.LastIndex(pkg, "/"); i >= 0 {
+	i := strings.LastIndex(pkg, "/")
+	if i >= 0 {
 		return pkg[i+1:]
 	}
 	return pkg
