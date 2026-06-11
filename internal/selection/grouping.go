@@ -18,20 +18,28 @@ type Group struct {
 	Actions []compare.Action
 }
 
-// GroupByDir buckets actions into one Group per directory for display, starting
-// a new Group each time a row's directory differs from the previous row's. Input
-// is expected as compare produces it — tree-sorted, so same-directory rows are
-// contiguous — which yields exactly one Group per directory. Input order is
-// preserved verbatim, so the flat numbering a user selects against stays intact.
+// GroupByDir buckets actions into one Group per distinct directory: directories
+// appear in first-appearance order, and within each, actions keep their input
+// order. It coalesces — a directory's files are gathered into a single Group even
+// when they aren't contiguous in the input. compare's sort interleaves a
+// directory's files with subdirectories (dot-before-non-dot and
+// file-before-subdirectory ordering can split a directory's rows apart), so a
+// run-based grouping would emit the directory under two headings; coalescing
+// avoids that. Coalescing can move a later same-directory row earlier, so the
+// picker adopts this grouped order as the order it displays and the cursor moves
+// through (see newModel).
 func GroupByDir(actions []compare.Action) []Group {
 	var groups []Group
+	at := make(map[string]int) // directory header -> its index in groups
 	for _, a := range actions {
 		header := headerFor(a.Path)
-		if len(groups) == 0 || groups[len(groups)-1].Dir != header {
+		i, ok := at[header]
+		if !ok {
+			i = len(groups)
+			at[header] = i
 			groups = append(groups, Group{Dir: header})
 		}
-		last := &groups[len(groups)-1]
-		last.Actions = append(last.Actions, a)
+		groups[i].Actions = append(groups[i].Actions, a)
 	}
 	return groups
 }

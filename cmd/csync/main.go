@@ -75,11 +75,19 @@ func main() {
 	// "Changes:" report is non-interactive-only.
 	var selected []compare.Action
 	if interactive {
-		selected, err = tui.RunPicker(result.Actions)
+		chosen, accepted, err := tui.RunPicker(result.Actions)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		// A cancel (Ctrl-C/Esc/q) is distinct from a confirmed empty selection:
+		// report it as "Canceled" and stop, rather than transferring nothing and
+		// printing "Synced: 0".
+		if !accepted {
+			fmt.Println("Canceled")
+			return
+		}
+		selected = chosen
 	} else {
 		fmt.Println("Changes:", len(result.Actions))
 		// Number each change from 1 in displayed order. The number is the selection
