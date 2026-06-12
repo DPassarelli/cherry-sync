@@ -82,7 +82,7 @@ func main() {
 		}
 		// A cancel (Ctrl-C/Esc/q) is distinct from a confirmed empty selection:
 		// report it as "Canceled" and stop, rather than transferring nothing and
-		// printing "Synced: 0".
+		// printing the "Sync complete! (0 files)" summary.
 		if !accepted {
 			fmt.Println("Canceled")
 			return
@@ -115,7 +115,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Synced:", len(selected))
+	// Report what moved with the post-sync summary: the past-tense list of changes.
+	// csync is human-first in both modes — the non-TTY path is the degraded-but-still-
+	// human fallback, not a machine interface — so it gets the same summary, only
+	// without color (lipgloss drops ANSI when stdout isn't a terminal).
+	fmt.Print(tui.RenderSummary(selected))
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both

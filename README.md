@@ -65,10 +65,14 @@ Changes: 2
   1. update README.md
   2. create src/adder.go
 Press Enter to sync all changes:
-Synced: 2
+Sync complete! (2 files)
+
+The following changes were made:
+   ./README.md      updated
+   ./src/adder.go   created
 ```
 
-At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or pick a subset by number — a single number, a range like `1-3`, a comma list like `1,3`, or any combination (`1-2,4`); whitespace around the numbers is ignored. The prompt is written to stderr, so the report on stdout stays clean and parseable.
+At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or pick a subset by number — a single number, a range like `1-3`, a comma list like `1,3`, or any combination (`1-2,4`); whitespace around the numbers is ignored. The prompt is written to stderr, so the report on stdout stays uncluttered.
 
 If the two directories are identical:
 
