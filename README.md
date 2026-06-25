@@ -87,7 +87,10 @@ Missing or wrong number of arguments prints a usage message on stderr and exits 
 Near-term:
 
 * bounding rsync with a timeout so a stalled transfer can't hang the tool
-* UX improvements
+* clearer selection UX — dim unselected filenames, replace the single-character selection indicator with a `[x]`-style marker, and add whitespace so the selected set is obvious at a glance
+* dropping the per-file list from the post-sync summary, once the selection UX above makes it redundant
+* saved targets — persist the remote host/path (and local path) to a dotfile so later runs can refer to a saved target by a short name
+* interactive mode — running `./csync` with no positional arguments prompts for local and remote, with the option to save the answers as a target above
 * `--version` flag
 
 Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
