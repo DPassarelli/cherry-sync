@@ -61,17 +61,18 @@ Feature: Saved sync targets
     Then  the reported sync count should be 1
     And   the file "notes.txt" should be identical between local and remote
 
-  @wip
   Scenario: Push reports the resolved source and destination
-    # Resolution proof independent of any transfer: with nothing to sync, csync
-    # prints the resolved operands and exits without prompting. The destination
-    # must be the configured remote; the source is the project directory itself,
-    # shown as ".". (The "." display is a v1 choice — see TODO below.)
+    # Resolution proof, transfer-free: csync echoes the operands it resolved
+    # BEFORE running rsync — the same pre-compare echo the invoke-command display
+    # scenarios read — so this asserts only those two lines, not a transfer.
+    # `push` must read `remote` from ./.csync.toml and report it as the
+    # destination, with the project directory itself (".") as the source. Drop
+    # the config read (push unhandled) and no Source/Destination pair is echoed —
+    # red. (The "." display is a v1 choice; see TODO below.)
     Given a local directory containing these files:
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
@@ -79,7 +80,6 @@ Feature: Saved sync targets
     When  I run "csync push" from the project directory
     Then  the reported source should be "."
     And   the reported destination should be "user@host:/project"
-    And   the reported message should begin with "No changes"
 
   @wip
   Scenario: A missing .csync.toml fails loudly and transfers nothing

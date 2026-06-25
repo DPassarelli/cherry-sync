@@ -10,6 +10,7 @@ import (
 
 	"github.com/dpassarelli/cherry-sync/internal/cli"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
 )
@@ -24,10 +25,24 @@ func main() {
 		os.Exit(2)
 	}
 
-	fmt.Println("Source:", a.Source)
-	fmt.Println("Destination:", a.Destination)
+	// With the `push` verb the operands aren't on the command line: resolve them
+	// from the project's .csync.toml in the current directory. Push syncs the
+	// project (".") to the saved remote.
+	source, destination := a.Source, a.Destination
+	if a.Push {
+		cfg, err := config.Load(".")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		source = "."
+		destination = cfg.Remote
+	}
 
-	result, err := compare.Run(a.Source, a.Destination)
+	fmt.Println("Source:", source)
+	fmt.Println("Destination:", destination)
+
+	result, err := compare.Run(source, destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -77,7 +92,7 @@ func main() {
 	for i, act := range selected {
 		paths[i] = act.Path
 	}
-	err = transfer.Run(a.Source, a.Destination, paths)
+	err = transfer.Run(source, destination, paths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

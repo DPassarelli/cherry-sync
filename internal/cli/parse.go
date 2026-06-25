@@ -5,18 +5,25 @@ package cli
 
 import "fmt"
 
-// Args is the parsed result of a csync command-line invocation: the source
-// and destination paths the user wants to sync between.
+// Args is the parsed result of a csync command-line invocation. With two
+// positional operands it carries the source and destination paths; with the
+// `push` verb it sets Push, signalling the caller to resolve the operands from
+// the project's saved-target file instead.
 type Args struct {
 	Source      string
 	Destination string
+	Push        bool
 }
 
 // Parse turns the positional arguments (typically os.Args[1:]) into an Args
-// value. v0.1 accepts exactly two positional arguments in source/destination
-// order; anything else returns an error. The caller (main.go) decides how to
-// surface that error to the user.
+// value. It accepts either two positional operands in source/destination order,
+// or the single verb `push` (resolve operands from .csync.toml); anything else
+// returns an error. The caller (main.go) decides how to surface that error to
+// the user.
 func Parse(argv []string) (Args, error) {
+	if len(argv) == 1 && argv[0] == "push" {
+		return Args{Push: true}, nil
+	}
 	if len(argv) != 2 {
 		return Args{}, fmt.Errorf("expected 2 arguments, got %d", len(argv))
 	}

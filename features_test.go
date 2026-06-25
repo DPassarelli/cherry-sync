@@ -144,6 +144,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)"$`, iRun)
 	ctx.Step(`^I run "([^"]*)" a second time$`, iRun)
 	ctx.Step(`^I run "([^"]*)" and respond with "([^"]*)"$`, iRunAndRespond)
+	ctx.Step(`^I run "([^"]*)" from the project directory$`, iRunFromTheProjectDirectory)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
@@ -151,6 +152,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
+	ctx.Step(`^a "\.csync\.toml" in the project directory containing:$`, aCsyncTomlInTheProjectDirectoryContaining)
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
 	ctx.Step(`^the repository's "([^"]*)" contains:$`, theLocalFileContains)
 	ctx.Step(`^the directory's "([^"]*)" contains:$`, theLocalFileContains)
@@ -203,7 +205,20 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 // With no stdin, a second run that does surface phantom changes reads EOF at the
 // prompt and selects nothing rather than blocking.
 func iRun(ctx context.Context, command string) (context.Context, error) {
-	return runCsync(ctx, command, nil)
+	return runCsync(ctx, command, nil, "")
+}
+
+// iRunFromTheProjectDirectory backs `When I run "..." from the project
+// directory`: it runs csync with its working directory set to the scenario's
+// local tempdir, so cwd-only .csync.toml discovery finds the dotfile the
+// config-write step placed there. The verb forms (push/pull) take no operands,
+// so no stdin is fed.
+func iRunFromTheProjectDirectory(ctx context.Context, command string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	return runCsync(ctx, command, nil, local)
 }
 
 // iRunAndRespond executes the `When I run "..." and respond with "..."` step,
@@ -214,14 +229,14 @@ func iRunAndRespond(ctx context.Context, command, response string) (context.Cont
 	if response == "<empty>" {
 		response = ""
 	}
-	return runCsync(ctx, command, strings.NewReader(response+"\n"))
+	return runCsync(ctx, command, strings.NewReader(response+"\n"), "")
 }
 
 // runCsync splits the command, substitutes the Gherkin placeholders
 // (`./project`, `user@host:/project`, `<empty>`) with the scenario's real
 // tempdir paths, runs the csync binary with the given stdin, and stashes the
 // captured streams and exit code in the context.
-func runCsync(ctx context.Context, command string, stdin io.Reader) (context.Context, error) {
+func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) (context.Context, error) {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
 		return ctx, fmt.Errorf("empty command")
@@ -260,6 +275,9 @@ func runCsync(ctx context.Context, command string, stdin io.Reader) (context.Con
 
 	cmd := exec.Command(csyncBinary, args...)
 	cmd.Stdin = stdin
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	if remoteMode {
 		// rsync reads RSYNC_RSH as its remote shell; fakeRsh execs locally so the
 		// `fakehost:` operand transfers on this machine over the real remote code
@@ -412,6 +430,23 @@ func theLocalFileContains(ctx context.Context, name string, ds *godog.DocString)
 	err = os.WriteFile(full, []byte(strings.TrimSpace(ds.Content)+"\n"), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+// aCsyncTomlInTheProjectDirectoryContaining writes the DocString to
+// ./.csync.toml in the scenario's local directory — the saved-target file that
+// `csync push`/`pull` read. The content is written verbatim; scenarios that need
+// the dotfile to point at the real per-scenario remote will substitute the
+// placeholder when that behavior is drilled in.
+func aCsyncTomlInTheProjectDirectoryContaining(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	err := os.WriteFile(filepath.Join(local, ".csync.toml"), []byte(ds.Content), 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write .csync.toml: %w", err)
 	}
 	return ctx, nil
 }
