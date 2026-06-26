@@ -34,12 +34,20 @@ type Args struct {
 // .csync.toml); anything else returns an error. The caller (main.go) decides how
 // to surface that error to the user.
 func Parse(argv []string) (Args, error) {
-	if len(argv) == 1 {
+	if len(argv) >= 1 {
 		switch argv[0] {
-		case "push":
+		case "push", "pull":
+			// The verbs take no operands — they resolve from .csync.toml — so a
+			// trailing argument is a mistake, not an explicit source/destination
+			// pair whose source happens to be named "push". Reject it rather than
+			// fall through to the two-operand path below.
+			if len(argv) != 1 {
+				return Args{}, fmt.Errorf("%s takes no arguments", argv[0])
+			}
+			if argv[0] == "pull" {
+				return Args{Mode: Pull}, nil
+			}
 			return Args{Mode: Push}, nil
-		case "pull":
-			return Args{Mode: Pull}, nil
 		}
 	}
 	if len(argv) != 2 {

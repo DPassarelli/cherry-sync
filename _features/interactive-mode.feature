@@ -132,6 +132,21 @@ Feature: Interactive mode
   # - EOF / ctrl-c at a prompt (closed stdin before all answers): csync must
   #   abort cleanly, not transfer or write a partial config.
   #
-  # - TTY vs piped stdin: decide whether interactive mode requires a terminal or
-  #   also serves a scripted stdin. The harness pipes stdin, so any TTY gate
-  #   needs a test-visible escape hatch.
+  # - TTY gating (DECIDED — implementation deferred): interactive mode requires an
+  #   interactive terminal. csync prompts only when stdin is a TTY; with piped or
+  #   redirected stdin (CI, scripts) it does NOT prompt — bare `csync` and a
+  #   missing-config push/pull both fall to a non-interactive error there. The
+  #   non-TTY branch is already covered (the harness pipes stdin): see
+  #   "A missing .csync.toml fails loudly" in saved-targets.feature. Testing the
+  #   TTY branch needs a pseudo-terminal on stdin only (stdout/stderr stay
+  #   separate buffers so the output parser still works). That PTY harness — and
+  #   the choice between a real PTY and a forced-interactive escape hatch — is
+  #   parked: a proven PTY testing methodology from separate TUI work is to be
+  #   brought in once this feature ships and is released.
+  #
+  # - Offer setup on a missing config (TTY only): `csync push`/`pull` with no
+  #   .csync.toml, when stdin is a TTY, drops into the prompts above and offers to
+  #   save a target instead of erroring — the most reasonable expectation at a
+  #   terminal. It's the bare-`csync` flow triggered by the saved-target verbs.
+  #   Blocked on the PTY harness above; the non-TTY error counterpart already
+  #   ships (saved-targets.feature).

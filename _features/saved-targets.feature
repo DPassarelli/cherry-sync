@@ -123,6 +123,11 @@ Feature: Saved sync targets
     # No silent fallback to a default. With no dotfile in the project directory,
     # `csync push` must error and exit non-zero BEFORE contacting rsync — the
     # changed README must still differ, proving no transfer was attempted.
+    #
+    # This is the NON-interactive branch: the harness pipes stdin, so no terminal
+    # is present. When stdin IS a terminal, push/pull will instead offer to set up
+    # a config (future work — see the TTY notes in interactive-mode.feature). That
+    # branch does not contradict this one; they split on whether stdin is a TTY.
     Given a local directory containing these files:
       """
       README.md
@@ -199,6 +204,23 @@ Feature: Saved sync targets
     And   the reported error should mention "invalid .csync.toml"
     And   the file "README.md" should still differ between local and remote
 
+  Scenario: push rejects extra arguments
+    # The saved-target verbs take no operands — push resolves its target from
+    # .csync.toml — so `csync push ./x` is a mistake, not an explicit sync of a
+    # directory named "push". Without the guard, argv ["push", "./x"] is read as
+    # an explicit source/destination pair and csync tries to sync a "push"
+    # directory (exit 1 from rsync); the guard makes it the usage error (exit 2)
+    # asserted here.
+    When  I run "csync push ./project"
+    Then  csync should return exit code 2
+    And   the reported usage should begin with "usage: csync"
+
+  Scenario: pull rejects extra arguments
+    # The pull mirror of the guard above, so the rejection is not push-only.
+    When  I run "csync pull ./project"
+    Then  csync should return exit code 2
+    And   the reported usage should begin with "usage: csync"
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
@@ -210,9 +232,6 @@ Feature: Saved sync targets
   # - Discovery is cwd-only in v1: running `csync push` from a SUBDIRECTORY of a
   #   project whose .csync.toml sits at the root must NOT find it (it errors).
   #   When walk-up discovery lands, this flips to "found from a subdirectory".
-  #
-  # - `push`/`pull` reject extra positional arguments (`csync push ./x`): the
-  #   verb forms take no operands; surface a usage error.
   #
   # - A remote value that looks like an rsync option (e.g. "-e...") reaches rsync
   #   as an inert path via the `--` guard, exactly as the argv case already does
