@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-26
+
 ### Added
 
 - The selection prompt now accepts multi-select responses instead of only a single number: a hyphen range like `1-3` picks an inclusive span of changes, a comma list like `1,3` picks exactly the changes named, and the two combine in one response (`1-2,4`). A change named by more than one member (`1-3,2`) is synced once, not twice. Whitespace between members and around a range's bounds is ignored, so `1 - 2, 4` works the same as `1-2,4`. Members are bounded to the listed changes; a reversed, out-of-range, or otherwise malformed response is rejected like any other unrecognized entry.
@@ -37,7 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...0.2.1
 [0.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dpassarelli/cherry-sync/releases/tag/v0.1.0
