@@ -9,8 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - When csync runs in a terminal, it now shows an interactive picker for choosing which changes to sync: an arrow-key (or `j`/`k`) cursor over a checkbox list, grouped by directory and color-coded by change type (green for new files, yellow for modified), with `space` to toggle a file, `a` to toggle all on or off, `Enter` to sync the checked files, and `Ctrl-C`/`Esc`/`q` to cancel without transferring anything. When input or output is redirected (a pipe, a file, or a script), csync falls back to the existing typed prompt, so non-interactive and scripted use is unchanged.
-- The selection prompt now accepts multi-select responses instead of only a single number: a hyphen range like `1-3` picks an inclusive span of changes, a comma list like `1,3` picks exactly the changes named, and the two combine in one response (`1-2,4`). A change named by more than one member (`1-3,2`) is synced once, not twice. Whitespace between members and around a range's bounds is ignored, so `1 - 2, 4` works the same as `1-2,4`. Members are bounded to the listed changes; a reversed, out-of-range, or otherwise malformed response is rejected like any other unrecognized entry.
 - After a sync, csync now prints a summary of what moved, replacing the terse `Synced: N` line: a "Sync complete!" header with the file count, then one line per file showing its path and what happened to it (created, updated). On a terminal the changes are color-coded by type; redirected output shows the same summary without color.
+
+## [0.3.0] - 2026-06-26
+
+### Added
+
+- The selection prompt now accepts multi-select responses instead of only a single number: a hyphen range like `1-3` picks an inclusive span of changes, a comma list like `1,3` picks exactly the changes named, and the two combine in one response (`1-2,4`). A change named by more than one member (`1-3,2`) is synced once, not twice. Whitespace between members and around a range's bounds is ignored, so `1 - 2, 4` works the same as `1-2,4`. Members are bounded to the listed changes; a reversed, out-of-range, or otherwise malformed response is rejected like any other unrecognized entry.
+- `csync push` and `csync pull` sync against a remote saved in a project-local `.csync.toml` (a `remote = "user@host:/path"` line), so a frequently-used remote no longer has to be retyped. Run them from the project directory: `push` sends the project to the saved remote, `pull` brings the saved remote down to the project.
+- csync now holds its own `.csync.toml` out of every comparison — like `.git/`, it is never offered for transfer — and names it on the `Excluded:` line so the omission is visible.
 
 ## [0.2.1] - 2026-06-06
 
@@ -37,7 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...0.2.1
 [0.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dpassarelli/cherry-sync/releases/tag/v0.1.0

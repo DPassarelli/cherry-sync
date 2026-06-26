@@ -11,18 +11,19 @@ import (
 // between rendered output and test assertions — when the rendering changes,
 // parseOutput is the only thing that needs to change with it.
 type ReportedOutput struct {
-	Source           string
-	Destination      string
-	ChangeCount      int
-	HasChangeCount   bool
-	ExcludedCount    int
-	HasExcludedCount bool
-	ExcludedGitDir   bool
-	Actions          []Action
-	SyncCount        int
-	HasSyncCount     bool
-	Message          string
-	Usage            string
+	Source            string
+	Destination       string
+	ChangeCount       int
+	HasChangeCount    bool
+	ExcludedCount     int
+	HasExcludedCount  bool
+	ExcludedGitDir    bool
+	ExcludedCsyncToml bool
+	Actions           []Action
+	SyncCount         int
+	HasSyncCount      bool
+	Message           string
+	Usage             string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -101,6 +102,7 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			// paths at all — so parse them as separate signals rather than a single
 			// leading number.
 			out.ExcludedGitDir = strings.Contains(m[2], ".git directory")
+			out.ExcludedCsyncToml = strings.Contains(m[2], ".csync.toml")
 			cm := gitignoredCountRE.FindStringSubmatch(m[2])
 			if cm != nil {
 				out.HasExcludedCount = true
