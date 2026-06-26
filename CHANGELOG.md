@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - When csync runs in a terminal, it now shows an interactive picker for choosing which changes to sync: an arrow-key (or `j`/`k`) cursor over a `[x]`/`[ ]` checkbox list, grouped by directory and color-coded by change type (green for new files, yellow for modified). Unchecked files are dimmed so the selected set stands out at a glance. Use `space` to toggle a file, `a` to toggle all on or off, `Enter` to sync the checked files, and `Ctrl-C`/`Esc`/`q` to cancel without transferring anything. When input or output is redirected (a pipe, a file, or a script), csync falls back to the existing typed prompt, so non-interactive and scripted use is unchanged.
 - After a sync, csync now prints a one-line `Sync complete! (N files)` summary, replacing the terse `Synced: N` line. The interactive picker already shows which files were chosen, so the summary reports just the count rather than re-listing every file.
+- When csync runs in a terminal, it now leads with a `cherry-sync` banner above the `Source:` and `Destination:` lines, and those values are emphasized and column-aligned to frame the picker. Redirected output drops the banner and the emphasis, keeping the plain, aligned header it already printed.
 
 ## [0.3.0] - 2026-06-26
 

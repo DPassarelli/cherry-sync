@@ -7,7 +7,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"golang.org/x/term"
 
@@ -16,24 +15,8 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
-	"github.com/dpassarelli/cherry-sync/internal/tui"
+	"github.com/dpassarelli/cherry-sync/internal/view"
 )
-
-// joinAnd renders a list as English prose: "a", "a and b", or "a, b, and c". It
-// composes the Excluded disclosure line, which can name one to three withheld
-// things.
-func joinAnd(parts []string) string {
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	case 2:
-		return parts[0] + " and " + parts[1]
-	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
-	}
-}
 
 // main parses the command-line arguments, runs the dry-run comparison, asks which
 // changes to sync — through the interactive picker on a terminal, or the typed
@@ -64,8 +47,15 @@ func main() {
 		}
 	}
 
-	fmt.Println("Source:", source)
-	fmt.Println("Destination:", destination)
+	// Detect the terminal once: it both selects the selection front-end (picker vs.
+	// typed prompt) and gates the decorative banner, which only an interactive run
+	// shows — piped output stays clean.
+	interactive := interactiveTerminal()
+
+	if interactive {
+		fmt.Print(view.Banner())
+	}
+	fmt.Print(view.Header(source, destination))
 
 	result, err := compare.Run(source, destination)
 	if err != nil {
@@ -93,18 +83,14 @@ func main() {
 		}
 		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", result.Excluded, noun))
 	}
-	if len(excluded) > 0 {
-		fmt.Println("Excluded:", joinAnd(excluded))
-	}
-
-	interactive := interactiveTerminal()
+	fmt.Print(view.Excluded(excluded))
 
 	if len(result.Actions) == 0 {
 		// Nothing to do — stop before any selection UI. The non-interactive path
 		// still leads with the machine-readable "Changes: 0" line it always prints;
 		// the interactive path just states it plainly.
 		if !interactive {
-			fmt.Println("Changes:", 0)
+			fmt.Print(view.ChangeList(nil))
 		}
 		fmt.Println("No changes to sync.")
 		return
@@ -117,7 +103,7 @@ func main() {
 	// "Changes:" report is non-interactive-only.
 	var selected []compare.Action
 	if interactive {
-		chosen, accepted, err := tui.RunPicker(result.Actions)
+		chosen, accepted, err := view.RunPicker(result.Actions)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -131,13 +117,7 @@ func main() {
 		}
 		selected = chosen
 	} else {
-		fmt.Println("Changes:", len(result.Actions))
-		// Number each change from 1 in displayed order. The number is the selection
-		// affordance: it's the digit a user types at the prompt to pick that change,
-		// and selection.SelectActions indexes result.Actions by the same 1-based value.
-		for i, act := range result.Actions {
-			fmt.Printf("  %d. %s %s\n", i+1, act.Verb, act.Path)
-		}
+		fmt.Print(view.ChangeList(result.Actions))
 		// Prompt on stderr so stdout stays a clean, parseable report.
 		fmt.Fprint(os.Stderr, "Press Enter to sync all changes: ")
 		selected, err = selection.SelectActions(os.Stdin, result.Actions)
@@ -161,7 +141,7 @@ func main() {
 	// csync is human-first in both modes — the non-TTY path is the degraded-but-still-
 	// human fallback, not a machine interface — so it gets the same summary, only
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
-	fmt.Print(tui.RenderSummary(selected))
+	fmt.Print(view.RenderSummary(selected))
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both
