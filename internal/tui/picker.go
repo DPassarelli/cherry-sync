@@ -99,10 +99,11 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the picker: a directions header, then the changes grouped by
 // directory — each group under its "./dir" heading, each row a cursor marker, a
-// checkbox, the file's basename, and its verb colored by change type, with the
-// current row marked and emphasized. Untested by design (the visual layer); the
-// keyboard logic it reflects is pinned by the Update tests, the grouping by
-// GroupByDir's.
+// "[x]"/"[ ]" checkbox, the file's basename, and its verb. A checked row is
+// colored by change type; an unchecked row is dimmed so the selected set stands
+// out at a glance. The current row is marked and emphasized. Untested by design
+// (the visual layer); the keyboard logic it reflects is pinned by the Update
+// tests, the grouping by GroupByDir's.
 func (m pickerModel) View() string {
 	dim := lipgloss.NewStyle().Faint(true)
 	dirHeading := lipgloss.NewStyle().Bold(true)
@@ -132,13 +133,19 @@ func (m pickerModel) View() string {
 			if flat == m.cursor {
 				marker = "> "
 			}
-			box := "☐"
-			if m.sel.IsChecked(flat) {
-				box = "☑"
+			checked := m.sel.IsChecked(flat)
+			box := "[ ]"
+			if checked {
+				box = "[x]"
 			}
 			base := path.Base(a.Path)
 			pad := strings.Repeat(" ", width-lipgloss.Width(base))
-			style := verbStyle(a.Verb)
+			// A checked row is verb-colored; an unchecked row is dimmed so the
+			// selected set stands out. Either way the cursor row is bolded.
+			style := dim
+			if checked {
+				style = verbStyle(a.Verb)
+			}
 			if flat == m.cursor {
 				style = style.Bold(true)
 			}

@@ -19,7 +19,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/tui"
 )
 
-// joinAnd renders a list as English prose: "a", "a and b", or "a, b and c". It
+// joinAnd renders a list as English prose: "a", "a and b", or "a, b, and c". It
 // composes the Excluded disclosure line, which can name one to three withheld
 // things.
 func joinAnd(parts []string) string {
@@ -31,7 +31,7 @@ func joinAnd(parts []string) string {
 	case 2:
 		return parts[0] + " and " + parts[1]
 	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
 	}
 }
 

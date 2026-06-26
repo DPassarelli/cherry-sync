@@ -112,15 +112,9 @@ The `push`/`pull` verbs take no other arguments. csync never offers the `.csync.
 
 ## Roadmap
 
-Near-term:
+Near-term enhancements are tracked as [open `enhancement` issues](https://github.com/DPassarelli/cherry-sync/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement) on GitHub.
 
-* bounding rsync with a timeout so a stalled transfer can't hang the tool
-* clearer selection UX — dim unselected filenames, replace the single-character selection indicator with a `[x]`-style marker, and add whitespace so the selected set is obvious at a glance
-* dropping the per-file list from the post-sync summary, once the selection UX above makes it redundant
-* interactive mode — running `./csync` with no positional arguments prompts for source and destination, with the option to save the remote as a `.csync.toml` target (and, at a terminal, offering the same when `push`/`pull` find no config)
-* `--version` flag
-
-Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
+Further out: bidirectional diff (showing which side is newer) and conflict flagging when a file has changed on both sides.
 
 See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
