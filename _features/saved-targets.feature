@@ -119,7 +119,6 @@ Feature: Saved sync targets
     When  I run "csync ./project user@host:/project"
     Then  the .csync.toml file should be reported as excluded
 
-  @wip
   Scenario: A missing .csync.toml fails loudly and transfers nothing
     # No silent fallback to a default. With no dotfile in the project directory,
     # `csync push` must error and exit non-zero BEFORE contacting rsync — the
@@ -135,11 +134,12 @@ Feature: Saved sync targets
     And   the reported error should mention ".csync.toml"
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: A .csync.toml with no remote key is rejected
     # The file exists but defines nothing usable. Rejected like a missing file:
     # non-zero exit, no transfer. Distinguishes "file present" from "remote
-    # present" — an empty config is not an implicit default.
+    # present" — an empty config is not an implicit default. The error must name
+    # the file: drop the check and csync hands an empty operand to rsync, whose
+    # failure names something else, not .csync.toml — red.
     Given a local directory containing these files:
       """
       README.md
@@ -152,14 +152,16 @@ Feature: Saved sync targets
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
+    And   the reported error should mention ".csync.toml"
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: A .csync.toml with an empty remote value is rejected
     # SECURITY.md: a config-sourced path gets the SAME validation as a CLI path.
     # An empty `remote` becomes the same footgun an empty argv path would (an
     # operand of ""), so it is rejected, not passed to rsync. This is the guard
-    # that config is not a back door around path validation.
+    # that config is not a back door around path validation. The error naming
+    # .csync.toml proves csync rejected it itself rather than letting rsync run on
+    # an empty operand — remove the check and that proof goes red.
     Given a local directory containing these files:
       """
       README.md
@@ -172,12 +174,16 @@ Feature: Saved sync targets
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
+    And   the reported error should mention ".csync.toml"
     And   the file "README.md" should still differ between local and remote
 
-  @wip
   Scenario: Malformed TOML is rejected with a clear error
-    # A syntactically broken dotfile must fail with a parse error, not be
-    # silently ignored or half-read. Non-zero exit, no transfer.
+    # A syntactically broken dotfile must fail as malformed, not be silently
+    # ignored or half-read. The "invalid .csync.toml" wording is what gives this
+    # teeth independent of the empty-remote check: the TOML parser leaves the
+    # remote empty on any parse error, so swallowing that error would fall through
+    # to the "no remote" rejection — a different message. Asserting "invalid"
+    # proves the parse failure itself is surfaced. Non-zero exit, no transfer.
     Given a local directory containing these files:
       """
       README.md
@@ -190,6 +196,7 @@ Feature: Saved sync targets
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
+    And   the reported error should mention "invalid .csync.toml"
     And   the file "README.md" should still differ between local and remote
 
   # ---------------------------------------------------------------------------

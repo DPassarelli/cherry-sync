@@ -152,6 +152,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
+	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^a "\.csync\.toml" in the project directory containing:$`, aCsyncTomlInTheProjectDirectoryContaining)
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
@@ -386,6 +387,18 @@ func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
 
 	if !strings.HasPrefix(got, want) {
 		return fmt.Errorf("Usage: got %q, want prefix %q", got, want)
+	}
+	return nil
+}
+
+// theReportedErrorShouldMention asserts csync's stderr contains want — the error
+// it printed before exiting non-zero. The config-rejection scenarios use it to
+// pin that the failure names the offending file (or its nature) rather than
+// failing opaquely or, worse, letting an empty operand reach rsync.
+func theReportedErrorShouldMention(ctx context.Context, want string) error {
+	r := captured(ctx)
+	if !strings.Contains(r.Stderr, want) {
+		return fmt.Errorf("expected error to mention %q, stderr was:\n%s", want, r.Stderr)
 	}
 	return nil
 }
