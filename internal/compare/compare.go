@@ -25,6 +25,11 @@ type Result struct {
 	// never lists .git/ as ignored, so it's excluded explicitly; the CLI discloses
 	// it separately from the gitignored count (it can be true with Excluded == 0).
 	GitDirExcluded bool
+	// CsyncTomlExcluded reports whether the local side's own .csync.toml was held
+	// out of the comparison — true whenever that file is present, independent of
+	// git. The CLI discloses it like the .git directory, since csync withholds it
+	// with no opt-out.
+	CsyncTomlExcluded bool
 }
 
 // Run invokes rsync to compute the diff between source and destination.
@@ -63,7 +68,7 @@ func Run(source, destination string) (Result, error) {
 		actions = kept
 		excluded += dropped
 	}
-	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: exc.inWorkTree}, nil
+	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: exc.inWorkTree, CsyncTomlExcluded: exc.csyncToml}, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`

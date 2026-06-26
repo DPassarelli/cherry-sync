@@ -19,7 +19,7 @@ This is a common situation for anyone working with SSH-accessible dev boxes — 
 An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 1. Compare local and remote directories (using `rsync --dry-run --itemize-changes`).
-2. Automatically exclude `.git/` folder and honor `.gitignore`/`.git/info/exclude`
+2. Automatically exclude `.git/` and csync's own `.csync.toml`, and honor `.gitignore`/`.git/info/exclude`
 3. Show a human-readable list of differences (new, modified, deleted — with direction).
 4. Let the user choose: sync all, none, or individual files.
 5. Execute the transfer for only the selected files (using `rsync --files-from`) and report the outcome.
@@ -82,12 +82,38 @@ No changes to sync.
 
 Missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
 
+### Saved targets
+
+To avoid retyping a remote you sync with often, save it in a `.csync.toml` in the project directory:
+
+```toml
+remote = "user@host:/remote-dir"
+```
+
+Then, from that directory, `csync push` sends the project to the saved remote and `csync pull` brings it down:
+
+```sh
+$ cd ./local-dir
+$ csync push
+Source: .
+Destination: user@host:/remote-dir
+Excluded: .csync.toml
+Changes: 1
+  1. update README.md
+Press Enter to sync all changes:
+Synced: 1
+```
+
+The `push`/`pull` verbs take no other arguments. csync never offers the `.csync.toml` itself for transfer — like `.git/`, it is held out of the comparison and disclosed on the `Excluded:` line. If the file is missing, malformed, or sets no `remote`, csync says so and exits non-zero rather than guessing. An explicit `csync SOURCE DESTINATION` is unaffected and does not read `.csync.toml` for its target.
+
 ## Roadmap
 
 Near-term:
 
 * bounding rsync with a timeout so a stalled transfer can't hang the tool
-* UX improvements
+* clearer selection UX — dim unselected filenames, replace the single-character selection indicator with a `[x]`-style marker, and add whitespace so the selected set is obvious at a glance
+* dropping the per-file list from the post-sync summary, once the selection UX above makes it redundant
+* interactive mode — running `./csync` with no positional arguments prompts for source and destination, with the option to save the remote as a `.csync.toml` target (and, at a terminal, offering the same when `push`/`pull` find no config)
 * `--version` flag
 
 Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
