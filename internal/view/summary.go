@@ -4,7 +4,7 @@
 // the non-TTY path too, where the pre-transfer "Changes:" list already records
 // what was offered. Rendering only — the visual layer.
 
-package tui
+package view
 
 import (
 	"fmt"

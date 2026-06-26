@@ -1,7 +1,11 @@
-// Package tui is csync's interactive terminal UI: a Bubble Tea file picker shown
-// when csync runs attached to a terminal, with the keyboard driving a Selection.
-// It is the TTY front-end; the typed-grammar prompt remains the non-TTY fallback.
-package tui
+// Package view owns csync's user-facing rendering: the banner, the source/
+// destination header, the change list, the interactive Bubble Tea picker, and the
+// post-sync summary. Styling is applied with lipgloss, which drops ANSI when
+// stdout is not a terminal, so the same calls render styled in a terminal and
+// plain when piped — the visual graceful-fallback lives here, in one place. The
+// picker is the TTY front-end; the typed-grammar prompt (driven by main and
+// selection) remains the non-TTY input path.
+package view
 
 import (
 	"fmt"
@@ -107,10 +111,14 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m pickerModel) View() string {
 	dim := lipgloss.NewStyle().Faint(true)
 	dirHeading := lipgloss.NewStyle().Bold(true)
+	prompt := lipgloss.NewStyle().Bold(true)
 
 	var b strings.Builder
-	b.WriteString("Choose which files to sync:\n")
-	fmt.Fprintf(&b, "%s\n", dim.Render("  ↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"))
+	// A leading blank line separates the picker from the Source/Destination header
+	// main prints above it; the bold "? " prompt and dimmed directions mirror the
+	// mockup (and npm-check-updates' "?"-led question).
+	fmt.Fprintf(&b, "\n? %s\n", prompt.Render("Choose which files to sync:"))
+	fmt.Fprintf(&b, "   %s\n", dim.Render("↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"))
 
 	// Align the verb column by padding every basename to the widest one.
 	// lipgloss.Width measures display cells, so multi-byte names line up too.
