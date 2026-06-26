@@ -145,6 +145,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I run "([^"]*)" a second time$`, iRun)
 	ctx.Step(`^I run "([^"]*)" and respond with "([^"]*)"$`, iRunAndRespond)
 	ctx.Step(`^I run "([^"]*)" from the project directory$`, iRunFromTheProjectDirectory)
+	ctx.Step(`^I run "([^"]*)" from the project directory and respond with "([^"]*)"$`, iRunFromTheProjectDirectoryAndRespond)
 	ctx.Step(`^the reported source should be "([^"]*)"$`, theReportedSourceShouldBe)
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
@@ -170,6 +171,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported excluded count should be (\d+)$`, theReportedExcludedCountShouldBe)
 	ctx.Step(`^no gitignored paths should be reported as excluded$`, noGitignoredPathsShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.git directory should be reported as excluded$`, theGitDirectoryShouldBeReportedAsExcluded)
+	ctx.Step(`^the \.csync\.toml file should be reported as excluded$`, theCsyncTomlShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.git directory should not be reported as excluded$`, theGitDirectoryShouldNotBeReportedAsExcluded)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
@@ -221,6 +223,22 @@ func iRunFromTheProjectDirectory(ctx context.Context, command string) (context.C
 	return runCsync(ctx, command, nil, local)
 }
 
+// iRunFromTheProjectDirectoryAndRespond backs `When I run "..." from the project
+// directory and respond with "..."`: like iRunFromTheProjectDirectory but feeds
+// the prompt response on stdin, so a push/pull resolved from .csync.toml can be
+// driven through the selection prompt. The `<empty>` sentinel stands for a bare
+// Enter, as in iRunAndRespond.
+func iRunFromTheProjectDirectoryAndRespond(ctx context.Context, command, response string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	if response == "<empty>" {
+		response = ""
+	}
+	return runCsync(ctx, command, strings.NewReader(response+"\n"), local)
+}
+
 // iRunAndRespond executes the `When I run "..." and respond with "..."` step,
 // feeding the response to csync on stdin as if typed at the prompt. The
 // `<empty>` sentinel stands for an empty response (a bare Enter); a trailing
@@ -230,6 +248,24 @@ func iRunAndRespond(ctx context.Context, command, response string) (context.Cont
 		response = ""
 	}
 	return runCsync(ctx, command, strings.NewReader(response+"\n"), "")
+}
+
+// resolvedRemote returns the real remote operand that the Gherkin placeholder
+// "user@host:/project" stands for in this scenario: a `fakehost:` path under
+// @remote (so rsync runs in sender/receiver mode via RSYNC_RSH), a bare local
+// path otherwise, or "" when no remote directory was set up. Both runCsync (for
+// command-line operands) and the .csync.toml write step resolve through this, so
+// a remote read from config points at the same place as one passed on argv.
+func resolvedRemote(ctx context.Context) string {
+	remotePath, _ := ctx.Value(remotePathKey{}).(string)
+	if remotePath == "" {
+		return ""
+	}
+	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
+	if remoteMode {
+		return "fakehost:" + remotePath
+	}
+	return remotePath
 }
 
 // runCsync splits the command, substitutes the Gherkin placeholders
@@ -255,16 +291,9 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		subs["./project"] = localPath
 	}
 	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
-	remotePath, _ := ctx.Value(remotePathKey{}).(string)
-	if remotePath != "" {
-		// In @remote scenarios the placeholder resolves to a `fakehost:` path so
-		// rsync enters real remote (sender/receiver) mode via RSYNC_RSH below;
-		// otherwise it stays a bare local path (local-to-local).
-		if remoteMode {
-			subs["user@host:/project"] = "fakehost:" + remotePath
-		} else {
-			subs["user@host:/project"] = remotePath
-		}
+	remote := resolvedRemote(ctx)
+	if remote != "" {
+		subs["user@host:/project"] = remote
 	}
 	for i, a := range args {
 		replacement, ok := subs[a]
@@ -436,15 +465,22 @@ func theLocalFileContains(ctx context.Context, name string, ds *godog.DocString)
 
 // aCsyncTomlInTheProjectDirectoryContaining writes the DocString to
 // ./.csync.toml in the scenario's local directory — the saved-target file that
-// `csync push`/`pull` read. The content is written verbatim; scenarios that need
-// the dotfile to point at the real per-scenario remote will substitute the
-// placeholder when that behavior is drilled in.
+// `csync push`/`pull` read. The "user@host:/project" placeholder is rewritten to
+// the scenario's real remote (the same substitution runCsync applies to a
+// command-line operand) so a push/pull actually transfers against it; it is left
+// verbatim when no remote was set up, which the resolution-display scenario
+// relies on to assert the literal placeholder.
 func aCsyncTomlInTheProjectDirectoryContaining(ctx context.Context, ds *godog.DocString) (context.Context, error) {
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
 	}
-	err := os.WriteFile(filepath.Join(local, ".csync.toml"), []byte(ds.Content), 0o644)
+	content := ds.Content
+	remote := resolvedRemote(ctx)
+	if remote != "" {
+		content = strings.ReplaceAll(content, "user@host:/project", remote)
+	}
+	err := os.WriteFile(filepath.Join(local, ".csync.toml"), []byte(content), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write .csync.toml: %w", err)
 	}
@@ -762,6 +798,20 @@ func theGitDirectoryShouldBeReportedAsExcluded(ctx context.Context) error {
 
 	if !parsed.ExcludedGitDir {
 		return fmt.Errorf("expected the .git directory to be reported as excluded, but it was not, in output:\n%s", r.Stdout)
+	}
+	return nil
+}
+
+// theCsyncTomlShouldBeReportedAsExcluded asserts csync's Excluded line announces
+// that its own .csync.toml was held back. The config file is withheld from every
+// sync with no opt-out, so — like the .git disclosure — this line is the user's
+// only signal it was excluded rather than offered for transfer.
+func theCsyncTomlShouldBeReportedAsExcluded(ctx context.Context) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.ExcludedCsyncToml {
+		return fmt.Errorf("expected the .csync.toml file to be reported as excluded, but it was not, in output:\n%s", r.Stdout)
 	}
 	return nil
 }

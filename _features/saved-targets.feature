@@ -19,7 +19,6 @@ Feature: Saved sync targets
   In order to avoid retyping a remote I sync with often, I want to save it once
   in the project's .csync.toml and refer to it with `csync push` / `csync pull`.
 
-  @wip
   Scenario: Push resolves the saved remote as the destination
     # Teeth: push must read `remote` from ./.csync.toml and use it as the
     # destination, with the project directory (cwd) as the source. README is
@@ -80,6 +79,46 @@ Feature: Saved sync targets
     When  I run "csync push" from the project directory
     Then  the reported source should be "."
     And   the reported destination should be "user@host:/project"
+
+  Scenario: csync does not offer its own .csync.toml as a change
+    # csync's config file is local tooling metadata, like .git/ — never a
+    # syncable file. It's exercised in explicit mode (no push) to prove the
+    # exclusion is unconditional, not tied to the push/pull verbs: with a
+    # .csync.toml present and README changed, README must be the ONLY reported
+    # change. Drop the exclusion and .csync.toml surfaces as a second `create` —
+    # the count becomes 2 and the action list grows a row, red.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   that all of the files are identical between local and remote
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project"
+      """
+    And   that the file "README.md" has been changed locally
+    When  I run "csync ./project user@host:/project" and respond with "n"
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
+    And   the reported change count should be 1
+
+  Scenario: csync discloses that it held back its .csync.toml
+    # Transparency, like the .git disclosure: when csync silently withholds a
+    # file with no opt-out, it must say so. With a .csync.toml present and nothing
+    # else to sync, the Excluded line must name it. Drop the disclosure and the
+    # user has no signal the config file was held back — red.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   that all of the files are identical between local and remote
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project"
+      """
+    When  I run "csync ./project user@host:/project"
+    Then  the .csync.toml file should be reported as excluded
 
   @wip
   Scenario: A missing .csync.toml fails loudly and transfers nothing

@@ -1,39 +1,50 @@
-// gitignore.go holds the git-authoritative exclusion logic: building the rsync
-// exclude list from the local repo's ignore rules, dropping ignored remote-only
-// paths that slip past that pre-filter on a pull, and the git interrogation
-// helpers (`ls-files`, `check-ignore`, `rev-parse`) behind both.
+// gitignore.go holds the local-side exclusion logic: csync's own .csync.toml
+// (always, when present), the git-authoritative excludes built from the local
+// repo's ignore rules, dropping ignored remote-only paths that slip past that
+// pre-filter on a pull, and the git interrogation helpers (`ls-files`,
+// `check-ignore`, `rev-parse`) behind them.
 
 package compare
 
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 // exclusions holds what csync withholds from the comparison for the local side of
 // a sync: the rsync --exclude patterns to apply, how many of them are gitignored
-// paths (the count the CLI discloses), and whether the local side is a git work
-// tree at all. Its zero value means "not a work tree" — no patterns, nothing hidden.
+// paths (the count the CLI discloses), whether the local side is a git work tree
+// at all, and whether csync's own .csync.toml was among the withheld (csyncToml),
+// which the CLI discloses separately like .git/. Its zero value means nothing was
+// hidden — no patterns, no config file, not a work tree.
 type exclusions struct {
 	patterns   []string
 	gitignored int
 	inWorkTree bool
+	csyncToml  bool
 }
 
-// localExclusions gathers the exclusions for the local side of a sync. When the
-// local side is not a git work tree it returns the zero value, so compare runs with
-// no exclusions — no repo, nothing hidden.
+// localExclusions gathers the exclusions for the local side of a sync. Two
+// independent sources contribute, so the zero value (nothing hidden) is returned
+// only when neither applies.
 //
-// When the local side IS a work tree, patterns always begins with "/.git/": git
-// never reports its own metadata directory as ignored (it special-cases .git/), so
+// csync's own .csync.toml is excluded whenever it is present — unconditional on
+// git — because its saved remote is meaningless on the other machine and offering
+// it would clutter every diff. The "/" anchors it to the transfer root (it lives
+// only there, cwd-only discovery), and csyncToml records it so the CLI can
+// disclose it like .git/.
+//
+// When the local side is a git work tree, patterns also gains "/.git/": git never
+// reports its own metadata directory as ignored (it special-cases .git/), so
 // without an explicit, anchored exclude a push/pull from a repo would offer every
 // .git/ object for transfer — noise that would also clobber the other side's git
-// state. The leading "/" anchors it to the transfer root (see the floating-".git"
-// TODO in honor-gitignore.feature for the submodule case). The gitignored count
-// covers only the gitignored paths, not this .git/ entry, which the CLI discloses
-// separately.
+// state (see the floating-".git" TODO in honor-gitignore.feature for the submodule
+// case). The gitignored count covers only the gitignored paths, not this .git/
+// entry, which the CLI discloses separately.
 //
 // The patterns are applied to the comparison ONLY; the transfer uses --files-from
 // and never re-derives them. That's safe because the comparison is the single gate:
@@ -44,18 +55,33 @@ func localExclusions(source, destination string) (exclusions, error) {
 	if !ok {
 		return exclusions{}, nil
 	}
-	if !isGitWorkTree(dir) {
-		return exclusions{}, nil
+	var exc exclusions
+	if hasCsyncToml(dir) {
+		exc.patterns = append(exc.patterns, "/.csync.toml")
+		exc.csyncToml = true
 	}
-	gitignored, err := gitignoreExcludes(dir)
+	if isGitWorkTree(dir) {
+		gitignored, err := gitignoreExcludes(dir)
+		if err != nil {
+			return exclusions{}, err
+		}
+		exc.patterns = append(exc.patterns, "/.git/")
+		exc.patterns = append(exc.patterns, gitignored...)
+		exc.gitignored = len(gitignored)
+		exc.inWorkTree = true
+	}
+	return exc, nil
+}
+
+// hasCsyncToml reports whether dir contains a .csync.toml file — a regular file,
+// not a directory of that name. It gates both the config-file exclusion and its
+// disclosure, so a sync of a directory without one stays silent.
+func hasCsyncToml(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, ".csync.toml"))
 	if err != nil {
-		return exclusions{}, err
+		return false
 	}
-	return exclusions{
-		patterns:   append([]string{"/.git/"}, gitignored...),
-		gitignored: len(gitignored),
-		inWorkTree: true,
-	}, nil
+	return !info.IsDir()
 }
 
 // localSyncDir returns the local operand of a source/destination pair — the side
