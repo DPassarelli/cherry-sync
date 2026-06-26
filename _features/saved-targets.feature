@@ -221,6 +221,28 @@ Feature: Saved sync targets
     Then  csync should return exit code 2
     And   the reported usage should begin with "usage: csync"
 
+  Scenario: A configured remote that looks like an rsync option is treated as a path
+    # Security regression guard — the config mirror of the same scenario in
+    # compare-directories.feature, proving the config path source is not a bypass.
+    # A `remote` of "-e" is rsync's remote-shell flag (--rsh = remote command
+    # execution) if parsed as an option. config.Load does not reject it (the fix
+    # is to neutralize, not blocklist); on pull it becomes the SOURCE operand, and
+    # rsyncArgs's `--` makes rsync read it as a (nonexistent) path, so rsync errors
+    # and csync exits non-zero. Delete the `--` and rsync would honor `-e` and exit
+    # 0 — flipping this red, which also proves the non-zero exit is the guard at
+    # work, not a config rejection. Pull (not push): an option-looking destination
+    # would be a creatable path rsync's dry-run accepts. See SECURITY.md.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "-e"
+      """
+    When  I run "csync pull" from the project directory
+    Then  csync should return a non-zero exit code
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
@@ -232,8 +254,3 @@ Feature: Saved sync targets
   # - Discovery is cwd-only in v1: running `csync push` from a SUBDIRECTORY of a
   #   project whose .csync.toml sits at the root must NOT find it (it errors).
   #   When walk-up discovery lands, this flips to "found from a subdirectory".
-  #
-  # - A remote value that looks like an rsync option (e.g. "-e...") reaches rsync
-  #   as an inert path via the `--` guard, exactly as the argv case already does
-  #   in compare-directories.feature. SECURITY regression guard for the config
-  #   path source.
