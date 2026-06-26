@@ -39,7 +39,6 @@ Feature: Saved sync targets
     Then  the reported sync count should be 1
     And   the file "README.md" should be identical between local and remote
 
-  @wip
   Scenario: Pull resolves the saved remote as the source
     # The mirror of push: pull must use the configured `remote` as the SOURCE and
     # the project directory as the destination. A file that exists only on the

@@ -42,18 +42,23 @@ func main() {
 		os.Exit(2)
 	}
 
-	// With the `push` verb the operands aren't on the command line: resolve them
-	// from the project's .csync.toml in the current directory. Push syncs the
-	// project (".") to the saved remote.
+	// With a saved-target verb the operands aren't on the command line: resolve
+	// them from the project's .csync.toml in the current directory. Push sends the
+	// project (".") to the saved remote; pull brings the saved remote down to the
+	// project. The direction is the only difference — which side is source.
 	source, destination := a.Source, a.Destination
-	if a.Push {
+	if a.Mode != cli.Explicit {
 		cfg, err := config.Load(".")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		source = "."
-		destination = cfg.Remote
+		switch a.Mode {
+		case cli.Push:
+			source, destination = ".", cfg.Remote
+		case cli.Pull:
+			source, destination = cfg.Remote, "."
+		}
 	}
 
 	fmt.Println("Source:", source)
