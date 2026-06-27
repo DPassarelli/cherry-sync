@@ -1,6 +1,9 @@
 # Compiled binary (matches the cmd/csync output)
 /csync
 
+# Config
+/.csync.toml
+
 # Go build artifacts
 *.exe
 *.test

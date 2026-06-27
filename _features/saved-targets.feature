@@ -105,7 +105,7 @@ Feature: Saved sync targets
   Scenario: csync discloses that it held back its .csync.toml
     # Transparency, like the .git disclosure: when csync silently withholds a
     # file with no opt-out, it must say so. With a .csync.toml present and nothing
-    # else to sync, the Excluded line must name it. Drop the disclosure and the
+    # else to sync, the exclusion disclosure must name it. Drop the disclosure and the
     # user has no signal the config file was held back — red.
     Given a local directory containing these files:
       """

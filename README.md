@@ -58,29 +58,12 @@ Produces a `csync` binary at the repo root.
 ## Usage
 
 ```sh
-$ ./csync ./local-dir user@host:/remote-dir
-Source: ./local-dir
-Destination: user@host:/remote-dir
-Changes: 2
-  1. update README.md
-  2. create src/adder.go
-Press Enter to sync all changes:
-Synced: 2
+csync ./local-dir user@host:/remote-dir
 ```
 
-At the prompt: press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel without transferring anything, or pick a subset by number — a single number, a range like `1-3`, a comma list like `1,3`, or any combination (`1-2,4`); whitespace around the numbers is ignored. The prompt is written to stderr, so the report on stdout stays clean and parseable.
+csync compares the two directories and lets you choose what to transfer. In a terminal you get an interactive picker — arrow keys to move, space to toggle a file, `a` for all/none, Enter to sync, `ctrl-c` to cancel. When input or output is redirected (a pipe, a file, CI), csync falls back to a typed prompt on stderr — so the report on stdout stays uncluttered — where you press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel, or pick a subset by number: a single number, a range like `1-3`, a comma list like `1,3`, or any combination (`1-2,4`); whitespace around the numbers is ignored.
 
-If the two directories are identical:
-
-```sh
-$ ./csync ./local-dir user@host:/remote-dir
-Source: ./local-dir
-Destination: user@host:/remote-dir
-Changes: 0
-No changes to sync.
-```
-
-Missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
+If the two directories are identical, csync reports there is nothing to sync and exits cleanly. A missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
 
 ### Saved targets
 
@@ -93,30 +76,17 @@ remote = "user@host:/remote-dir"
 Then, from that directory, `csync push` sends the project to the saved remote and `csync pull` brings it down:
 
 ```sh
-$ cd ./local-dir
-$ csync push
-Source: .
-Destination: user@host:/remote-dir
-Excluded: .csync.toml
-Changes: 1
-  1. update README.md
-Press Enter to sync all changes:
-Synced: 1
+cd ./local-dir
+csync push
 ```
 
-The `push`/`pull` verbs take no other arguments. csync never offers the `.csync.toml` itself for transfer — like `.git/`, it is held out of the comparison and disclosed on the `Excluded:` line. If the file is missing, malformed, or sets no `remote`, csync says so and exits non-zero rather than guessing. An explicit `csync SOURCE DESTINATION` is unaffected and does not read `.csync.toml` for its target.
+The `push`/`pull` verbs take no other arguments. csync never offers the `.csync.toml` itself for transfer — like `.git/`, it is held out of the comparison and reported as excluded. If the file is missing, malformed, or sets no `remote`, csync says so and exits non-zero rather than guessing. An explicit `csync SOURCE DESTINATION` is unaffected and does not read `.csync.toml` for its target.
 
 ## Roadmap
 
-Near-term:
+Near-term enhancements are tracked as [open `enhancement` issues](https://github.com/DPassarelli/cherry-sync/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement) on GitHub.
 
-* bounding rsync with a timeout so a stalled transfer can't hang the tool
-* clearer selection UX — dim unselected filenames, replace the single-character selection indicator with a `[x]`-style marker, and add whitespace so the selected set is obvious at a glance
-* dropping the per-file list from the post-sync summary, once the selection UX above makes it redundant
-* interactive mode — running `./csync` with no positional arguments prompts for source and destination, with the option to save the remote as a `.csync.toml` target (and, at a terminal, offering the same when `push`/`pull` find no config)
-* `--version` flag
-
-Further out: bidirectional diff (showing which side is newer), delete detection, and conflict flagging when a file has changed on both sides.
+Further out: bidirectional diff (showing which side is newer) and conflict flagging when a file has changed on both sides.
 
 See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 

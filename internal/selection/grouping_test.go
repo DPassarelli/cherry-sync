@@ -69,6 +69,27 @@ func TestGroupByDir(t *testing.T) {
 				{Dir: "./src", Actions: []compare.Action{{Verb: "update", Path: "src/main.go"}}},
 			},
 		},
+		{
+			// compare's sort interleaves a directory's files with subdirectories
+			// (dot-before-non-dot, file-before-subdir at each level), so two root
+			// files can arrive with a subdirectory between them. They must still
+			// coalesce into one "./" group rather than producing a second heading.
+			name: "non-contiguous rows in the same directory coalesce into one group",
+			in: []compare.Action{
+				{Verb: "update", Path: ".goreleaser.yaml"},
+				{Verb: "create", Path: ".github/workflows/ci.yml"},
+				{Verb: "create", Path: "NOTES.md"},
+			},
+			want: []Group{
+				{Dir: "./", Actions: []compare.Action{
+					{Verb: "update", Path: ".goreleaser.yaml"},
+					{Verb: "create", Path: "NOTES.md"},
+				}},
+				{Dir: "./.github/workflows", Actions: []compare.Action{
+					{Verb: "create", Path: ".github/workflows/ci.yml"},
+				}},
+			},
+		},
 	}
 
 	for _, tc := range cases {
