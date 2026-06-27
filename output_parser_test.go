@@ -43,10 +43,17 @@ type Action struct {
 // leading `N.` selection number ahead of the `verb path` pair.
 var (
 	labeledLineRE = regexp.MustCompile(`(?m)^([A-Za-z][A-Za-z ]*):\s+(.+?)\s*$`)
-	actionLineRE  = regexp.MustCompile(`(?m)^\s+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
-	// gitignoredCountRE pulls the gitignored-path count out of the Excluded line's
-	// value (e.g. "the .git directory and 3 gitignored paths"). The .git directory
-	// is disclosed separately and is not part of this count.
+	// The leading indent is [^\S\n]+ (horizontal whitespace), not \s+: \s matches
+	// newlines, so a \s+ indent would reach across a blank line and swallow the
+	// following status line ("No changes to sync.") as a bogus action.
+	actionLineRE = regexp.MustCompile(`(?m)^[^\S\n]+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
+	// excludingRE captures the parenthetical disclosure of what was held out of the
+	// comparison, e.g. "(excluding .csync.toml, the .git directory, and 3 gitignored
+	// paths)". The captured group is the inner clause, parsed for its parts below.
+	excludingRE = regexp.MustCompile(`(?m)^\(excluding (.+)\)\s*$`)
+	// gitignoredCountRE pulls the gitignored-path count out of the excluding clause
+	// (e.g. "the .git directory and 3 gitignored paths"). The .git directory is
+	// disclosed separately and is not part of this count.
 	gitignoredCountRE = regexp.MustCompile(`(\d+) gitignored`)
 	// syncCompleteRE pulls the file count out of the post-sync summary header
 	// ("Sync complete! (3 files)" / "(1 file)"), the count that used to be the
@@ -70,8 +77,12 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	summary := ""
 	idx := strings.Index(stdout, "Sync complete!")
 	if idx >= 0 {
-		report = stdout[:idx]
-		summary = stdout[idx:]
+		// Split at the start of the summary's line, not at "Sync complete!" itself, so
+		// a leading status glyph ("✓ ") goes with the summary rather than dangling in
+		// the report where the message scan would mistake it for the status line.
+		lineStart := strings.LastIndex(stdout[:idx], "\n") + 1
+		report = stdout[:lineStart]
+		summary = stdout[lineStart:]
 	}
 	cm := syncCompleteRE.FindStringSubmatch(summary)
 	if cm != nil {
@@ -94,22 +105,24 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			if err == nil {
 				out.ChangeCount = n
 			}
-		case "Excluded":
-			// The value discloses what was held out of the comparison: the .git
-			// directory (when the local side is a repo) and/or a gitignored-path
-			// count, e.g. "the .git directory and 3 gitignored paths". The two are
-			// reported independently — .git/ exclusion can show with no gitignored
-			// paths at all — so parse them as separate signals rather than a single
-			// leading number.
-			out.ExcludedGitDir = strings.Contains(m[2], ".git directory")
-			out.ExcludedCsyncToml = strings.Contains(m[2], ".csync.toml")
-			cm := gitignoredCountRE.FindStringSubmatch(m[2])
-			if cm != nil {
-				out.HasExcludedCount = true
-				n, err := strconv.Atoi(cm[1])
-				if err == nil {
-					out.ExcludedCount = n
-				}
+		}
+	}
+
+	// The "(excluding …)" aside discloses what was held out of the comparison: the
+	// .git directory (when the local side is a repo), csync's own .csync.toml, and/or
+	// a gitignored-path count. They are reported independently — .git/ exclusion can
+	// show with no gitignored paths at all — so parse them as separate signals rather
+	// than a single leading number.
+	em := excludingRE.FindStringSubmatch(report)
+	if em != nil {
+		out.ExcludedGitDir = strings.Contains(em[1], ".git directory")
+		out.ExcludedCsyncToml = strings.Contains(em[1], ".csync.toml")
+		cm := gitignoredCountRE.FindStringSubmatch(em[1])
+		if cm != nil {
+			out.HasExcludedCount = true
+			n, err := strconv.Atoi(cm[1])
+			if err == nil {
+				out.ExcludedCount = n
 			}
 		}
 	}
@@ -127,7 +140,7 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if labeledLineRE.MatchString(line) || actionLineRE.MatchString(line) {
+		if labeledLineRE.MatchString(line) || actionLineRE.MatchString(line) || excludingRE.MatchString(line) {
 			continue
 		}
 		out.Message = strings.TrimSpace(line)

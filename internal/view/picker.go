@@ -46,21 +46,22 @@ func newModel(actions []compare.Action) pickerModel {
 }
 
 // RunPicker shows the interactive picker over actions and returns the actions the
-// user chose to sync and whether they confirmed with Enter (accepted). A cancel —
-// Ctrl-C/Esc/q — returns no actions and accepted=false, so the caller can report
-// it differently from a confirmed-but-empty selection. It drives a Bubble Tea
-// program and so needs a terminal: main selects it only when stdin and stdout are
-// TTYs.
-func RunPicker(actions []compare.Action) (chosen []compare.Action, accepted bool, err error) {
+// user chose to sync — empty when there is nothing to do, whether the user
+// cancelled (Ctrl-C/Esc/q) or confirmed with nothing checked. The accepted check
+// is what separates the two from a real selection: the picker starts all-checked,
+// so a cancel must report nothing rather than leak the default set. It drives a
+// Bubble Tea program and so needs a terminal: main selects it only when stdin and
+// stdout are TTYs.
+func RunPicker(actions []compare.Action) ([]compare.Action, error) {
 	final, err := tea.NewProgram(newModel(actions)).Run()
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	m, ok := final.(pickerModel)
 	if !ok || !m.accepted {
-		return nil, false, nil
+		return nil, nil
 	}
-	return m.sel.Selected(), true, nil
+	return m.sel.Selected(), nil
 }
 
 // Init is part of tea.Model; the picker needs no startup command.
@@ -105,13 +106,17 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // directory — each group under its "./dir" heading, each row a cursor marker, a
 // "[x]"/"[ ]" checkbox, the file's basename, and its verb. A checked row is
 // colored by change type; an unchecked row is dimmed so the selected set stands
-// out at a glance. The current row is marked and emphasized. Untested by design
-// (the visual layer); the keyboard logic it reflects is pinned by the Update
-// tests, the grouping by GroupByDir's.
+// out at a glance. The current row is marked with a heavy caret and a subtle
+// background bar. Untested by design (the visual layer); the keyboard logic it
+// reflects is pinned by the Update tests, the grouping by GroupByDir's.
 func (m pickerModel) View() string {
 	dim := lipgloss.NewStyle().Faint(true)
 	dirHeading := lipgloss.NewStyle().Bold(true)
 	prompt := lipgloss.NewStyle().Bold(true)
+	// The cursor row is marked with a heavy bold caret and a subtle background bar
+	// rather than bold text; AdaptiveColor keeps the bar legible on both light and
+	// dark terminals.
+	cursorBG := lipgloss.AdaptiveColor{Light: "252", Dark: "236"}
 
 	var b strings.Builder
 	// A leading blank line separates the picker from the Source/Destination header
@@ -137,10 +142,7 @@ func (m pickerModel) View() string {
 	for _, g := range selection.GroupByDir(m.actions) {
 		fmt.Fprintf(&b, "\n%s\n", dirHeading.Render(g.Dir))
 		for _, a := range g.Actions {
-			marker := "  "
-			if flat == m.cursor {
-				marker = "> "
-			}
+			cursorRow := flat == m.cursor
 			checked := m.sel.IsChecked(flat)
 			box := "[ ]"
 			if checked {
@@ -149,15 +151,25 @@ func (m pickerModel) View() string {
 			base := path.Base(a.Path)
 			pad := strings.Repeat(" ", width-lipgloss.Width(base))
 			// A checked row is verb-colored; an unchecked row is dimmed so the
-			// selected set stands out. Either way the cursor row is bolded.
-			style := dim
+			// selected set stands out.
+			textStyle := dim
 			if checked {
-				style = verbStyle(a.Verb)
+				textStyle = verbStyle(a.Verb)
 			}
-			if flat == m.cursor {
-				style = style.Bold(true)
+			caretStyle := lipgloss.NewStyle().Bold(true)
+			boxStyle := lipgloss.NewStyle()
+			// The cursor row carries the background across all three segments, so the
+			// highlight reads as one continuous bar rather than a single colored word.
+			if cursorRow {
+				textStyle = textStyle.Background(cursorBG)
+				caretStyle = caretStyle.Background(cursorBG)
+				boxStyle = boxStyle.Background(cursorBG)
 			}
-			fmt.Fprintf(&b, "%s%s %s\n", marker, box, style.Render(base+pad+"  "+a.Verb))
+			marker := "  "
+			if cursorRow {
+				marker = caretStyle.Render("❯ ")
+			}
+			fmt.Fprintf(&b, "%s%s%s\n", marker, boxStyle.Render(box+" "), textStyle.Render(base+pad+"  "+a.Verb))
 			flat++
 		}
 	}

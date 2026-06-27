@@ -1,5 +1,5 @@
 // report.go renders the plain-text report lines shared with the non-TTY path: the
-// "Excluded:" disclosure and the numbered change list. These carry no styling —
+// "(excluding …)" disclosure and the numbered change list. These carry no styling —
 // the change-list numbers double as the selection affordance for the typed-grammar
 // prompt — so they read the same in a terminal or piped.
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
@@ -28,16 +29,18 @@ func joinAnd(parts []string) string {
 	}
 }
 
-// Excluded returns the "Excluded:" disclosure line naming what was held out of the
-// comparison, or the empty string when nothing was — so the caller can print it
-// unconditionally and a clean sync stays noise-free. It is deliberately not
-// aligned with the source/destination header: the disclosure is a separate note,
-// not part of that two-line block.
+// Excluded returns the disclosure of what was held out of the comparison as a
+// dimmed parenthetical aside — "(excluding a, b, and c)" — or the empty string
+// when nothing was, so the caller can print it unconditionally and a clean sync
+// stays noise-free. It is deliberately not aligned with the source/destination
+// header: the disclosure is a separate note, not part of that two-line block. The
+// faint styling drops to plain text when stdout is not a terminal.
 func Excluded(parts []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "Excluded: " + joinAnd(parts) + "\n"
+	dim := lipgloss.NewStyle().Faint(true)
+	return dim.Render("(excluding "+joinAnd(parts)+")") + "\n"
 }
 
 // ChangeList returns the non-TTY change report: a "Changes: N" count followed by

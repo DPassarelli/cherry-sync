@@ -773,36 +773,38 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	return nil
 }
 
-// theReportedExcludedCountShouldBe asserts csync printed an "Excluded:" line and
-// that its count equals want. The line is the user's only disclosure that ignored
-// paths were hidden, so its absence (HasExcludedCount false) is itself a failure.
+// theReportedExcludedCountShouldBe asserts csync printed an exclusion disclosure
+// and that its count equals want. The "(excluding …)" line is the user's only
+// signal that ignored paths were hidden, so its absence (HasExcludedCount false)
+// is itself a failure.
 func theReportedExcludedCountShouldBe(ctx context.Context, want int) error {
 	r := captured(ctx)
 	parsed := parseOutput(r.Stdout, r.Stderr)
 
 	if !parsed.HasExcludedCount {
-		return fmt.Errorf("no Excluded line in output:\n%s", r.Stdout)
+		return fmt.Errorf("no exclusion disclosure in output:\n%s", r.Stdout)
 	}
 	if parsed.ExcludedCount != want {
-		return fmt.Errorf("Excluded: got %d, want %d in output:\n%s", parsed.ExcludedCount, want, r.Stdout)
+		return fmt.Errorf("excluded count: got %d, want %d in output:\n%s", parsed.ExcludedCount, want, r.Stdout)
 	}
 	return nil
 }
 
-// noGitignoredPathsShouldBeReportedAsExcluded asserts csync printed no
-// "Excluded:" line at all — the disclosure is omitted entirely when nothing was
-// hidden, so a non-repo (or empty-ignore) sync stays free of "Excluded: 0" noise.
+// noGitignoredPathsShouldBeReportedAsExcluded asserts csync printed no exclusion
+// disclosure at all — the "(excluding …)" aside is omitted entirely when nothing
+// was hidden, so a non-repo (or empty-ignore) sync stays free of empty-exclusion
+// noise.
 func noGitignoredPathsShouldBeReportedAsExcluded(ctx context.Context) error {
 	r := captured(ctx)
 	parsed := parseOutput(r.Stdout, r.Stderr)
 
 	if parsed.HasExcludedCount {
-		return fmt.Errorf("Excluded line present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
+		return fmt.Errorf("exclusion disclosure present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
 	}
 	return nil
 }
 
-// theGitDirectoryShouldBeReportedAsExcluded asserts csync's Excluded line
+// theGitDirectoryShouldBeReportedAsExcluded asserts csync's exclusion disclosure
 // announces the .git directory. git never lists .git/ as ignored, so this
 // disclosure is the user's only signal that the VCS metadata dir was held back.
 func theGitDirectoryShouldBeReportedAsExcluded(ctx context.Context) error {
@@ -815,8 +817,8 @@ func theGitDirectoryShouldBeReportedAsExcluded(ctx context.Context) error {
 	return nil
 }
 
-// theCsyncTomlShouldBeReportedAsExcluded asserts csync's Excluded line announces
-// that its own .csync.toml was held back. The config file is withheld from every
+// theCsyncTomlShouldBeReportedAsExcluded asserts csync's exclusion disclosure
+// announces that its own .csync.toml was held back. The config file is withheld from every
 // sync with no opt-out, so — like the .git disclosure — this line is the user's
 // only signal it was excluded rather than offered for transfer.
 func theCsyncTomlShouldBeReportedAsExcluded(ctx context.Context) error {

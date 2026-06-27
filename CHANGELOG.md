@@ -6,11 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-26
+
 ### Added
 
 - When csync runs in a terminal, it now shows an interactive picker for choosing which changes to sync: an arrow-key (or `j`/`k`) cursor over a `[x]`/`[ ]` checkbox list, grouped by directory and color-coded by change type (green for new files, yellow for modified). Unchecked files are dimmed so the selected set stands out at a glance. Use `space` to toggle a file, `a` to toggle all on or off, `Enter` to sync the checked files, and `Ctrl-C`/`Esc`/`q` to cancel without transferring anything. When input or output is redirected (a pipe, a file, or a script), csync falls back to the existing typed prompt, so non-interactive and scripted use is unchanged.
 - After a sync, csync now prints a one-line `Sync complete! (N files)` summary, replacing the terse `Synced: N` line. The interactive picker already shows which files were chosen, so the summary reports just the count rather than re-listing every file.
 - When csync runs in a terminal, it now leads with a `cherry-sync` banner above the `Source:` and `Destination:` lines, and those values are emphasized and column-aligned to frame the picker. Redirected output drops the banner and the emphasis, keeping the plain, aligned header it already printed.
+
+### Changed
+
+- The disclosure of what was held out of a comparison now reads as a parenthetical aside — `(excluding .csync.toml, the .git directory, and 5 gitignored paths)` — instead of an `Excluded:` label line.
 
 ## [0.3.0] - 2026-06-26
 
@@ -45,7 +51,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...0.2.1
 [0.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.1.0...v0.2.0

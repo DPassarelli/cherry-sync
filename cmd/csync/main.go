@@ -92,7 +92,7 @@ func main() {
 		if !interactive {
 			fmt.Print(view.ChangeList(nil))
 		}
-		fmt.Println("No changes to sync.")
+		fmt.Println("\nNo changes to sync.")
 		return
 	}
 
@@ -103,19 +103,19 @@ func main() {
 	// "Changes:" report is non-interactive-only.
 	var selected []compare.Action
 	if interactive {
-		chosen, accepted, err := view.RunPicker(result.Actions)
+		picked, err := view.RunPicker(result.Actions)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		// A cancel (Ctrl-C/Esc/q) is distinct from a confirmed empty selection:
-		// report it as "Canceled" and stop, rather than transferring nothing and
-		// printing the "Sync complete! (0 files)" summary.
-		if !accepted {
-			fmt.Println("Canceled")
+		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
+		// which amount to the same thing: report it and stop before running a no-op
+		// transfer that would print "Sync complete! (0 files)".
+		if len(picked) == 0 {
+			fmt.Print(view.Canceled())
 			return
 		}
-		selected = chosen
+		selected = picked
 	} else {
 		fmt.Print(view.ChangeList(result.Actions))
 		// Prompt on stderr so stdout stays a clean, parseable report.
