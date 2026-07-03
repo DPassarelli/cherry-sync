@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-03
+
 ### Fixed
 
 - The interactive picker now stays usable when the change list is taller than the terminal. Previously a long list overflowed the screen: the cursor's row, its highlight, and the prompt all scrolled out of view, and the picker looked frozen — arrow keys appeared to do nothing because the cursor was moving off-screen. The list now scrolls to keep the cursor visible — holding still while the cursor moves within view and scrolling only once it reaches the top or bottom edge — with `▲ more above` / `▼ more below` indicators showing when there are changes off-screen in either direction. The banner and the source/destination header also stay on screen above the picker instead of scrolling off the top. (#60)
@@ -55,7 +57,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.0...0.2.1
