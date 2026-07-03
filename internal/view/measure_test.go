@@ -7,6 +7,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// TestCountRows verifies row counting at a given width: one row per newline-separated
+// line, plus the extra rows a line wider than the width wraps onto, with a non-positive
+// width falling back to one row per line.
 func TestCountRows(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -38,7 +41,8 @@ func TestCountRows(t *testing.T) {
 // would over-reserve and waste rows.
 func TestCountRowsIgnoresANSI(t *testing.T) {
 	styled := lipgloss.NewStyle().Bold(true).Render("Destination: host:/p") + "\n"
-	if got := countRows(styled, 80); got != 1 {
+	got := countRows(styled, 80)
+	if got != 1 {
 		t.Errorf("countRows(styled, 80) = %d, want 1 (ANSI must not count toward width)", got)
 	}
 }

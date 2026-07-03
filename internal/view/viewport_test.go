@@ -16,6 +16,8 @@ func makeLines(n int) []string {
 	return lines
 }
 
+// TestScrollFits verifies that a list no taller than the window (n <= height-2) is
+// returned whole at offset 0 with nothing hidden.
 func TestScrollFits(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -42,6 +44,8 @@ func TestScrollFits(t *testing.T) {
 	}
 }
 
+// TestScrollWindowSizeIsHeightMinusTwo verifies the window reserves two rows for the
+// ▲/▼ indicator lines, so its content region is height-2 lines tall.
 func TestScrollWindowSizeIsHeightMinusTwo(t *testing.T) {
 	// height 10 reserves two rows for the ▲/▼ indicator lines, leaving 8 for content.
 	vp := scroll(makeLines(20), 0, 0, 10)
@@ -50,6 +54,8 @@ func TestScrollWindowSizeIsHeightMinusTwo(t *testing.T) {
 	}
 }
 
+// TestScrollUnknownHeight verifies that before the first WindowSizeMsg (height <= 0)
+// scroll shows every line and hides nothing.
 func TestScrollUnknownHeight(t *testing.T) {
 	// Before the first WindowSizeMsg the height is 0: show everything, hide nothing.
 	for _, h := range []int{0, -5} {
@@ -64,6 +70,9 @@ func TestScrollUnknownHeight(t *testing.T) {
 	}
 }
 
+// TestScrollHoldsUntilCursorReachesBottomEdge verifies the edge-triggered scroll
+// holds the window still while the cursor moves within it and scrolls by one only
+// when the cursor steps past the bottom edge.
 func TestScrollHoldsUntilCursorReachesBottomEdge(t *testing.T) {
 	// n=50, height=12 -> windowSize=10. Starting at the top (offset 0) the window
 	// must hold still while the cursor moves within it, and only scroll when the
@@ -83,6 +92,9 @@ func TestScrollHoldsUntilCursorReachesBottomEdge(t *testing.T) {
 	}
 }
 
+// TestScrollHoldsUntilCursorReachesTopEdge verifies the symmetric top edge: the
+// window holds while the cursor moves within it and scrolls by one only when the
+// cursor steps above the top edge.
 func TestScrollHoldsUntilCursorReachesTopEdge(t *testing.T) {
 	// Symmetric to the bottom edge: with the window parked at offset 20, moving the
 	// cursor up within it holds the window, and it scrolls only when the cursor
@@ -101,6 +113,8 @@ func TestScrollHoldsUntilCursorReachesTopEdge(t *testing.T) {
 	}
 }
 
+// TestScrollClampsAtBottom verifies the offset never runs past the last full window,
+// even for a stale-deep prevOffset, and reports nothing hidden below.
 func TestScrollClampsAtBottom(t *testing.T) {
 	// The offset never runs past the last full window: n=20, windowSize=8 -> maxOffset
 	// 12. A stale-deep prevOffset with the cursor at the last line settles at 12 with
@@ -117,6 +131,8 @@ func TestScrollClampsAtBottom(t *testing.T) {
 	}
 }
 
+// TestScrollClampsAtTop verifies a cursor on the first line pins the window to the
+// top regardless of prevOffset.
 func TestScrollClampsAtTop(t *testing.T) {
 	// Cursor at line 0 pins the window to the top regardless of prevOffset.
 	vp := scroll(makeLines(20), 0, 5, 10)
@@ -131,6 +147,9 @@ func TestScrollClampsAtTop(t *testing.T) {
 	}
 }
 
+// TestScrollClampsStaleOffsetAfterResize verifies that growing the terminal clamps a
+// now-too-deep prevOffset down to the last full window, even when the cursor is
+// already visible.
 func TestScrollClampsStaleOffsetAfterResize(t *testing.T) {
 	// The terminal grows: a prevOffset valid for the old (small) window is now past
 	// the last full window and must clamp down even though the cursor is already
@@ -144,6 +163,8 @@ func TestScrollClampsStaleOffsetAfterResize(t *testing.T) {
 	}
 }
 
+// TestScrollTinyHeight verifies that with the window floored at one row, scroll lands
+// that single visible line on the cursor.
 func TestScrollTinyHeight(t *testing.T) {
 	// height=3 -> windowSize floored at 1; the single visible line must be the
 	// cursor's. Starting from offset 0 with the cursor deep in the list, the window
@@ -157,6 +178,9 @@ func TestScrollTinyHeight(t *testing.T) {
 	}
 }
 
+// TestScrollCursorAlwaysVisibleWalking verifies that threading the offset frame to
+// frame keeps the cursor visible and the accounting balanced while walking the
+// cursor all the way down the list and back up.
 func TestScrollCursorAlwaysVisibleWalking(t *testing.T) {
 	// Thread the offset forward the way Update does — each step feeds the previous
 	// offset back in — and walk the cursor all the way down and back up. At every
@@ -171,7 +195,8 @@ func TestScrollCursorAlwaysVisibleWalking(t *testing.T) {
 			if cur < vp.HiddenAbove || cur >= vp.HiddenAbove+len(vp.Lines) {
 				t.Fatalf("cursor %d not visible: HiddenAbove=%d len=%d", cur, vp.HiddenAbove, len(vp.Lines))
 			}
-			if got := vp.HiddenAbove + len(vp.Lines) + vp.HiddenBelow; got != n {
+			got := vp.HiddenAbove + len(vp.Lines) + vp.HiddenBelow
+			if got != n {
 				t.Fatalf("cursor %d: accounting = %d, want %d", cur, got, n)
 			}
 			if vp.Offset != vp.HiddenAbove {
@@ -191,6 +216,9 @@ func TestScrollCursorAlwaysVisibleWalking(t *testing.T) {
 	walk(up)
 }
 
+// TestScrollIsIdempotentWhenCursorVisible verifies that re-running scroll with the
+// already-settled offset does not move the window, so View's render agrees with the
+// state Update stored.
 func TestScrollIsIdempotentWhenCursorVisible(t *testing.T) {
 	// View calls scroll again with the already-settled offset; re-running it with the
 	// same cursor must not move the window (otherwise the render would disagree with

@@ -29,7 +29,8 @@ func TestReservedPreambleShrinksWindow(t *testing.T) {
 	if len(b.Lines) <= len(r.Lines) {
 		t.Fatalf("precondition: expected preamble window smaller; base=%d withPre=%d", len(b.Lines), len(r.Lines))
 	}
-	if got := len(b.Lines) - len(r.Lines); got != 5 {
+	got := len(b.Lines) - len(r.Lines)
+	if got != 5 {
 		t.Errorf("preamble window is %d lines smaller, want 5", got)
 	}
 }
