@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The interactive picker now stays usable when the change list is taller than the terminal. Previously a long list overflowed the screen: the cursor's row, its highlight, and the prompt all scrolled out of view, and the picker looked frozen — arrow keys appeared to do nothing because the cursor was moving off-screen. The list now scrolls to keep the cursor visible — holding still while the cursor moves within view and scrolling only once it reaches the top or bottom edge — with `▲ more above` / `▼ more below` indicators showing when there are changes off-screen in either direction. The banner and the source/destination header also stay on screen above the picker instead of scrolling off the top. (#60)
+
 ## [0.4.0] - 2026-06-26
 
 ### Added

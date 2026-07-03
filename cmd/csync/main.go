@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 
@@ -52,10 +53,20 @@ func main() {
 	// shows — piped output stays clean.
 	interactive := interactiveTerminal()
 
-	if interactive {
-		fmt.Print(view.Banner())
+	// Accumulate everything printed above the picker so it can hold those rows out of
+	// its scroll region and they don't scroll off the top. The picker measures the
+	// rows itself at the live terminal width (wrapping a long remote path counts for
+	// every row it takes); the typed-prompt path ignores the preamble.
+	var preamble strings.Builder
+	printAbove := func(s string) {
+		fmt.Print(s)
+		preamble.WriteString(s)
 	}
-	fmt.Print(view.Header(source, destination))
+
+	if interactive {
+		printAbove(view.Banner())
+	}
+	printAbove(view.Header(source, destination))
 
 	result, err := compare.Run(source, destination)
 	if err != nil {
@@ -83,7 +94,7 @@ func main() {
 		}
 		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", result.Excluded, noun))
 	}
-	fmt.Print(view.Excluded(excluded))
+	printAbove(view.Excluded(excluded))
 
 	if len(result.Actions) == 0 {
 		// Nothing to do — stop before any selection UI. The non-interactive path
@@ -103,7 +114,7 @@ func main() {
 	// "Changes:" report is non-interactive-only.
 	var selected []compare.Action
 	if interactive {
-		picked, err := view.RunPicker(result.Actions)
+		picked, err := view.RunPicker(result.Actions, preamble.String())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
