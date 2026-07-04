@@ -188,6 +188,31 @@ Feature: Honor .gitignore when comparing
     Then  the .git directory should be reported as excluded
     And   no gitignored paths should be reported as excluded
 
+  Scenario: A submodule's nested .git metadata is never offered for sync
+    # Teeth — the FLOATING ".git" exclude (no leading slash), covering the
+    # submodule case the anchored "/.git/" misses. A checked-out submodule carries
+    # its own .git *file* (a "gitdir:" pointer, not a directory) deep in the tree —
+    # here vendor/lib/.git. Pushing a fresh superproject to an empty remote, only
+    # the working files are offered; the top-level .git/ AND the submodule's nested
+    # .git are gone. Keep only the anchored "/.git/" and vendor/lib/.git floods back
+    # as a third create, count 3 (red). "Simplify" the floating exclude to a
+    # dir-only ".git/" and the submodule's .git *file* leaks the same way — a
+    # trailing slash matches directories only (red). Verified on GNU rsync 3.4.1
+    # that a floating ".git" (no slashes) drops both a nested .git dir and file.
+    Given a local git repository containing these files:
+      """
+      README.md
+      vendor/lib/lib.go
+      vendor/lib/.git
+      """
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path              |
+      | create | README.md         |
+      | create | vendor/lib/lib.go |
+    And   the reported change count should be 2
+
   @remote
   Scenario: Pull direction — the local repo's ignore set still governs
     # "Local repo governs both directions": on a pull (remote -> local) csync still
@@ -266,9 +291,3 @@ Feature: Honor .gitignore when comparing
   #   anchoring half is covered above; this is the run-git-in-the-sync-dir half,
   #   still untested. Needs harness support for a sync operand below the repo root
   #   (today the runCsync placeholder maps only the bare "./project" token).
-  #
-  # - Floating ".git" exclude: today only the top-level "/.git/" is excluded
-  #   (anchored, consistent with the gitignore-path anchoring). A repo with
-  #   submodules carries nested .git dirs/files that an anchored exclude misses.
-  #   Decide whether to add a floating ".git" exclude (matches at any depth) for the
-  #   submodule case. Captured 2026-06-03.
