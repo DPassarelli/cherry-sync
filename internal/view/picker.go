@@ -192,7 +192,7 @@ func (m pickerModel) View() string {
 	// tall and is held out of the scroll region so it never scrolls away.
 	out := []string{
 		"",
-		"? " + prompt.Render("Choose which files to sync:"),
+		"? " + prompt.Render(pickerPrompt(len(m.actions))),
 		"   " + dim.Render("↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"),
 	}
 
@@ -270,6 +270,16 @@ func (m pickerModel) contentLines() ([]string, int) {
 		}
 	}
 	return lines, cursorLine
+}
+
+// pickerPrompt returns the picker's question line for a list of count files. It
+// names the count so a list that renders and then waits for input reads as "these
+// are all of them," not a freeze or a bug (issue #64). The count is the plain total
+// on offer, not the currently-checked subset, and the phrasing is not pluralized —
+// a lone file reads "(1 available)". Styling is applied by the caller; this returns
+// plain text so it can be pinned by a test without a terminal.
+func pickerPrompt(count int) string {
+	return fmt.Sprintf("Choose which files to sync (%d available):", count)
 }
 
 // scrollIndicator renders one bracket line of the scroll window: the dimmed label

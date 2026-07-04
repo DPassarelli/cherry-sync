@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The interactive picker's prompt now states how many files are available to select (`Choose which files to sync (N available):`), so a rendered list waiting for input reads as complete rather than frozen. (#64)
+
 ### Fixed
 
 - csync now excludes nested `.git` metadata at any depth, the same way it excludes the top-level `.git/`. (#56)

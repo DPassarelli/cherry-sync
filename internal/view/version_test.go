@@ -30,9 +30,10 @@ func TestVersionLine(t *testing.T) {
 	}
 }
 
-// Behavior B: the interactive banner shows the project name and version on one
-// line, so an interactive run shows which build is running at the top of the
-// header — without the description or URL that would clutter a normal run.
+// TestBanner_ShowsProjectNameAndVersion pins that the interactive banner shows
+// the project name and version on one line — so a terminal run shows which build
+// is running at the top of the header — and carries neither the description nor
+// the URL, which would clutter a normal run.
 func TestBanner_ShowsProjectNameAndVersion(t *testing.T) {
 	cases := []struct {
 		name string
