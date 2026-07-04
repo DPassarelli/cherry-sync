@@ -243,6 +243,65 @@ Feature: Saved sync targets
     When  I run "csync pull" from the project directory
     Then  csync should return a non-zero exit code
 
+  Scenario: A saved remote with a ~ home shortcut is normalized before use
+    # Teeth for #50: a remote written with a ~ home shortcut (host:~/project) is
+    # taken literally by modern rsync, which resolves it to /home/user/~/project
+    # and fails the transfer with exit 12. csync resolves it to the equivalent
+    # relative path BEFORE anything reads it — rsync interprets a relative remote
+    # path against the login home — and discloses the rewrite so it isn't silent.
+    # Pull puts the ~ remote in the SOURCE position that gets echoed. The reported
+    # source must be the stripped form AND the disclosure must name the original;
+    # drop the normalization and the echoed source keeps the ~ (and no note
+    # prints) — red.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:~/project"
+      """
+    When  I run "csync pull" from the project directory
+    Then  the reported source should be "user@host:project"
+    And   csync should report that it rewrote "~/project"
+
+  Scenario: A saved remote with a ~user home shortcut is rejected
+    # ~user names another user's home, which no relative path can reach — only an
+    # absolute path does. Rather than let rsync fail confusingly mid-transfer
+    # (exit 12, like #50), csync rejects it up front: non-zero, before any change
+    # list, with an error that names the tilde so the user can see what to fix.
+    # Remove the reject and csync hands the literal ~deploy to rsync, which fails
+    # later with a different message — red.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:~deploy/project"
+      """
+    When  I run "csync pull" from the project directory
+    Then  csync should return a non-zero exit code
+    And   the reported error should mention "~"
+
+  Scenario: A trailing slash on the saved remote is normalized away in the display
+    # csync appends its own trailing slash to force directory-contents semantics;
+    # a remote written WITH one would otherwise become a doubled slash that only
+    # works because rsync tolerates it. csync owns the shape instead, collapsing
+    # the slash so the echoed operand is clean. Pull puts the remote in the source
+    # position. Remove the collapse and the echoed source keeps its trailing
+    # slash — red.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project/"
+      """
+    When  I run "csync pull" from the project directory
+    Then  the reported source should be "user@host:/project"
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.

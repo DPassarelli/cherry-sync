@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A saved remote written with a `~` home shortcut (`remote = "user@host:~/working"`) now syncs instead of listing changes and then failing the transfer with `rsync exit 12`. Modern rsync passes a leading `~` through literally, so it resolved to `/home/user/~/working` and the transfer could not find it; csync now resolves the shortcut to the equivalent relative path (which rsync interprets against the remote login home) before use, and notes the change inline beside the operand in the header (`… (rewritten from ~/working)`) so it isn't silent. A `~user` shortcut, which no relative path can reach, is rejected up front with a clear error instead of failing mid-transfer. A trailing slash on a remote is also collapsed so the displayed path stays clean. (#50)
+
 ## [0.5.0] - 2026-07-03
 
 ### Fixed

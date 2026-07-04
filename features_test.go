@@ -153,6 +153,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
+	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
 	ctx.Step(`^a "\.csync\.toml" in the project directory containing:$`, aCsyncTomlInTheProjectDirectoryContaining)
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
@@ -399,6 +400,19 @@ func theReportedErrorShouldMention(ctx context.Context, want string) error {
 	r := captured(ctx)
 	if !strings.Contains(r.Stderr, want) {
 		return fmt.Errorf("expected error to mention %q, stderr was:\n%s", want, r.Stderr)
+	}
+	return nil
+}
+
+// csyncShouldReportThatItRewrote asserts csync disclosed on stdout that it
+// rewrote an operand from the given original path portion — the inline
+// "(rewritten from …)" note beside the header value that keeps a "~"
+// normalization from being silent.
+func csyncShouldReportThatItRewrote(ctx context.Context, from string) error {
+	r := captured(ctx)
+	want := "(rewritten from " + from + ")"
+	if !strings.Contains(r.Stdout, want) {
+		return fmt.Errorf("expected stdout to disclose %q, stdout was:\n%s", want, r.Stdout)
 	}
 	return nil
 }

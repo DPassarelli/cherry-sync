@@ -27,7 +27,7 @@ What we defend, and what we explicitly don't:
 ### Closed
 
 - **rsync argument injection via leading-dash paths.** A source or destination beginning with `-` parsed as an rsync option — worst case, a remote-shell option executing an arbitrary command on the far side. *Closed* by the end-of-options separator invariant, and held closed by a behavioral test that fails if the separator is removed.
-- **Empty path → filesystem root.** An empty path operand would expand to `"/"`, retargeting the operation at the root of the filesystem. *Closed* by the path-validation invariant (empty-string rejection), held closed by unit and behavioral regression tests.
+- **Empty path → filesystem root.** An empty path operand would expand to `"/"`, retargeting the operation at the root of the filesystem. *Closed* by the path-validation invariant (empty-string rejection), held closed by unit and behavioral regression tests. The operand normalization in `internal/operand` preserves this invariant: a path that reduces to nothing after resolving a `~` home shortcut or collapsing trailing slashes (a bare `~`, a `host:` with no path, or a run of slashes) becomes `"."` — the directory itself — never the empty string.
 - **Shell injection.** Not applicable: we use `exec.Command` with an argv slice, never `sh -c`. Recorded here so the question doesn't get re-litigated — the defense is the "No shell, ever" invariant, not a patch.
 
 ### Open / deferred
