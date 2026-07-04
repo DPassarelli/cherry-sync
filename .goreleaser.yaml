@@ -27,11 +27,13 @@ builds:
     goarch:
       - amd64
       - arm64
-    # Strip debug info. Version injection (-X main.version=...) is intentionally
-    # deferred until a --version flag exists; until then the git tag and the
-    # archive names below identify a release.
+    # Strip debug info and stamp the release version into main.version, which the
+    # --version flag and the interactive banner render. {{ .Version }} is the tag
+    # with its leading "v" removed (v1.4.0 -> 1.4.0), so the version line reads
+    # "cherry-sync v1.4.0". An un-injected build keeps main.version's "dev" default.
     ldflags:
       - -s -w
+      - -X main.version={{ .Version }}
 
 archives:
   - id: csync

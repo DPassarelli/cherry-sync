@@ -36,6 +36,38 @@ func TestParse_NoArguments_ReturnsError(t *testing.T) {
 	}
 }
 
+// Behavior: --version selects Version mode. Mirrors the Gherkin scenario "The
+// --version flag prints the version and exits successfully" in
+// features/report-version.feature; main.go turns Version mode into the printed
+// version line.
+func TestParse_Version_SelectsVersionMode(t *testing.T) {
+	got, err := cli.Parse([]string{"--version"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := cli.Args{Mode: cli.Version}
+	if got != want {
+		t.Errorf("parsed args mismatch\nwant: %+v\ngot:  %+v", want, got)
+	}
+}
+
+// Behavior: --version short-circuits — it wins over trailing operands rather
+// than being rejected as the wrong argument count. Mirrors the Gherkin scenario
+// "--version short-circuits any operands". Without the short-circuit these three
+// arguments would fail the two-operand check.
+func TestParse_Version_ShortCircuitsOperands(t *testing.T) {
+	got, err := cli.Parse([]string{"--version", "./project", "user@host:/project"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := cli.Args{Mode: cli.Version}
+	if got != want {
+		t.Errorf("parsed args mismatch\nwant: %+v\ngot:  %+v", want, got)
+	}
+}
+
 // Behavior: an empty-string path is rejected. Left unchecked, "" + "/" = "/"
 // would point rsync at the filesystem root. Mirrors the Gherkin scenario
 // "Empty path argument — show usage and exit non-zero" in

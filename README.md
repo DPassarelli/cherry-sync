@@ -65,6 +65,8 @@ csync compares the two directories and lets you choose what to transfer. In a te
 
 If the two directories are identical, csync reports there is nothing to sync and exits cleanly. A missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
 
+`csync --version` prints the version and exits, taking precedence over any other arguments.
+
 ### Saved targets
 
 To avoid retyping a remote you sync with often, save it in a `.csync.toml` in the project directory:
