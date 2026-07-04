@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-04
+
 ### Added
 
 - csync now reports its own version. `csync --version` prints the version, a one-line description, and the project URL, then exits; it takes precedence over any operands. The version line reads `cherry-sync v1.2.3`, or `cherry-sync (dev build)` for a build made without a stamped version (for example `go build ./cmd/csync`). When csync runs in a terminal, the same version line also appears at the top of the interactive header. (#54)
@@ -73,7 +75,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.2.1...v0.3.0
