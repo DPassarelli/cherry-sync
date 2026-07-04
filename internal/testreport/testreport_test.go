@@ -29,6 +29,19 @@ const sampleStream = `
 {"Action":"skip","Package":"m/cmd/csync","Elapsed":0}
 `
 
+// postMoveStream mirrors the package layout after the acceptance suite moved out
+// of the module root (issue #57): TestFeatures runs under "m/acceptance_tests"
+// and no bare-root "m" package appears in the run. The report must still infer
+// "m" as the module root and shorten every package against it — "shortest path
+// seen" would instead pick a subpackage as the root and garble every label.
+const postMoveStream = `
+{"Action":"pass","Package":"m/acceptance_tests","Test":"TestFeatures/Alpha_scenario"}
+{"Action":"pass","Package":"m/acceptance_tests","Elapsed":1.2}
+{"Action":"pass","Package":"m/internal/cli","Test":"TestParse"}
+{"Action":"pass","Package":"m/internal/cli","Elapsed":0.2}
+{"Action":"skip","Package":"m/cmd/csync","Elapsed":0}
+`
+
 func parseSample(t *testing.T) Summary {
 	t.Helper()
 	s, err := Parse(strings.NewReader(sampleStream))
@@ -74,6 +87,25 @@ func TestParse_ShortensPackageNames(t *testing.T) {
 		got = append(got, p.Name)
 	}
 	want := []string{".", "cmd/csync", "internal/cli", "internal/compare"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("package names = %v, want %v", got, want)
+	}
+}
+
+// TestParse_ShortensWhenRootHasNoTests infers the module root from the common
+// package prefix, so relocating the acceptance suite out of the root (leaving no
+// bare-root package in the run) still yields clean, root-relative labels rather
+// than mislabeling a subpackage as ".".
+func TestParse_ShortensWhenRootHasNoTests(t *testing.T) {
+	s, err := Parse(strings.NewReader(postMoveStream))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	var got []string
+	for _, p := range s.Packages {
+		got = append(got, p.Name)
+	}
+	want := []string{"acceptance_tests", "cmd/csync", "internal/cli"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("package names = %v, want %v", got, want)
 	}

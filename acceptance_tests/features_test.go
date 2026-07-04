@@ -1,4 +1,4 @@
-package csync_test
+package acceptance_test
 
 import (
 	"bytes"
@@ -89,7 +89,7 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmpDir)
 
 	csyncBinary = filepath.Join(tmpDir, "csync")
-	build := exec.Command("go", "build", "-o", csyncBinary, "./cmd/csync")
+	build := exec.Command("go", "build", "-o", csyncBinary, "github.com/dpassarelli/cherry-sync/cmd/csync")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	err = build.Run()
@@ -125,7 +125,7 @@ func TestFeatures(t *testing.T) {
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"_features"},
+			Paths:    []string{"features"},
 			Strict:   true,
 			Tags:     tags,
 			TestingT: t,
