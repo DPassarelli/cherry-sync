@@ -113,7 +113,7 @@ func rsyncArgs(source, destination string, excludes []string) []string {
 		// is why an embedded-newline name is a separate, harder problem.
 		"-8",
 	}
-	// Each gitignored path (and "/.git/") drops out of the comparison via its own
+	// Each gitignored path (and ".git") drops out of the comparison via its own
 	// --exclude; the patterns are options, so they precede the `--`. Empty when the
 	// local side isn't a git work tree. Passing them as args rather than an
 	// --exclude-from file keeps the patterns inert literals (a newline inside one

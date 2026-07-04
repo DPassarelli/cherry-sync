@@ -38,13 +38,19 @@ type exclusions struct {
 // only there, cwd-only discovery), and csyncToml records it so the CLI can
 // disclose it like .git/.
 //
-// When the local side is a git work tree, patterns also gains "/.git/": git never
+// When the local side is a git work tree, patterns also gains ".git": git never
 // reports its own metadata directory as ignored (it special-cases .git/), so
-// without an explicit, anchored exclude a push/pull from a repo would offer every
-// .git/ object for transfer — noise that would also clobber the other side's git
-// state (see the floating-".git" TODO in honor-gitignore.feature for the submodule
-// case). The gitignored count covers only the gitignored paths, not this .git/
-// entry, which the CLI discloses separately.
+// without an explicit exclude a push/pull from a repo would offer every .git/
+// object for transfer — noise that would also clobber the other side's git state.
+// The pattern is floating (no leading '/', matching at any depth) and slash-free
+// (matching a .git that is either a directory or a file), so it also holds out the
+// nested git metadata a submodule carries: a checked-out submodule's .git is a
+// *file* — a "gitdir:" pointer — deep in the tree, which an anchored or
+// directory-only pattern would miss. This is the one exclude we deliberately float,
+// because a .git is git metadata regardless of depth, unlike the gitignore paths
+// (which are anchored to keep a top-level rule off a same-named nested path). The
+// gitignored count covers only the gitignored paths, not this .git entry, which the
+// CLI discloses separately.
 //
 // The patterns are applied to the comparison ONLY; the transfer uses --files-from
 // and never re-derives them. That's safe because the comparison is the single gate:
@@ -65,7 +71,7 @@ func localExclusions(source, destination string) (exclusions, error) {
 		if err != nil {
 			return exclusions{}, err
 		}
-		exc.patterns = append(exc.patterns, "/.git/")
+		exc.patterns = append(exc.patterns, ".git")
 		exc.patterns = append(exc.patterns, gitignored...)
 		exc.gitignored = len(gitignored)
 		exc.inWorkTree = true
