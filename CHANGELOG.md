@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- A repository with submodules no longer clutters the diff with the submodules' git metadata. Previously only the top-level `.git/` was held out of a sync, so a checked-out submodule's own `.git` (a `gitdir:` pointer file deep in the tree) — and any other nested `.git` directory — was still offered for transfer, and had to be deselected by hand. csync now excludes nested `.git` metadata at any depth, the same way it excludes the top-level `.git/`. (#56)
+- csync now excludes nested `.git` metadata at any depth, the same way it excludes the top-level `.git/`. (#56)
 
 ## [0.6.0] - 2026-07-04
 
