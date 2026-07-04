@@ -8,24 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- csync now reports its own version. `csync --version` prints the version, a one-line description, and the project URL, then exits, so you can tell which build you're running when comparing behavior or filing a report; it takes precedence over any operands. The version line reads `cherry-sync v1.2.3`, or `cherry-sync (dev build)` for a build made without a stamped version (for example `go build ./cmd/csync`). When csync runs in a terminal, the same version line also appears at the top of the interactive header. (#54)
+- csync now reports its own version. `csync --version` prints the version, a one-line description, and the project URL, then exits; it takes precedence over any operands. The version line reads `cherry-sync v1.2.3`, or `cherry-sync (dev build)` for a build made without a stamped version (for example `go build ./cmd/csync`). When csync runs in a terminal, the same version line also appears at the top of the interactive header. (#54)
 
 ### Fixed
 
-- A saved remote written with a `~` home shortcut (`remote = "user@host:~/working"`) now syncs instead of listing changes and then failing the transfer with `rsync exit 12`. Modern rsync passes a leading `~` through literally, so it resolved to `/home/user/~/working` and the transfer could not find it; csync now resolves the shortcut to the equivalent relative path (which rsync interprets against the remote login home) before use, and notes the change inline beside the operand in the header (`… (rewritten from ~/working)`) so it isn't silent. A `~user` shortcut, which no relative path can reach, is rejected up front with a clear error instead of failing mid-transfer. A trailing slash on a remote is also collapsed so the displayed path stays clean. (#50)
+- A saved remote written with a `~` home shortcut (`remote = "user@host:~/working"`) now syncs instead of listing changes and then failing the transfer with `rsync exit 12`. csync now resolves the shortcut to the equivalent relative path (which rsync interprets against the remote login home), and notes the change inline beside the operand in the header. A `~user` shortcut, which no relative path can reach, is rejected up front with a clear error instead of failing mid-transfer. A trailing slash on a remote is also collapsed so the displayed path stays clean. (#50)
 
 ## [0.5.0] - 2026-07-03
 
 ### Fixed
 
-- The interactive picker now stays usable when the change list is taller than the terminal. Previously a long list overflowed the screen: the cursor's row, its highlight, and the prompt all scrolled out of view, and the picker looked frozen — arrow keys appeared to do nothing because the cursor was moving off-screen. The list now scrolls to keep the cursor visible — holding still while the cursor moves within view and scrolling only once it reaches the top or bottom edge — with `▲ more above` / `▼ more below` indicators showing when there are changes off-screen in either direction. The banner and the source/destination header also stay on screen above the picker instead of scrolling off the top. (#60)
+- The interactive picker now stays usable when the change list is taller than the terminal. Previously a long list overflowed the screen: the cursor's row, its highlight, and the prompt all scrolled out of view, and the picker looked frozen — arrow keys appeared to do nothing because the cursor was moving off-screen. (#60)
 
 ## [0.4.0] - 2026-06-26
 
 ### Added
 
-- When csync runs in a terminal, it now shows an interactive picker for choosing which changes to sync: an arrow-key (or `j`/`k`) cursor over a `[x]`/`[ ]` checkbox list, grouped by directory and color-coded by change type (green for new files, yellow for modified). Unchecked files are dimmed so the selected set stands out at a glance. Use `space` to toggle a file, `a` to toggle all on or off, `Enter` to sync the checked files, and `Ctrl-C`/`Esc`/`q` to cancel without transferring anything. When input or output is redirected (a pipe, a file, or a script), csync falls back to the existing typed prompt, so non-interactive and scripted use is unchanged.
-- After a sync, csync now prints a one-line `Sync complete! (N files)` summary, replacing the terse `Synced: N` line. The interactive picker already shows which files were chosen, so the summary reports just the count rather than re-listing every file.
+- When csync runs in a terminal, it now shows an interactive picker for choosing which changes to sync. When input or output is redirected (a pipe, a file, or a script), csync falls back to the existing typed prompt, so non-interactive and scripted use is unchanged.
+- After a sync, csync now prints a one-line `Sync complete! (N files)` summary, replacing the terse `Synced: N` line.
 - When csync runs in a terminal, it now leads with a `cherry-sync` banner above the `Source:` and `Destination:` lines, and those values are emphasized and column-aligned to frame the picker. Redirected output drops the banner and the emphasis, keeping the plain, aligned header it already printed.
 
 ### Changed
@@ -36,22 +36,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The selection prompt now accepts multi-select responses instead of only a single number: a hyphen range like `1-3` picks an inclusive span of changes, a comma list like `1,3` picks exactly the changes named, and the two combine in one response (`1-2,4`). A change named by more than one member (`1-3,2`) is synced once, not twice. Whitespace between members and around a range's bounds is ignored, so `1 - 2, 4` works the same as `1-2,4`. Members are bounded to the listed changes; a reversed, out-of-range, or otherwise malformed response is rejected like any other unrecognized entry.
-- `csync push` and `csync pull` sync against a remote saved in a project-local `.csync.toml` (a `remote = "user@host:/path"` line), so a frequently-used remote no longer has to be retyped. Run them from the project directory: `push` sends the project to the saved remote, `pull` brings the saved remote down to the project.
+- The selection prompt now accepts multi-select responses instead of only a single number:
+    - a hyphen range like `1-3` picks an inclusive span of changes
+    - a comma list like `1,3` picks exactly the changes named
+    - these can be combined in one response (`1-2,4`)
+    - a change named by more than one member (`1-3,2`) is reduced correctly
+    - whitespace between members and around a range's bounds is ignored, so `1 - 2, 4` works the same as `1-2,4`
+    - members are bounded to the listed changes; a reversed, out-of-range, or otherwise malformed response is rejected like any other unrecognized entry
+- `csync push` and `csync pull` sync against a remote saved in a project-local `.csync.toml` (a `remote = "user@host:/path"` line), so a frequently-used remote no longer has to be retyped.
 - csync now holds its own `.csync.toml` out of every comparison — like `.git/`, it is never offered for transfer — and names it on the `Excluded:` line so the omission is visible.
 
 ## [0.2.1] - 2026-06-06
 
 ### Fixed
 
-- Files that are byte-identical but carry a different modification time are no longer reported as phantom changes. This is common after a git checkout, which restamps every file's mtime and so differs per machine. The comparison now settles each file by content hash (`rsync --checksum`) rather than rsync's default size-and-mtime quick-check, so the change list reflects real content differences — a file whose only difference is its timestamp is correctly treated as unchanged.
-- Files whose names contain non-ASCII characters (accents, emoji, CJK, or the narrow no-break space in a macOS screenshot name) now transfer correctly instead of failing. rsync escapes such bytes in its comparison output by default; csync now requests the raw bytes (`rsync -8`) so the selected path matches the real file and the transfer succeeds.
+- Files that are byte-identical but carry a different modification time are no longer reported as phantom changes.
+- Files whose names contain non-ASCII characters (accents, emoji, CJK, or the narrow no-break space in a macOS screenshot name) now transfer correctly instead of failing.
 
 ## [0.2.0] - 2026-06-03
 
 ### Added
 
-- When the local side is a git repository, files it ignores (per `.gitignore`, `.git/info/exclude`, and global excludes) are left out of the comparison, so the diff shows only files worth moving. The local repository's ignore rules apply in both directions; no git is required on the remote. The `.git` directory itself is always excluded for a repository, so a sync never offers git's internal metadata for transfer. csync discloses what it held back (`Excluded: the .git directory and N gitignored path(s)`) so nothing is withheld silently. The approach — driving rsync's `--exclude-from` with the output of `git ls-files`, letting git itself resolve gitignore semantics — was inspired by [BenteVE/rsync-gitignore](https://github.com/BenteVE/rsync-gitignore).
+- When the local side is a git repository, files it ignores (per `.gitignore`, `.git/info/exclude`, and global excludes) are left out of the comparison, so the diff shows only files worth moving. The local repository's ignore rules apply in both directions; no git is required on the remote. The `.git` directory itself is always excluded for a repository. csync discloses what it held back (`Excluded: the .git directory and N gitignored path(s)`) so nothing is withheld silently.
+
+The approach taken (that is, driving rsync's `--exclude-from` with the output of `git ls-files`) was inspired by [BenteVE/rsync-gitignore](https://github.com/BenteVE/rsync-gitignore).
 
 ## [0.1.0] - 2026-06-02
 
