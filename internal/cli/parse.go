@@ -3,7 +3,10 @@
 // report a parse error to the caller.
 package cli
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Mode is how csync resolves its source and destination operands.
 type Mode int
@@ -16,6 +19,8 @@ const (
 	Push
 	// Pull syncs the remote saved in .csync.toml down to the current project.
 	Pull
+	// Version reports csync's version and exits; no operands are resolved.
+	Version
 )
 
 // Args is the parsed result of a csync command-line invocation. In Explicit mode
@@ -34,6 +39,12 @@ type Args struct {
 // .csync.toml); anything else returns an error. The caller (main.go) decides how
 // to surface that error to the user.
 func Parse(argv []string) (Args, error) {
+	// --version short-circuits: it wins over any operands (matching the near-
+	// universal CLI convention that `tool --version <anything>` still reports the
+	// version and exits) rather than tripping the two-operand check below.
+	if slices.Contains(argv, "--version") {
+		return Args{Mode: Version}, nil
+	}
 	if len(argv) >= 1 {
 		switch argv[0] {
 		case "push", "pull":

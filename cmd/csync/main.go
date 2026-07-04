@@ -20,6 +20,12 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/view"
 )
 
+// version is csync's release version, injected at build time via
+// `-ldflags "-X main.version=…"` (see .goreleaser.yaml). It defaults to "dev"
+// for un-injected builds — `go build ./cmd/csync`, `go run`, the test harness —
+// which the version line renders as "cherry-sync (dev build)".
+var version = "dev"
+
 // main parses the command-line arguments, runs the dry-run comparison, asks which
 // changes to sync — through the interactive picker on a terminal, or the typed
 // prompt otherwise — and transfers the chosen files.
@@ -28,6 +34,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "usage: csync SOURCE DESTINATION")
 		os.Exit(2)
+	}
+
+	// --version reports the build and exits before any operand resolution or
+	// comparison. It short-circuits in cli.Parse, so any trailing operands are
+	// ignored. The line goes to stdout — it is requested output, not a diagnostic.
+	if a.Mode == cli.Version {
+		fmt.Println(view.VersionReport(version))
+		return
 	}
 
 	// With a saved-target verb the operands aren't on the command line: resolve
@@ -86,7 +100,7 @@ func main() {
 	}
 
 	if interactive {
-		printAbove(view.Banner())
+		printAbove(view.Banner(version))
 	}
 	// The header discloses any operand csync rewrote inline: srcN.From/dstN.From
 	// carry the original path portion when a remote "~" was resolved, which Header

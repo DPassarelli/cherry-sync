@@ -89,7 +89,11 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmpDir)
 
 	csyncBinary = filepath.Join(tmpDir, "csync")
-	build := exec.Command("go", "build", "-o", csyncBinary, "github.com/dpassarelli/cherry-sync/cmd/csync")
+	// Inject a known version the same way a release build does (-X main.version),
+	// so the report-version scenarios can assert an exact string and, more to the
+	// point, exercise the real ldflags injection seam end to end rather than a
+	// hardcoded default.
+	build := exec.Command("go", "build", "-ldflags", "-X main.version=0.0.0-test", "-o", csyncBinary, "github.com/dpassarelli/cherry-sync/cmd/csync")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	err = build.Run()
@@ -152,6 +156,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
+	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -425,6 +430,18 @@ func theReportedMessageShouldBeginWith(ctx context.Context, want string) error {
 
 	if !strings.HasPrefix(got, want) {
 		return fmt.Errorf("Message: got %q, want prefix %q in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// theReportedVersionShouldBe asserts the version line csync prints for
+// `--version` (parsed from stdout) equals want.
+func theReportedVersionShouldBe(ctx context.Context, want string) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Version
+
+	if got != want {
+		return fmt.Errorf("Version: got %q, want %q in output:\n%s", got, want, r.Stdout)
 	}
 	return nil
 }

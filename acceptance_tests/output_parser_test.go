@@ -23,6 +23,7 @@ type ReportedOutput struct {
 	SyncCount         int
 	HasSyncCount      bool
 	Message           string
+	Version           string
 	Usage             string
 }
 
@@ -59,6 +60,11 @@ var (
 	// ("Sync complete! (3 files)" / "(1 file)"), the count that used to be the
 	// "Synced: N" line.
 	syncCompleteRE = regexp.MustCompile(`Sync complete! \((\d+) `)
+	// versionLineRE captures the first line `csync --version` prints — either
+	// "cherry-sync v<semver>" for a release build or "cherry-sync (dev build)"
+	// for an un-injected one. The description and URL follow on their own lines;
+	// this matches only the version line.
+	versionLineRE = regexp.MustCompile(`(?m)^(cherry-sync (?:v.+|\(dev build\)))\s*$`)
 )
 
 // operandValue strips the inline "(rewritten from …)" disclosure the header
@@ -103,6 +109,11 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if err == nil {
 			out.SyncCount = n
 		}
+	}
+
+	vm := versionLineRE.FindStringSubmatch(report)
+	if vm != nil {
+		out.Version = vm[1]
 	}
 
 	for _, m := range labeledLineRE.FindAllStringSubmatch(report, -1) {
