@@ -61,6 +61,18 @@ var (
 	syncCompleteRE = regexp.MustCompile(`Sync complete! \((\d+) `)
 )
 
+// operandValue strips the inline "(rewritten from …)" disclosure the header
+// appends to a rewritten Source/Destination value, so the reported operand is the
+// path csync uses, not the note beside it. A value with no such note is returned
+// unchanged.
+func operandValue(v string) string {
+	before, _, found := strings.Cut(v, " (rewritten from ")
+	if found {
+		return before
+	}
+	return v
+}
+
 // parseOutput translates csync's rendered stdout and stderr into a structured
 // ReportedOutput. It is the single parsing facade the test assertions read
 // through, so a rendering change only has to be absorbed here.
@@ -96,9 +108,9 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	for _, m := range labeledLineRE.FindAllStringSubmatch(report, -1) {
 		switch m[1] {
 		case "Source":
-			out.Source = m[2]
+			out.Source = operandValue(m[2])
 		case "Destination":
-			out.Destination = m[2]
+			out.Destination = operandValue(m[2])
 		case "Changes":
 			out.HasChangeCount = true
 			n, err := strconv.Atoi(m[2])

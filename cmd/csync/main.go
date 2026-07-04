@@ -14,6 +14,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/cli"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/config"
+	"github.com/dpassarelli/cherry-sync/internal/operand"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
 	"github.com/dpassarelli/cherry-sync/internal/view"
@@ -48,6 +49,27 @@ func main() {
 		}
 	}
 
+	// Normalize the operands before anything reads them — the header echo, the
+	// compare, and the transfer must all see the same shape, whether the operand
+	// came from argv or .csync.toml. The load-bearing case is a remote path with a
+	// leading "~": modern rsync passes it literally, so `host:~/x` resolves to
+	// `/home/user/~/x` and the transfer fails with exit 12 (#50). Normalize
+	// resolves it to a relative path (rsync interprets that against the login home)
+	// and reports the rewrite so it can be disclosed below. A `~user` form has no
+	// relative equivalent, so Normalize errors here rather than letting rsync fail
+	// confusingly mid-transfer.
+	srcN, err := operand.Normalize(source)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	dstN, err := operand.Normalize(destination)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	source, destination = srcN.Path, dstN.Path
+
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
 	// shows — piped output stays clean.
@@ -66,7 +88,15 @@ func main() {
 	if interactive {
 		printAbove(view.Banner())
 	}
-	printAbove(view.Header(source, destination))
+	// The header discloses any operand csync rewrote inline: srcN.From/dstN.From
+	// carry the original path portion when a remote "~" was resolved, which Header
+	// renders as a faint "(rewritten from …)" beside the value, so the change isn't
+	// silent. Trailing-slash collapse needs no note — the header already shows the
+	// cleaned path.
+	printAbove(view.Header(
+		view.Endpoint{Path: source, From: srcN.From},
+		view.Endpoint{Path: destination, From: dstN.From},
+	))
 
 	result, err := compare.Run(source, destination)
 	if err != nil {
