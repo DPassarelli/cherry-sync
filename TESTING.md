@@ -19,7 +19,7 @@ One round of behavior, from idea to merged code:
 1. **Discuss the behavior, then map its conditions.** State it in plain English — what the user does, what they observe. Then enumerate the conditions that change its outcome and brainstorm them widely; the smallest interesting example is a starting point, not the finish line. Verify any assumption about how an external tool (`rsync`, `ssh`) actually behaves by experiment, not memory, before encoding it in a scenario.
 2. **Turn the conditions into scenarios.** Each condition with a distinct observable outcome becomes a candidate scenario, written imperative and concrete (exact command, exact expected output). Conditions you won't cover yet become TODO comment blocks at the bottom of the `.feature` file — the visible backlog, chosen deliberately from the brainstorm rather than left out by oversight.
 3. **Review the scenarios before writing any code.** Stop here. Read the scenarios back — with the user, and against the design — and confirm they say what's intended, in the right Given/When/Then shape, with the right expected values. This is a gate, not a courtesy: the scenarios are the spec, and revising text is far cheaper than reworking step definitions and production code. Do not wire steps until the scenarios are agreed.
-4. **Wire step definitions.** Implement the scenario's steps in `features_test.go` so godog can run it. The test will fail — that's the point.
+4. **Wire step definitions.** Implement the scenario's steps in `acceptance_tests/features_test.go` so godog can run it. The test will fail — that's the point.
 5. **Drill inward as needed.** If a step requires logic that benefits from focused unit coverage (parsing, ordering, state derivation, edge cases), write the unit test in the appropriate `internal/<pkg>/*_test.go` before writing the implementation. Unit tests pin individual conditions one at a time; the scenario already covers the behavior holistically, so don't re-assert the whole scenario at the unit level — isolate the one rule or edge case each test exists to prove.
 
    **A unit test pins logic, not command assembly.** The thing worth a focused test is a *decision the code makes* — how a line parses, how paths order, how a code classifies. The argument vector handed to an external tool is not such a decision: a test asserting "`-8` is in the slice passed to `rsync`" or "`--` precedes the operands" pins the implementation's shape, not an observable behavior. It's brittle (a correct refactor — `-8` → `--8-bit-output`, reordering flags — turns it red while the tool behaves identically) and redundant (the outside-in scenario that *runs* the real command is what proves the flag does its job: the `café.txt` round-trip proves `-8`; the "treated as a path" scenario proves `--`). A useful litmus: if a unit test could go red without any user-visible behavior changing, it's testing the wrong thing — delete it and lean on the scenario. Two such `rsyncArgs` tests were written and later removed for exactly this reason.
@@ -73,7 +73,7 @@ Conventions:
 
 ## The output-parsing facade
 
-Tests assert against csync's output, but they should not parse it inline in every step. The output parser in `output_parser_test.go` (`parseOutput`) is the single translation point between rendered output and structured test data.
+Tests assert against csync's output, but they should not parse it inline in every step. The output parser in `acceptance_tests/output_parser_test.go` (`parseOutput`) is the single translation point between rendered output and structured test data.
 
 - **Production emits text; tests parse it.** This keeps the boundary honest. Production code is free to render however reads best; test code is free to assert against semantic fields.
 - **One file, one function.** A single function is the entire surface: it takes csync's captured output and returns a `ReportedOutput`. If rendering changes, this is the only place that changes.
@@ -83,13 +83,13 @@ Tests assert against csync's output, but they should not parse it inline in ever
 ## File organization
 
 ```
-_features/*.feature             Gherkin specs — the behavior catalog
-features_test.go                godog wiring and step definitions
-output_parser_test.go           parseOutput / ReportedOutput facade
-internal/<pkg>/*_test.go        Unit tests next to the code they cover
+acceptance_tests/features/*.feature   Gherkin specs — the behavior catalog
+acceptance_tests/features_test.go     godog wiring and step definitions
+acceptance_tests/output_parser_test.go parseOutput / ReportedOutput facade
+internal/<pkg>/*_test.go              Unit tests next to the code they cover
 ```
 
-Test-only helpers live in `_test.go` files at the repo root or alongside the package they serve. They are never placed in `internal/` — production code must not be able to import them.
+The black-box acceptance suite (godog wiring, step definitions, and the output-parsing facade) lives together under `acceptance_tests/`, keeping the repository root free of source files. Its scenarios and the specs they run sit side by side. Unit tests live in `_test.go` files alongside the package they serve. Neither is ever placed in `internal/` in a way that lets production code import it.
 
 ## Running tests
 

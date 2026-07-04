@@ -239,9 +239,9 @@ A red smoke job (a) leaves the release unpublished as a draft, (b) on the Azure 
 
 Recorded here so the architecture is coherent and Tier 2 can be resumed without re-deriving it.
 
-Tier 2 reuses the existing Gherkin suite rather than reimplementing assertions, because the harness (`features_test.go`) already **builds and executes a real `csync` binary** (`go build` → `exec.Command(csyncBinary, ...)`) and already centralizes remote handling in its `runCsync` step. Two seams make the suite drive a *released artifact* against a *real remote*:
+Tier 2 reuses the existing Gherkin suite rather than reimplementing assertions, because the harness (`acceptance_tests/features_test.go`) already **builds and executes a real `csync` binary** (`go build` → `exec.Command(csyncBinary, ...)`) and already centralizes remote handling in its `runCsync` step. Two seams make the suite drive a *released artifact* against a *real remote*:
 
-1. **`CSYNC_BINARY` override** — if set, the harness drives that binary instead of building one from source. Turns "test the source" into "test the shipped artifact." One small, test-first-able change to the build step in `features_test.go`.
+1. **`CSYNC_BINARY` override** — if set, the harness drives that binary instead of building one from source. Turns "test the source" into "test the shipped artifact." One small, test-first-able change to the build step in `acceptance_tests/features_test.go`.
 2. **`CSYNC_REMOTE=ssh` provider** — a real-SSH remote provider alongside today's fake-rsh one, pointing at a provisioned remote.
 
 A curated subset of scenarios is tagged `@smoke` (target ~3–5: one push, one pull, an identical-bytes no-op, and the non-ASCII-filename transfer, which is openrsync-sensitive). Those scenarios then run at two fidelities from one spec: hermetically on every PR (fake-rsh, today) and for-real pre-release via `CSYNC_BINARY=<artifact> CSYNC_REMOTE=ssh go test -godog.tags=@smoke`. The same command reproduces a Tier 2 CI failure locally.

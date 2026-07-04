@@ -140,12 +140,7 @@ func prettyScenario(test string) string {
 // rows with "." first then alphabetically. It also rewrites the module prefix
 // already embedded in any unit failure entries.
 func shortenPackages(s *Summary) {
-	root := ""
-	for _, p := range s.Packages {
-		if root == "" || len(p.Name) < len(root) {
-			root = p.Name
-		}
-	}
+	root := moduleRoot(s.Packages)
 	for i := range s.Packages {
 		s.Packages[i].Name = shortPkg(s.Packages[i].Name, root)
 	}
@@ -162,6 +157,38 @@ func shortenPackages(s *Summary) {
 		}
 		return a < b
 	})
+}
+
+// moduleRoot infers the module's root import path from the packages seen: the
+// longest prefix shared by every package path, cut back to a path-segment
+// boundary. Deriving it this way — rather than assuming the shortest path seen is
+// the root — keeps the report correct whether or not the root package itself has
+// tests. Once the acceptance suite moved out of the module root (issue #57), no
+// bare-root package appears in a run, so "shortest path" would wrongly pick a
+// subpackage as the root and garble every label.
+func moduleRoot(pkgs []PackageResult) string {
+	if len(pkgs) == 0 {
+		return ""
+	}
+	prefix := pkgs[0].Name
+	for _, p := range pkgs[1:] {
+		prefix = commonPrefix(prefix, p.Name)
+	}
+	slash := strings.LastIndex(prefix, "/")
+	if slash >= 0 {
+		prefix = prefix[:slash]
+	}
+	return prefix
+}
+
+// commonPrefix returns the longest common leading run of bytes of a and b.
+func commonPrefix(a, b string) string {
+	n := min(len(a), len(b))
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
 }
 
 // shortPkg trims the module root off a package path, yielding "." for the root.

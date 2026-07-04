@@ -1,4 +1,4 @@
-package csync_test
+package acceptance_test
 
 import (
 	"regexp"
