@@ -6,11 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.7.0-rc1] - 2026-07-05
+## [0.7.0] - 2026-07-05
 
 ### Added
 
 - The interactive picker's prompt now states how many files are available to select (`Choose which files to sync (N available):`), so a rendered list waiting for input reads as complete rather than frozen. (#64)
+- Every release now verifies the published `linux/arm64` binary by running it on real arm64 hardware before the release goes live, matching the pre-publish checks already run for the other platforms. (#58)
 
 ### Fixed
 
@@ -85,8 +86,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0-rc1...HEAD
-[0.7.0-rc1]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...v0.7.0-rc1
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.3.0...v0.4.0
