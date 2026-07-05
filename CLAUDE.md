@@ -69,5 +69,21 @@ The release process rolls `CHANGELOG.md`'s `[Unreleased]` section into the publi
 - **Internal-only changes don't need an entry.** Refactors, test-harness, and CI work that change no observable behavior stay out of the changelog.
 - **CHANGELOG owns version history; README must not duplicate it.** Keep per-version status banners, "done" checklists, and hardcoded version numbers out of `README.md`. README describes what the tool is and how to install and use it — content that doesn't go stale every release. Anything of the form "shipped in vX" lives only in CHANGELOG.
 - **This file holds durable rules, not plans.** What shipped lives in `CHANGELOG.md`; what's planned lives in the GitHub issue tracker, which the README's Roadmap links to (the `enhancement` label) rather than enumerating inline. Don't add a per-version scope or status section here, or reinstate a bulleted plan list in the README — both go stale the moment a release ships (the original "Scope for v0.1" did exactly that).
-- **Don't reference gitignored / uncommitted files from committed files.** Code comments, feature files, and committed docs must not cite paths that aren't in the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF reference docs). A clone won't have them, so the reference is a dead pointer that leaks a private filename. State the reasoning inline instead, or cite a committed doc. (CLAUDE.md, README, CHANGELOG, STYLE/TESTING/SECURITY are committed and fair to cite.)
-- **Don't hard-wrap prose in Markdown.** In committed Markdown — README, CHANGELOG, CLAUDE/TESTING/STYLE/SECURITY — write each paragraph and list item as one logical line and let the editor soft-wrap; don't insert hard newlines to wrap at ~80 columns, since those breaks render as unwanted line breaks in some viewers. Prose only: keep the deliberate line structure of tables, code blocks, and list-item boundaries.
+- **Don't reference gitignored / uncommitted files from committed files.** Code comments, feature files, and committed docs must not cite paths that aren't in the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF reference docs). A clone won't have them, so the reference is a dead pointer that leaks a private filename. State the reasoning inline instead, or cite a committed doc. (CLAUDE.md, README, CHANGELOG, CONTRIBUTING, STYLE/TESTING/SECURITY are committed and fair to cite.)
+- **Don't hard-wrap prose in Markdown.** In committed Markdown — README, CHANGELOG, CONTRIBUTING, CLAUDE/TESTING/STYLE/SECURITY — write each paragraph and list item as one logical line and let the editor soft-wrap; don't insert hard newlines to wrap at ~80 columns, since those breaks render as unwanted line breaks in some viewers. Prose only: keep the deliberate line structure of tables, code blocks, and list-item boundaries.
+
+## Pull requests
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the reasoning and the worked examples. A description exists to help others get a quick synopsis of what changed and a brief account of why and/or how (aim for one or two sentences per point).
+
+### Timing
+
+As soon as a change is a complete, self-contained unit worth a PR (whether or not it's changelog-worthy), provide a suggested PR title and description for my review. If the change is outward-facing, propose the CHANGELOG entry at the same time.
+
+### Rules
+
+- **Every change ships through a pull request.** No direct commits to the default branch, not even for docs; the PR workflow's safety checks must never be bypassed.
+- **Title: Conventional Commits.** `type(scope): summary` — imperative, lowercase, no trailing period. Types in use: `feat`, `fix`, `refactor`, `docs`, `test`, `ci`, `chore`; scope optional and names the area touched.
+- **Every PR gets a body — no exceptions.** Even a rename, a move, or a "no behavior change" refactor. Shape it as "this is what was changed" and "(briefly) why it was important to do and how we did it". Your goal is to achieve succinctness, not 100% explanation of the problem space nor its variations. Avoid using three sentences to convey what can be said in one or two. Avoid including side notes demarcated via emdashes (prefer parentheses or commas). Do not restate the diff, list touched files, paste test output, or scaffold with `## Summary`/`## Testing`-style headings.
+- **Footer: `Closes #N`** for each issue resolved (one per line), plus a line for `Co-Authored-By:`.
+- **PR body => changelog.** When the PR is for an outward-facing change, use it as the basis for the corresponding CHANGELOG entry. Ideally, the "what" from the PR should become the bullet in the CHANGELOG, along with a list of closed issues inside of parentheses. Refer to existing CHANGELOG entries for examples.
