@@ -5,7 +5,7 @@ on:
     tags:
       - 'v*'
 
-# build creates the GitHub Release and uploads assets (write); the smoke jobs
+# build creates the GitHub Release and uploads assets (write); the smoketest jobs
 # download those assets from the draft (read); promote flips the release live
 # (write). contents: write covers all three.
 permissions:
@@ -15,7 +15,7 @@ jobs:
   # Build every artifact and publish the GitHub Release as a DRAFT — invisible to
   # users (release.draft: true in .goreleaser.yaml). Release notes and the
   # pre-release flag are set here, on the draft. The release is only revealed by
-  # the promote job, and only after every smoke leg passes.
+  # the promote job, and only after every smoketest leg passes.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -60,7 +60,7 @@ jobs:
       # the body from the same .release-notes.md. Same source of truth,
       # deterministic outcome, and the diff is visible in this step's log if the
       # two ever disagree again. This operates on the DRAFT — it does not reveal
-      # the release; promote does that after smoke passes.
+      # the release; promote does that after smoketest passes.
       #
       # The same step pins the pre-release flag: anything in the 0.x series, or a
       # tag carrying a SemVer pre-release suffix (e.g. -rc1), is marked
@@ -80,17 +80,17 @@ jobs:
             --notes-file .release-notes.md \
             --prerelease="${prerelease}"
 
-  # Tier 1 (Phase 1) pre-publish smoke: prove each native-runner artifact
+  # Tier 1 (Phase 1) pre-publish smoketest: prove each native-runner artifact
   # actually executes on its target OS/arch and honors its no-argument contract
   # before the release goes public. Each leg downloads its own artifact from the
-  # draft release and runs _scripts/smoke.sh against it. No Go toolchain — the
-  # smoke test runs the released binary, it does not build one.
+  # draft release and runs _scripts/smoketest.sh against it. No Go toolchain — the
+  # smoketest runs the released binary, it does not build one.
   #
   # fail-fast: false so one platform's failure doesn't mask another's signal.
   # Phase 2 adds darwin/amd64 (run via Rosetta on the Apple-silicon runner). The
   # remaining linux/arm64 leg needs an ephemeral Azure arm64 VM and lands once
   # that infrastructure exists.
-  smoke:
+  smoketest:
     needs: build
     strategy:
       fail-fast: false
@@ -106,10 +106,10 @@ jobs:
             runs-on: macos-latest
             pattern: cherry-sync_*_darwin_amd64.tar.gz
             rosetta: true
-    name: smoke ${{ matrix.name }}
+    name: smoketest ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
     steps:
-      # Only _scripts/smoke.sh is needed from the tree.
+      # Only _scripts/smoketest.sh is needed from the tree.
       - uses: actions/checkout@v6
 
       # darwin/amd64 runs on an Apple-silicon runner, so executing the x86_64
@@ -126,21 +126,83 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p smoke-bin
+          mkdir -p smoketest-bin
           gh release download "${GITHUB_REF_NAME}" \
             --pattern '${{ matrix.pattern }}' \
-            --dir smoke-bin
-          archive="$(find smoke-bin -name '*.tar.gz' -print -quit)"
-          tar -xzf "$archive" -C smoke-bin
+            --dir smoketest-bin
+          archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C smoketest-bin
 
-      - name: Smoke test
-        run: ./_scripts/smoke.sh smoke-bin/csync
+      - name: Smoketest
+        run: ./_scripts/smoketest.sh smoketest-bin/csync
 
-  # Reveal the release only if every smoke leg passed. `needs: smoke` gates this
-  # on the whole matrix succeeding; on any failure the release stays a draft
-  # (invisible) for inspection and this job does not run.
+  # Tier 1 (Phase 2) linux/arm64 leg. GitHub has no native arm64 Linux runner,
+  # so this job stands up an ephemeral Azure arm64 VM, runs the released binary
+  # on it over SSH, and tears it down — the same no-argument contract the matrix
+  # legs above assert, just on a host we provision. It runs in the `release`
+  # Environment so the Azure OIDC subject is the stable `…:environment:release`
+  # (a per-tag subject would be unworkable). No client secret is stored;
+  # azure/login authenticates via OIDC. Scripts do the work so the same steps
+  # are reproducible by hand (see SMOKE-TEST.md §7.3).
+  smoketest-linux-arm64:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write     # mint the OIDC token for azure/login
+      contents: write     # gh release download from the draft release
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download and unpack artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p smoketest-bin
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern 'cherry-sync_*_linux_arm64.tar.gz' \
+            --dir smoketest-bin
+          archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C smoketest-bin
+
+      # Generate a throwaway SSH key and provision the VM (port 22 open only to
+      # this runner's IP). The up script publishes host/user as step outputs
+      # (via $GITHUB_OUTPUT), so a provisioning failure fails THIS step rather
+      # than surfacing later as a confusing SSH/DNS error.
+      - name: Provision the arm64 VM
+        id: provision
+        run: |
+          ssh-keygen -t ed25519 -N '' -f ./id
+          AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up
+
+      # Copy the binary + smoketest.sh to the VM and run the smoketest over SSH.
+      - name: Smoketest over SSH
+        env:
+          VM_HOST: ${{ steps.provision.outputs.host }}
+          VM_USER: ${{ steps.provision.outputs.user }}
+        run: |
+          scp -i ./id -o StrictHostKeyChecking=accept-new \
+            smoketest-bin/csync _scripts/smoketest.sh "${VM_USER}@${VM_HOST}:."
+          ssh -i ./id -o StrictHostKeyChecking=accept-new "${VM_USER}@${VM_HOST}" \
+            'chmod +x ./csync && bash ./smoketest.sh ./csync'
+
+      - name: Tear down VM
+        if: always()
+        run: _scripts/azure-smoketest-vm.sh down
+
+  # Reveal the release only if every smoketest leg passed — the native matrix
+  # AND the Azure arm64 leg. `needs` gates this on all of them succeeding; on any
+  # failure the release stays a draft (invisible) for inspection and this job
+  # does not run.
   promote:
-    needs: smoke
+    needs: [smoketest, smoketest-linux-arm64]
     runs-on: ubuntu-latest
     steps:
       # No actions/checkout here: this job only calls the GitHub API. gh infers
@@ -151,5 +213,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "All smoke legs passed; publishing ${GITHUB_REF_NAME}"
+          echo "All smoketest legs passed; publishing ${GITHUB_REF_NAME}"
           gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
