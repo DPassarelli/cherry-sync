@@ -1,0 +1,42 @@
+name: azure-smoketest-sweep
+
+# Independent backstop for the linux/arm64 smoketest leg: reclaim any ephemeral
+# Azure resource the inline teardown missed (a cancelled or crashed release
+# run). Runs hourly so an orphan can't outlive the 1h age threshold by much, and
+# on demand for manual checks. The release pipeline does NOT depend on this; it
+# only bounds cost/leakage when a teardown is skipped.
+on:
+  schedule:
+    - cron: '0 * * * *'   # hourly
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'List orphans without deleting'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write         # azure/login via OIDC
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    environment: release  # same stable OIDC subject as the smoketest leg
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sweep orphaned ephemeral resources
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          args=()
+          if [ "${DRY_RUN}" = "true" ]; then args+=(--dry-run); fi
+          _scripts/azure-smoketest-sweep.sh "${args[@]}"

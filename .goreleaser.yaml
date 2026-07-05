@@ -55,7 +55,7 @@ release:
     owner: dpassarelli
     name: cherry-sync
   # Publish as a draft so the release is invisible to users until the
-  # pre-publish smoke tests pass. .github/workflows/release.yml flips it live
-  # with `gh release edit --draft=false` only after every smoke leg is green; a
-  # failed smoke run leaves the draft unpublished for inspection.
+  # pre-publish smoketests pass. .github/workflows/release.yml flips it live
+  # with `gh release edit --draft=false` only after every smoketest leg is green; a
+  # failed smoketest run leaves the draft unpublished for inspection.
   draft: true
