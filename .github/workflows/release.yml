@@ -148,6 +148,11 @@ jobs:
     name: smoketest linux/arm64
     needs: build
     runs-on: ubuntu-latest
+    # Cap the job well under the sweeper's 1h age threshold (azure-smoketest-sweep):
+    # a live job's ephemeral resources therefore stay younger than that threshold,
+    # so a sweep that happens to run concurrently can never reap them. Also bounds
+    # a hung provision/SSH from stranding the VM for up to GitHub's 6h default.
+    timeout-minutes: 30
     environment: release
     permissions:
       id-token: write     # mint the OIDC token for azure/login
