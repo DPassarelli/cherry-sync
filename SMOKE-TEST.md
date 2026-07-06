@@ -1,8 +1,8 @@
-# Smoke Testing for Binaries Before Publishing — Design Spec
+# Binary Smoke Testing — Design & Rationale
 
-Status: **Tier 1** (artifact-execution gate) is fully built — Phase 1 (both native legs) and the darwin/amd64 (Rosetta) leg are implemented and dry-run-validated through promote; the linux/arm64 (Azure) leg is now implemented too (§7.3) and awaits its first real tag-triggered run, which needs the one-time Azure setup in §7.3.2 completed under the `csync-smoketest` names. **Tier 2** (real-transfer gate) remains a sketch (§9) so the architecture is coherent end-to-end, committed to detail in a later pass.
+**Tier 1** (the artifact-execution gate) is built and gates every release: on a `v*` tag each of the four published binaries is run on its target OS/arch — natively for linux/amd64 and darwin/arm64, via Rosetta for darwin/amd64, and on an ephemeral Azure VM for linux/arm64 — and the release stays an invisible draft unless all four pass. It went live with v0.7.0. **Tier 2** (a real-transfer gate) is not built; it's sketched in §9 so the architecture stays coherent and can be resumed without re-deriving it.
 
-This document is self-contained on purpose — it can be reviewed in isolation without reading the rest of the project's design notes.
+This document records why the gate exists and how it works. It's self-contained — readable without the rest of the project's design notes.
 
 ## 1. Why this exists
 
@@ -42,17 +42,14 @@ The existing hermetic test harness simulates a remote by pointing rsync's remote
 
 A `checksums.txt` accompanies them. The smoketest downloads these published assets (see §7), so it exercises the exact bytes a user would receive — including the upload step, not just the local `dist/` output.
 
-## 5. Locked decisions
+## 5. Key decisions
 
-These were settled in design discussion and are treated as fixed for this spec:
+The decisions that shaped Tier 1:
 
-1. **Both tiers, built one at a time, Tier 1 first.**
+1. **Both tiers, Tier 1 first.** Tier 2 (§9) is deferred, not abandoned.
 2. **linux/arm64 is in scope.** GitHub provides no native Linux/arm64 runner, so its execution host is an ephemeral Azure arm64 VM (§6, §8). This is the only cloud dependency in Tier 1.
 3. **Gating mechanism is draft-then-promote** (§7): GoReleaser publishes the release as a *draft* (invisible to users); smoketest jobs run against the draft's assets; the release is flipped to non-draft only if every smoketest job is green.
 4. **Trigger is the `v*` tag** (pre-publish, in `release.yml`), and the same work must be **drivable by hand** so a CI failure can be reproduced and investigated. This forces a script-first architecture (§7).
-5. **Tier 1 ships in two phases**, split along execution-host difficulty:
-   - **Phase 1 — native GitHub runners only:** linux/amd64 (`ubuntu-latest`) and darwin/arm64 (`macos-latest`). No Azure, no Rosetta, no new cloud credential. This phase proves the full draft → smoketest → promote machinery and `_scripts/smoketest.sh` on the two hosts that run for free.
-   - **Phase 2 — the harder hosts:** darwin/amd64 (Rosetta on `macos-latest`) and linux/arm64 (ephemeral Azure arm64 VM). This phase adds only execution hosts to an already-proven gate.
 
 ## 6. Tier 1 — definition and execution-host matrix
 
@@ -65,22 +62,20 @@ The "documented argument contract" Tier 1 checks is the one `cmd/csync/main.go` 
 
 That is sufficient to catch a broken artifact. It deliberately does **not** invoke `compare`/`transfer` (those need rsync and a peer — Tier 2).
 
-> Contract dependency: if a `--version` flag is added later (currently deferred until in-binary version injection exists), Tier 1 should also assert `csync --version` prints a non-empty version and exits `0`. Until then the no-argument usage path is the surface the smoketest exercises. Whoever adds `--version` updates this assertion in lockstep.
+> The smoketest exercises only the no-argument usage path. Since v0.6.0, `csync --version` also exists and prints the injected `-ldflags -X main.version` value — the one failure class named in §1 (a bad version injection) that the usage path doesn't exercise. A `--version` assertion in `smoketest.sh` would close that gap; it isn't there yet.
 
 ### 6.2 Execution hosts
 
 The artifact under test is the *local* csync. For Tier 1 it only needs a host that can execute its arch — no remote.
 
-| Phase | Artifact | Execution host | How it runs |
-|---|---|---|---|
-| 1 | linux/amd64 | `ubuntu-latest` GitHub runner | native |
-| 1 | darwin/arm64 | `macos-latest` GitHub runner (Apple silicon) | native |
-| 2 | darwin/amd64 | `macos-latest` GitHub runner | via Rosetta 2 — macOS runs the x86_64 binary transparently on exec once Rosetta is installed; no `arch` prefix needed. The leg runs `softwareupdate --install-rosetta --agree-to-license` first (a no-op if already present). |
-| 2 | linux/arm64 | **ephemeral Azure arm64 VM** | `scp` the binary, run over SSH |
+| Artifact | Execution host | How it runs |
+|---|---|---|
+| linux/amd64 | `ubuntu-latest` GitHub runner | native |
+| darwin/arm64 | `macos-latest` GitHub runner (Apple silicon) | native |
+| darwin/amd64 | `macos-latest` GitHub runner | via Rosetta 2 — macOS runs the x86_64 binary transparently on exec once Rosetta is installed; no `arch` prefix needed. The leg runs `softwareupdate --install-rosetta --agree-to-license` first (a no-op if already present). |
+| linux/arm64 | **ephemeral Azure arm64 VM** | `scp` the binary, run over SSH |
 
-**Phase 1** covers the two artifacts that run natively on GitHub-hosted runners — no Azure, no Rosetta, no cloud credential. **Phase 2** adds the two harder hosts: darwin/amd64 (Rosetta) and linux/arm64 (the only artifact needing Azure, and only to *execute* the binary — no Go toolchain, no rsync peer). The Phase 2 cloud footprint is **one short-lived arm64 VM, alive for minutes.**
-
-**Implementation status:** all four legs are implemented in `release.yml`. Phase 1 (both native legs) and darwin/amd64 (Rosetta) are dry-run-validated green. The linux/arm64 (Azure) leg (`smoketest-linux-arm64` job + `_scripts/azure-smoketest-vm.sh`) is implemented and awaits its first real tag-triggered run, which requires the one-time Azure setup in §7.3.2 done under the `csync-smoketest` names.
+Three legs run on GitHub-hosted runners — linux/amd64 and darwin/arm64 natively, darwin/amd64 via Rosetta. linux/arm64 is the only one needing an external host, since GitHub offers no native Linux/arm64 runner: an ephemeral Azure arm64 VM, used only to *execute* the binary (no Go toolchain, no rsync peer), so the cloud footprint is one short-lived VM alive for minutes. All four run in `release.yml` — the linux/arm64 leg being the `smoketest-linux-arm64` job plus `_scripts/azure-smoketest-vm.sh`, whose one-time Azure setup is in §7.3.2 — and have gated real releases since v0.7.0.
 
 ## 7. Tier 1 — architecture (scripts + workflow)
 
@@ -99,18 +94,18 @@ Mirrors the pattern already used for the test-report dashboard: **the script is 
 The release job is split so the smoketest gate sits between build and publish:
 
 1. **Build (draft).** Set `release.draft: true` in `.goreleaser.yaml`. GoReleaser builds all four artifacts and creates the GitHub Release as a **draft** with assets attached — invisible to users. The existing release-notes extraction and pre-release-flag enforcement stay here, applied to the draft.
-2. **Smoketest (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>.tar.gz'`), unpacks the `csync` binary, and runs `_scripts/smoketest.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or (Phase 2 only) by `scp`-then-SSH onto the Azure arm64 VM (`_scripts/azure-smoketest-vm.sh up`). In Phase 1 this is two jobs, both on native GitHub runners.
+2. **Smoketest (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>.tar.gz'`), unpacks the `csync` binary, and runs `_scripts/smoketest.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or for linux/arm64 by `scp`-then-SSH onto the Azure arm64 VM (`_scripts/azure-smoketest-vm.sh up`).
 3. **Promote (gated).** A final job that `needs` every smoketest job. On success it flips the release live: `gh release edit <tag> --draft=false` (folded into the existing `gh release edit` enforcement step). If any smoketest job failed, the release stays a draft and the workflow fails.
 
 Downloading from the draft release (rather than reusing GoReleaser's local `dist/`) means the bytes the smoketest runs are the bytes that promotion reveals — the upload itself is covered.
 
-### 7.3 Phase 2 leg: linux/arm64 via an ephemeral Azure VM
+### 7.3 The linux/arm64 leg: an ephemeral Azure VM
 
-Phase 1 and the darwin/amd64 (Rosetta) leg have no Azure dependency. This section is the full design for the one remaining leg, which needs an external host because GitHub offers no native Linux/arm64 runner. The leg does the same thing every other leg does — execute the artifact and assert the §6.1 contract — just on a VM we stand up and tear down per run. It needs **no Go toolchain and no rsync peer** on the VM; it only runs the binary.
+The other three legs have no Azure dependency. This one needs an external host because GitHub offers no native Linux/arm64 runner. It does the same thing every other leg does — execute the artifact and assert the §6.1 contract — just on a VM stood up and torn down per run. It needs **no Go toolchain and no rsync peer** on the VM; it only runs the binary.
 
 Because it needs an OIDC token, a GitHub Environment, and SSH — none of which the GitHub-runner legs need — it is a **separate job**, not another `matrix` leg under `smoketest`.
 
-**Resource naming (Microsoft Cloud Adoption Framework).** Every Azure resource this leg creates follows the CAF pattern `<type>-<workload>-<purpose>-<region>[-<instance>]`, using the CAF resource-type abbreviations. The workload token is `csync` and the purpose token is `smoketest`; `<region>` is the CAF region abbreviation for the chosen region (e.g. `eus` for `eastus`, pending the §10 region decision). The AD app registration and service principal aren't ARM resources, so they're out of scope for this convention and keep their given name, `cherry-sync-test`.
+**Resource naming (Microsoft Cloud Adoption Framework).** Every Azure resource this leg creates follows the CAF pattern `<type>-<workload>-<purpose>-<region>[-<instance>]`, using the CAF resource-type abbreviations. The workload token is `csync` and the purpose token is `smoketest`; `<region>` is the CAF region abbreviation for the chosen region (`eus` for `eastus`). The AD app registration and service principal aren't ARM resources, so they're out of scope for this convention and keep their given name, `cherry-sync-test`.
 
 Because the service principal is scoped to a single resource group and can't create resource groups (§7.3.1), the resources split into **stable** (created once by hand in §7.3.2, no instance suffix) and **ephemeral** (created and destroyed per run by the script in §7.3.3, carrying the GitHub run ID as the instance token so repeated or concurrent runs never collide):
 
@@ -145,8 +140,8 @@ Two properties of this boundary are worth stating:
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 
-REGION=eastus          # the §10 region decision …
-REGION_ABBR=eus        # … and its CAF abbreviation, used in every resource name
+REGION=eastus          # region
+REGION_ABBR=eus        # its CAF abbreviation, used in every resource name
 RG=rg-csync-smoketest-${REGION_ABBR}
 
 # App registration + service principal (not an ARM resource; keeps the name cherry-sync-test)
@@ -206,8 +201,8 @@ Self-contained (no repo dependencies, like `smoketest.sh`) so a human can drive 
 | Var | Purpose | Default |
 |---|---|---|
 | `AZ_RG` | the stable resource group to work in | `rg-csync-smoketest-${AZ_REGION_ABBR}` |
-| `AZ_REGION_ABBR` | CAF region abbreviation, for resource names | (decision — §10) |
-| `AZ_LOCATION` | region | (decision — §10) |
+| `AZ_REGION_ABBR` | CAF region abbreviation, for resource names | `eus` |
+| `AZ_LOCATION` | region | `eastus` |
 | `AZ_VM_SIZE` | arm64 VM size | `Standard_B2pts_v2` |
 | `AZ_IMAGE` | arm64 Ubuntu image URN | `Canonical:ubuntu-24_04-lts:server-arm64:latest` |
 | `AZ_INSTANCE` | per-run instance token (name suffix) | `${GITHUB_RUN_ID:-local}` |
@@ -233,14 +228,9 @@ Implemented as the `smoketest-linux-arm64` job in `.github/workflows/release.yml
 
 `promote` gates on this job alongside the matrix: `needs: [smoketest, smoketest-linux-arm64]`.
 
-#### 7.3.5 Teardown — for Tier 1, always delete
+#### 7.3.5 Teardown — always delete
 
-The earlier draft of this section proposed *holding the VM on failure* for debugging. On reflection that belongs to **Tier 2**, not Tier 1, for two reasons:
-
-1. **Tier 1 failures aren't environment-specific.** The check is "does the arm64 binary run and print usage." A failure is a broken-artifact failure, reproducible without that exact VM — so there's little to debug *on the VM*.
-2. **The SSH key is ephemeral.** It's generated in the job and gone when the job ends, so a held VM isn't even reachable without resetting credentials via `az vm user update` — friction that buys nothing for a Tier-1-class failure.
-
-So Tier 1 tears down unconditionally (`if: always()`) — `down` deletes the run's ephemeral resources and leaves `rg-csync-smoketest-<region>` and its stable network standing. Hold-on-failure is reconsidered for Tier 2, where a transfer failure can be environment-dependent and the VM is worth keeping. The independent sweeper (next) still backstops the case where the `always()` step never runs at all (a cancelled or crashed job).
+Tier 1 tears down unconditionally (`if: always()`): `down` deletes the run's ephemeral resources and leaves the resource group and its stable network standing. Holding a failed VM for debugging buys nothing here — a Tier 1 failure is a broken-artifact failure, reproducible without that exact VM, and the ephemeral SSH key is gone when the job ends, so a held VM isn't even reachable without resetting credentials. (Hold-on-failure may be worth revisiting for Tier 2, where a failure can be environment-dependent and the VM worth keeping.) The independent sweeper (§7.3.6) backstops the case where the `always()` step never runs at all — a cancelled or crashed job.
 
 #### 7.3.6 Sweeper — independent backstop
 
@@ -254,12 +244,12 @@ Every piece is hand-runnable: `az login` yourself, then `AZ_SSH_PUBKEY=~/.ssh/id
 
 A red smoketest job (a) leaves the release unpublished as a draft, (b) on the Azure leg, leaves the VM up with printed connection details, and (c) is reproducible by hand: download the same artifact and run `./_scripts/smoketest.sh ./csync`, or stand up the VM with `./_scripts/azure-smoketest-vm.sh up` and repeat there. There is no CI-only state.
 
-## 8. Tier 1 — cost and risk summary
+## 8. Cost and risk summary
 
-- **Phase 1 — zero cloud footprint.** Both legs run on GitHub-hosted runners. No Azure account, no OIDC credential, no teardown, no Rosetta dependency. Cost is GitHub Actions minutes only.
-- **Cost (Phase 2).** One B-/D-series arm64 VM for the minutes a run takes — pennies per release. Everything else still runs on GitHub-hosted runners.
-- **Flakiness (Phase 2).** The Azure leg adds a network/provisioning dependency. It runs **only on `v*` tags** (and manual dispatch), never on `pull_request`, so it cannot make day-to-day `go test` flaky. A provisioning failure blocks a *release*, which is the correct place to absorb that risk.
-- **Security (Phase 2).** The only new privilege is an OIDC service principal scoped **Contributor on a single dedicated resource group** (`rg-csync-smoketest-<region>`), never the subscription — so a compromised CI token can't reach any other resource group. No static cloud secret is stored. The smoketest VM accepts only an ephemeral per-run SSH key (password auth disabled) and its per-run NSG opens port 22 to just the connecting runner's `/32` (§7.3.3).
+- **Most legs have zero cloud footprint.** Three of the four (linux/amd64, darwin/arm64, and darwin/amd64 via Rosetta) run on GitHub-hosted runners — no Azure, no cloud credential — costing only GitHub Actions minutes.
+- **The Azure leg is pennies per release.** One arm64 burstable VM (`Standard_B2pts_v2`) for the few minutes a run takes.
+- **Flakiness is contained.** The Azure leg adds a network/provisioning dependency, but runs **only on `v*` tags** (and manual dispatch), never on `pull_request`, so it cannot make day-to-day `go test` flaky. A provisioning failure blocks a *release*, which is the correct place to absorb that risk.
+- **Security.** The only new privilege is an OIDC service principal scoped **Contributor on a single dedicated resource group** (`rg-csync-smoketest-<region>`), never the subscription — so a compromised CI token can't reach any other resource group. No static cloud secret is stored. The VM accepts only an ephemeral per-run SSH key (password auth disabled), and its per-run NSG opens port 22 to just the connecting runner's `/32` (§7.3.3).
 
 ## 9. Tier 2 — forward look (not yet committed to detail)
 
@@ -279,22 +269,8 @@ A curated subset of scenarios is tagged `@smoketest` (target ~3–5: one push, o
 
 A Tier 2 wrinkle to settle when we get there: the harness needs a Go toolchain wherever it runs, which is a question for the linux/arm64 leg specifically (install Go on the VM, or cross-compile the test binary with `go test -c` and ship it). Out of scope for Tier 1.
 
-## 10. Open questions
+## 10. Validation
 
-Phase 1 — **resolved by the v0.2.2-rc1 dry run:**
+Tier 1 was exercised end-to-end before it was trusted. The draft → smoketest → promote machinery was proven on the `v0.2.2-rc1` dry run, which surfaced one real bug worth recording: the `promote` job had no `actions/checkout`, so `gh` couldn't infer the repo (`fatal: not a git repository`). It now names the repo explicitly — `gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false` — and needs no checkout, being an API-only job. The full four-leg gate, including darwin/amd64 via Rosetta and the linux/arm64 Azure leg, then ran green on the real `v0.7.0` tag: the arm64 VM provisioned, the binary passed over SSH, the VM tore down, and the release promoted as designed.
 
-- **`gh release download` from a draft** — works with `contents: write`; the pattern `cherry-sync_*_<os>_<arch>.tar.gz` resolves correctly.
-- **Promote step** — the failure mode found was unrelated to idempotency: the `promote` job had no `actions/checkout`, so `gh` couldn't infer the repo (`fatal: not a git repository`). Fixed by naming it explicitly: `gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false` (no checkout needed for an API-only job). A second rc confirmed promote then publishes correctly.
-
-Phase 2 — darwin/amd64:
-
-- **Rosetta on `macos-latest`:** the leg is implemented with an unconditional `softwareupdate --install-rosetta` step; confirm on a real rc run that it goes green (whether Rosetta is preinstalled or the install step suffices).
-
-Phase 2 — linux/arm64 (Azure), all resolved; the leg is built (§7.3). Recorded here for provenance:
-
-- **Region** (`AZ_LOCATION` + `AZ_REGION_ABBR`) — *resolved:* `eastus`/`eus`. The stable RG and vnet/subnet are already provisioned there.
-- **VM size** (`AZ_VM_SIZE`) — *resolved:* `Standard_B2pts_v2` (cheap arm64 burstable).
-- **Image** (`AZ_IMAGE`) — *resolved:* `Canonical:ubuntu-24_04-lts:server-arm64:latest`. Verify the URN resolves in `eastus` (`az vm image show --urn …`) before the first run; `:latest` floats to the newest patch, which is fine for a throwaway VM.
-- **Role scope** — *resolved:* Contributor scoped to a single dedicated resource group, `rg-csync-smoketest-<region>` (no spare subscription exists; RG scope is the least-privilege boundary — §7.3.1). A custom role omitting RG self-delete remains an optional tightening.
-- **Environment** — *resolved:* use the `release` GitHub Environment (required for the stable federated subject `repo:…:environment:release`), **no required reviewer**. The federation subject restriction + RG-scoped Contributor + the sweeper already bound the risk, so a manual approval gate would only add friction to an otherwise-unattended tag-triggered release. (A reviewer can be added later if a manual "approve the spend" checkpoint is ever wanted.) Still to confirm on the first real run: that the subject authenticates on a *tag-triggered* job running in the environment.
-- **Sweeper threshold** — *resolved:* 1h (comfortably longer than a run, so a sweep never reaps an in-flight release's resources; the daily cadence, not the threshold, bounds how long an orphan can linger).
+One optional tightening remains open: swapping the RG-scoped Contributor role for a custom role that omits resource-group self-delete (§7.3.1). It's gold-plating — RG-scoped Contributor is the standard least-privilege answer — and hasn't been done.
