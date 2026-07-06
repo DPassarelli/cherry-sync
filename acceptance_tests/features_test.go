@@ -170,6 +170,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^that the file "([^"]*)" has a different modification time but identical content$`, theFileHasADifferentMtimeButIdenticalContent)
 	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
 	ctx.Step(`^that the file "([^"]*)" has been added on the remote$`, theFileHasBeenAddedOnTheRemote)
+	ctx.Step(`^that the file "([^"]*)" has been deleted locally$`, theFileHasBeenDeletedLocally)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
@@ -183,6 +184,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
+	ctx.Step(`^the file "([^"]*)" should still exist on the remote$`, theFileShouldStillExistOnTheRemote)
 	ctx.Step(`^the file "([^"]*)" should still differ between local and remote$`, theFileShouldStillDifferBetweenLocalAndRemote)
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
@@ -644,6 +646,22 @@ func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Co
 	return ctx, nil
 }
 
+// theFileHasBeenDeletedLocally removes the named file from the local tree, which
+// (the two sides having started identical) leaves it present on the remote but
+// gone from the local side — a deletion on a push. With --delete on the compare,
+// a later comparison reports it as a removal.
+func theFileHasBeenDeletedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	err := os.Remove(filepath.Join(local, relPath))
+	if err != nil {
+		return ctx, fmt.Errorf("remove %s: %w", relPath, err)
+	}
+	return ctx, nil
+}
+
 // theFileHasBeenAddedOnTheRemote writes a new file (creating parent dirs) into
 // the remote tree so a later comparison reports it as remote-only.
 func theFileHasBeenAddedOnTheRemote(ctx context.Context, relPath string) (context.Context, error) {
@@ -941,6 +959,23 @@ func theFileShouldNotExistOnTheRemote(ctx context.Context, relPath string) error
 		return fmt.Errorf("file %q exists on the remote but should not", relPath)
 	}
 	if !os.IsNotExist(err) {
+		return fmt.Errorf("stat remote %s: %w", relPath, err)
+	}
+	return nil
+}
+
+// theFileShouldStillExistOnTheRemote asserts the named file is present on the
+// remote side — i.e. a reported deletion was not applied (it was left unselected,
+// or the run only reported changes without transferring). The mirror of
+// theFileShouldNotExistOnTheRemote.
+func theFileShouldStillExistOnTheRemote(ctx context.Context, relPath string) error {
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+
+	_, err := os.Stat(filepath.Join(remote, relPath))
+	if os.IsNotExist(err) {
+		return fmt.Errorf("file %q is absent on the remote but should still exist", relPath)
+	}
+	if err != nil {
 		return fmt.Errorf("stat remote %s: %w", relPath, err)
 	}
 	return nil

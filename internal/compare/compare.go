@@ -81,6 +81,15 @@ func rsyncArgs(source, destination string, excludes []string) []string {
 		"--dry-run",
 		"--itemize-changes",
 		"--recursive",
+		// --delete surfaces removals: a path present on the destination but gone
+		// from the source itemizes as `*deleting <path>`, which parseActions turns
+		// into a delete Action. Detection is always on — there's no mirror flag —
+		// so every compare reports the destination's stale files alongside the
+		// creates and updates. It's a dry-run, so nothing is removed here; applying
+		// a selected deletion is the transfer's job. Excluded paths (the gitignore
+		// --exclude list below) are protected from deletion by rsync, so ignored
+		// files are never proposed for removal.
+		"--delete",
 		// --times mirrors transfer.rsyncArgs so the dry-run models the same
 		// operation the transfer performs. It does NOT change which files are
 		// reported — rsync's quick-check compares mtime regardless of this flag,

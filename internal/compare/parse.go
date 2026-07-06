@@ -39,6 +39,19 @@ func actionFromLine(line string) Action {
 	if !found {
 		return Action{}
 	}
+	// A removal itemizes as `*deleting <path>` — the code is a word, not a
+	// fixed-width flag run, so it's matched by name rather than by prefix byte.
+	// The path follows the code column's padding (GNU pads `*deleting` to its
+	// 11-char column, openrsync's 9-char column holds it flush), so the leading
+	// pad spaces are trimmed. A leading-space or glob-metachar name is handled by
+	// a later stage, not here.
+	if code == "*deleting" {
+		p := strings.TrimLeft(path, " ")
+		if p == "" {
+			return Action{}
+		}
+		return Action{Verb: "delete", Path: p}
+	}
 	if len(code) < 2 || (code[0] != '<' && code[0] != '>') || code[1] != 'f' || path == "" {
 		return Action{}
 	}

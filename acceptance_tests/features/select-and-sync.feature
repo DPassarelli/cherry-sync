@@ -227,6 +227,22 @@ Feature: Select and sync files
     And   the file "src/parser.go" should be identical between local and remote
     And   the file "src/main.go" should still differ between local and remote
 
+  Scenario: A file removed on the source is reported as a deletion
+    # On a push (local -> remote), a file present on the remote but gone from the
+    # local side is a deletion: --delete on the compare surfaces it as a delete
+    # row alongside the green/yellow create/update rows. This is detection only —
+    # the run reports the removal but applies nothing (the prompt reads EOF and
+    # selects nothing), so the file is still on the remote afterward. Applying a
+    # selected deletion is a later scenario. Teeth: without --delete on the
+    # compare, rsync emits no *deleting line and no delete action is reported.
+    Given that the file "README.md" has been deleted locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | delete | README.md |
+    And   the reported change count should be 1
+    And   the file "README.md" should still exist on the remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file

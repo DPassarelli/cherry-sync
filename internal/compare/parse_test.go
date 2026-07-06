@@ -100,3 +100,33 @@ func TestParseActions_PushCreate_ReturnsCreateAction(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+// Behavior: with --delete on the compare, a file present on the destination but
+// gone from the source itemizes as `*deleting <path>` — a distinct shape from
+// the `<f`/`>f` transfer codes (a word, not a fixed-width flag run, followed by
+// padding then the path). It must yield a delete Action so the picker can offer
+// the removal as a red row. The two forms below pin both rsync layouts: GNU pads
+// `*deleting` (9 chars) within an 11-char code column, so three spaces precede
+// the path; openrsync's 9-char column leaves `*deleting` flush against a single
+// separator space. Both must land the same path with no leading byte eaten.
+// Captured from `rsync -rn --delete --itemize-changes` (GNU rsync 3.4.1).
+func TestParseActions_GNUDelete_ReturnsDeleteAction(t *testing.T) {
+	got := parseActions("*deleting   gone.txt\n")
+
+	want := []Action{{Verb: "delete", Path: "gone.txt"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: openrsync's `*deleting` line — the 9-char code column holds the word
+// exactly, so a single separator space sits between it and the path. Parses to
+// the same delete Action as the GNU form above.
+func TestParseActions_OpenrsyncDelete_ReturnsDeleteAction(t *testing.T) {
+	got := parseActions("*deleting gone.txt\n")
+
+	want := []Action{{Verb: "delete", Path: "gone.txt"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
