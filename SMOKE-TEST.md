@@ -131,7 +131,7 @@ For a local manual run `<runid>` defaults to `local`.
 
 GitHub Actions mints a short-lived OIDC token that `azure/login` exchanges for an Azure access token; there is no client secret stored anywhere. This is the one new credential surface the gate introduces, so it is scoped deliberately narrowly (consistent with the project's security posture).
 
-**The subject-stability problem.** An Azure *federated credential* matches an exact OIDC `subject` claim. For a tag-triggered run the subject is `repo:OWNER/REPO:ref:refs/tags/<tag>` — different for every tag, so a per-tag credential is unworkable. The fix is to run the Azure job inside a GitHub **Environment** (e.g. `release`): the subject then becomes the stable `repo:OWNER/REPO:environment:release`, constant across tags. The job declares `environment: release`. (A side benefit: Environments can require a reviewer, giving an optional manual approval gate before any cloud spend.)
+**The subject-stability problem.** An Azure *federated credential* matches an exact OIDC `subject` claim. For a tag-triggered run the subject is `repo:OWNER/REPO:ref:refs/tags/<tag>` — different for every tag, so a per-tag credential is unworkable. The fix is to run the Azure job inside a GitHub **Environment** (e.g. `release`): the subject then becomes the stable `repo:OWNER/REPO:environment:release`, constant across tags. The job declares `environment: release`. (A side benefit: Environments can require a reviewer, giving an optional manual approval gate before any cloud spend.) The scheduled **sweeper** does the opposite on purpose — it must *not* use an Environment, because each Environment run logs a Deployment and a scheduled job would inflate the repo's deployment count (issue #78). It doesn't have the per-tag problem anyway: scheduled runs execute on the default branch, so it trusts the stable branch subject `repo:OWNER/REPO:ref:refs/heads/main` via a second federated credential (§7.3.2, §7.3.6).
 
 **Least privilege — a dedicated resource group, not the subscription.** There is no spare subscription set aside for this work; the subscription also holds hand-built and other-project resource groups. A role assignment at *subscription* scope would let a compromised CI token reach all of them, so the scope is instead a **single dedicated resource group**, `rg-csync-smoketest-<region>`, created once by hand (§7.3.2). The principal is **Contributor scoped to that resource group only** — enough to create and delete the ephemeral VM, disk, NIC, public IP, and per-run NSG inside it, and structurally incapable of touching any other resource group.
 
@@ -154,11 +154,23 @@ az ad app create --display-name cherry-sync-test
 APP_ID=$(az ad app list --display-name cherry-sync-test --query "[0].appId" -o tsv)
 az ad sp create --id "$APP_ID"
 
-# Federated credential trusting this repo's `release` environment (stable subject)
+# Federated credential trusting this repo's `release` environment (stable subject
+# for the tag-triggered release smoketest job)
 az ad app federated-credential create --id "$APP_ID" --parameters '{
   "name": "cherry-sync-release-env",
   "issuer": "https://token.actions.githubusercontent.com",
   "subject": "repo:DPassarelli/cherry-sync:environment:release",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+
+# Second federated credential for the scheduled sweeper, which is deliberately
+# NOT tied to an Environment (an Environment logs a Deployment every run, and a
+# scheduled job would inflate the repo's deployment count — issue #78). Scheduled
+# runs execute on the default branch, so the subject is the branch ref.
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "cherry-sync-sweeper-main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:DPassarelli/cherry-sync:ref:refs/heads/main",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 
@@ -175,13 +187,13 @@ az network vnet create --resource-group "$RG" --location "$REGION" \
 az role assignment create --assignee "$APP_ID" --role Contributor \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG"
 
-# The three identifiers GitHub needs (store as secrets on the `release` environment)
+# The three identifiers GitHub needs (store as repository secrets — see below)
 echo "AZURE_CLIENT_ID=$APP_ID"
 echo "AZURE_TENANT_ID=$TENANT_ID"
 echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
 ```
 
-Then, in the GitHub repo: create an Environment named `release` and add `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` as environment secrets. (They're identifiers, not cryptographic secrets, but storing them on the environment keeps them with the federation that trusts it.)
+Then, in the GitHub repo: create an Environment named `release` (the release smoketest job enters it for its stable OIDC subject; it needs no secrets of its own), and add `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` as **repository** secrets. Repository secrets are readable by every job, including the environment-free sweeper (§7.3.6, issue #78) — environment-scoped secrets would not be. They're identifiers, not cryptographic secrets (OIDC stores no client secret), so repository-level exposure is fine. Both workflows reference them as `secrets.AZURE_*`, so keeping them as secrets (rather than repository *variables*) means no reference changes.
 
 This is the **complete** privileged setup: it runs once, by hand, in Azure Cloud Shell — which is pre-authenticated, so no Azure credential ever lands on a developer machine or in CI. Everything after this — every per-run resource — is created by the RG-scoped service principal.
 
@@ -215,7 +227,7 @@ The ephemeral resource names are derived once from `AZ_REGION_ABBR` and `AZ_INST
 Implemented as the `smoketest-linux-arm64` job in `.github/workflows/release.yml` (see there for the exact YAML, kept single-sourced rather than duplicated here). Its shape:
 
 - `needs: build`, `runs-on: ubuntu-latest`, `environment: release` (the stable OIDC subject), and job-level `permissions: { id-token: write, contents: write }` — the OIDC token for `azure/login`, and draft-release download.
-- **Steps:** checkout → `azure/login@v2` (OIDC, no stored secret) → download + unpack the `cherry-sync_*_linux_arm64.tar.gz` artifact from the draft → *provision* → *smoketest over SSH* → *tear down*.
+- **Steps:** checkout → `azure/login@v3` (OIDC, no stored secret) → download + unpack the `cherry-sync_*_linux_arm64.tar.gz` artifact from the draft → *provision* → *smoketest over SSH* → *tear down*.
 - The **provision** step generates an ephemeral ed25519 keypair and runs `_scripts/azure-smoketest-vm.sh up`, which publishes `host`/`user` as step outputs (via `$GITHUB_OUTPUT`). Keeping provisioning in its own step means a provisioning failure fails *there*, rather than masquerading as a later SSH/DNS error. The **smoketest** step `scp`s the binary and `smoketest.sh` to the VM (using `steps.provision.outputs.host`/`user`) and runs the smoketest over SSH.
 - The **tear-down** step is separate and `if: always()`, so the VM is deleted even when the smoketest step fails (§7.3.5) — it just calls `_scripts/azure-smoketest-vm.sh down`, which reconstructs the same resource names from `GITHUB_RUN_ID`.
 
@@ -232,7 +244,7 @@ So Tier 1 tears down unconditionally (`if: always()`) — `down` deletes the run
 
 #### 7.3.6 Sweeper — independent backstop
 
-A separate scheduled workflow (`.github/workflows/azure-smoketest-sweep.yml`, **hourly** `cron`) logs in with the same OIDC identity and deletes any resource **tagged `lifecycle=ephemeral`** whose `created` tag is older than the threshold (1h — comfortably longer than a run, short enough to bound cost). The cadence is hourly rather than daily on purpose: a 1h age threshold only bounds cost if the sweep runs about that often, otherwise an orphan from a crashed run could live until the next daily pass. Keying on `lifecycle=ephemeral` means it reaps only orphaned per-run resources (VM, disk, NIC, public IP, NSG) and never the stable RG/vnet/subnet (tagged `lifecycle=persistent`). Logic lives in `_scripts/azure-smoketest-sweep.sh` (list within the RG by type, tag, and age; delete each in dependency order), with a `--dry-run` mode to list-without-deleting so the age logic can be eyeballed by hand. This catches leaks the inline teardown can't — a job cancelled mid-provision, a runner that died. An Azure **budget alert** on the subscription is a further, out-of-band net.
+A separate scheduled workflow (`.github/workflows/azure-smoketest-sweep.yml`, **daily** `cron`) logs in via OIDC and deletes any resource **tagged `lifecycle=ephemeral`** whose `created` tag is older than the threshold (1h — comfortably longer than a run, so it never touches a resource from an in-flight release). Unlike the release smoketest job it is **not** run inside the `release` Environment: an Environment records a Deployment on every run, so a scheduled job would steadily inflate the repo's deployment count (issue #78). It instead authenticates with a federated credential scoped to the branch subject `repo:…:ref:refs/heads/main` (scheduled runs execute on the default branch — §7.3.1, §7.3.2). The cadence is once a day, so an orphan from a crashed run lives at most about a day before it's reclaimed — an accepted tradeoff, since orphans arise only when a release run dies mid-provision (rare) and each is a single cheap VM. Keying on `lifecycle=ephemeral` means it reaps only orphaned per-run resources (VM, disk, NIC, public IP, NSG) and never the stable RG/vnet/subnet (tagged `lifecycle=persistent`). Logic lives in `_scripts/azure-smoketest-sweep.sh` (list within the RG by type, tag, and age; delete each in dependency order), with a `--dry-run` mode to list-without-deleting so the age logic can be eyeballed by hand. This catches leaks the inline teardown can't — a job cancelled mid-provision, a runner that died. An Azure **budget alert** on the subscription is a further, out-of-band net.
 
 #### 7.3.7 Manual drive
 
@@ -284,5 +296,5 @@ Phase 2 — linux/arm64 (Azure), all resolved; the leg is built (§7.3). Recorde
 - **VM size** (`AZ_VM_SIZE`) — *resolved:* `Standard_B2pts_v2` (cheap arm64 burstable).
 - **Image** (`AZ_IMAGE`) — *resolved:* `Canonical:ubuntu-24_04-lts:server-arm64:latest`. Verify the URN resolves in `eastus` (`az vm image show --urn …`) before the first run; `:latest` floats to the newest patch, which is fine for a throwaway VM.
 - **Role scope** — *resolved:* Contributor scoped to a single dedicated resource group, `rg-csync-smoketest-<region>` (no spare subscription exists; RG scope is the least-privilege boundary — §7.3.1). A custom role omitting RG self-delete remains an optional tightening.
-- **Environment** — *resolved:* use the `release` GitHub Environment (required for the stable federated subject `repo:…:environment:release`), **no required reviewer**. The federation subject restriction + RG-scoped Contributor + 1h sweeper already bound the risk, so a manual approval gate would only add friction to an otherwise-unattended tag-triggered release. (A reviewer can be added later if a manual "approve the spend" checkpoint is ever wanted.) Still to confirm on the first real run: that the subject authenticates on a *tag-triggered* job running in the environment.
-- **Sweeper threshold** — *resolved:* 1h (comfortably longer than a run, short enough to bound cost).
+- **Environment** — *resolved:* use the `release` GitHub Environment (required for the stable federated subject `repo:…:environment:release`), **no required reviewer**. The federation subject restriction + RG-scoped Contributor + the sweeper already bound the risk, so a manual approval gate would only add friction to an otherwise-unattended tag-triggered release. (A reviewer can be added later if a manual "approve the spend" checkpoint is ever wanted.) Still to confirm on the first real run: that the subject authenticates on a *tag-triggered* job running in the environment.
+- **Sweeper threshold** — *resolved:* 1h (comfortably longer than a run, so a sweep never reaps an in-flight release's resources; the daily cadence, not the threshold, bounds how long an orphan can linger).
