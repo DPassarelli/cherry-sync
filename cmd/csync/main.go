@@ -182,11 +182,25 @@ func main() {
 		}
 	}
 
-	paths := make([]string, len(selected))
-	for i, act := range selected {
-		paths[i] = act.Path
+	// Split the selection into transfers (create/update) and removals (delete):
+	// rsync moves files with one mechanism (--files-from) and removes them with
+	// another (a --delete filter pass), so each verb goes to its own call.
+	var transferPaths, removePaths []string
+	for _, act := range selected {
+		if act.Verb == "delete" {
+			removePaths = append(removePaths, act.Path)
+		} else {
+			transferPaths = append(transferPaths, act.Path)
+		}
 	}
-	err = transfer.Run(source, destination, paths)
+	// Transfers first, removals last: the additive pass is recoverable, so if it
+	// fails we exit before deleting anything on the destination.
+	err = transfer.Run(source, destination, transferPaths)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	err = transfer.Remove(source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

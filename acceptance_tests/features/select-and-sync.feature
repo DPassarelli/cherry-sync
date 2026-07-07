@@ -243,6 +243,76 @@ Feature: Select and sync files
     And   the reported change count should be 1
     And   the file "README.md" should still exist on the remote
 
+  Scenario: A selected deletion is applied to the destination
+    # The apply half of the detection scenario above: choosing a delete row
+    # removes the file from the destination. csync applies removals in a second
+    # rsync pass (filter-rule --delete) after the transfer pass. A nested target
+    # also proves the filter rules carry the file's ancestor directories — without
+    # them rsync's trailing --exclude='*' protects the directory and nothing is
+    # deleted.
+    Given that the file "src/parser.go" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "a"
+    Then  the reported sync count should be 1
+    And   the file "src/parser.go" should not exist on the remote
+
+  Scenario: Declining a deletion leaves the file on the destination
+    # Selecting "n" declines every change, so a reported removal is not applied —
+    # the file stays on the remote. The safety mirror of the apply scenario:
+    # detection surfaces the delete, but nothing is destroyed unless chosen.
+    Given that the file "README.md" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "n"
+    Then  the reported sync count should be 0
+    And   the file "README.md" should still exist on the remote
+
+  Scenario: A run mixing a transfer and a deletion applies and reports both
+    # Creates/updates and removals ride the same selection in one run: "a" accepts
+    # both, the transfer pass adds the new file and the delete pass removes the
+    # stale one. The summary counts the total and calls out how many were removals,
+    # so "2 files total" doesn't read as if both were transfers.
+    Given that the file "src/adder.go" has been added locally
+    And   that the file "README.md" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "a"
+    Then  the reported sync count should be 2
+    And   the reported removed count should be 1
+    And   the file "src/adder.go" should be identical between local and remote
+    And   the file "README.md" should not exist on the remote
+
+  Scenario: Selecting only the transfer leaves the deletion unapplied
+    # A removal is cherry-pickable like any other change: with the added file at
+    # row 1 and the deletion at row 2 (tree order — a top-level create before the
+    # deleted file… see order-reported-actions.feature), picking "1" transfers the
+    # new file and leaves the stale one in place on the remote.
+    Given that the file "adder.go" has been added locally
+    And   that the file "README.md" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "1"
+    Then  the reported sync count should be 1
+    And   the file "adder.go" should be identical between local and remote
+    And   the file "README.md" should still exist on the remote
+
+  Scenario: A completed deletion leaves nothing to re-sync
+    # Idempotence for removals: after csync applies a deletion, re-running the same
+    # compare must report nothing left. A second run that still sees the removal
+    # means the delete pass didn't actually reconcile the two sides.
+    Given that the file "README.md" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "a"
+    And   I run "csync ./project user@host:/project" a second time
+    Then  no actions should be reported
+    And   the reported change count should be 0
+
+  Scenario: A deletion candidate whose name holds a glob character is not offered
+    # csync applies deletions with an rsync filter rule, in which *, ?, and [ are
+    # glob metacharacters — an unescaped one could match and remove the wrong file.
+    # Escaping them safely is deferred (tracked separately), so for now a removable
+    # file whose name contains one is dropped from detection: never shown as a
+    # delete row, never removed. Here a[1].txt exists only on the remote (a
+    # deletion on push), but the "[1]" would glob to "a1.txt", so it is held back
+    # and the run reports nothing. Teeth: without the drop, it surfaces as a delete.
+    Given that the file "a[1].txt" has been added on the remote
+    When  I run "csync ./project user@host:/project"
+    Then  no actions should be reported
+    And   the reported change count should be 0
+    And   the file "a[1].txt" should still exist on the remote
+
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     # The mirror of the push scenarios, source and destination swapped. A file

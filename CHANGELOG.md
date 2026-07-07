@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- csync now detects and applies file deletions. A file present on the destination but missing from the source is shown in red alongside creates (green) and updates (yellow), and is selected by default. The post-sync summary reports deletions on their own (i.e., `Sync complete! (3 files total, 2 of which were removed)`). Unlike `rysnc`, deletes are always included by csync. _Files whose names contain a leading space or an rsync filter metacharacter (`*`, `?`, `[`) are currently excluded and will not appear in the selection list nor be deleted. (#52)
+
 ## [0.7.0] - 2026-07-05
 
 ### Added

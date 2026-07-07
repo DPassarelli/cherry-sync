@@ -50,6 +50,15 @@ func actionFromLine(line string) Action {
 		if p == "" {
 			return Action{}
 		}
+		// The transfer applies a deletion through an rsync filter rule, where `*`,
+		// `?`, and `[` are glob metacharacters — an unescaped one could match and
+		// remove the wrong file. Escaping them safely is deferred, so a delete
+		// candidate carrying one is dropped here: it is never reported, so it can't
+		// be selected or applied. Only deletion is affected — the same name still
+		// transfers on create/update, whose path list is literal (--files-from).
+		if hasFilterMeta(p) {
+			return Action{}
+		}
 		return Action{Verb: "delete", Path: p}
 	}
 	if len(code) < 2 || (code[0] != '<' && code[0] != '>') || code[1] != 'f' || path == "" {
@@ -62,6 +71,14 @@ func actionFromLine(line string) Action {
 		return Action{Verb: "create", Path: path}
 	}
 	return Action{Verb: "update", Path: path}
+}
+
+// hasFilterMeta reports whether s contains a byte rsync's filter-rule matcher
+// treats as a glob metacharacter — `*`, `?`, or `[` (the character-class opener).
+// A path holding one can't be handed to the deletion filter as a literal yet, so
+// such delete candidates are dropped until escaping is implemented.
+func hasFilterMeta(s string) bool {
+	return strings.ContainsAny(s, "*?[")
 }
 
 // isAllPlus reports whether s is non-empty and every byte is '+'. It identifies

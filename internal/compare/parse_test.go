@@ -130,3 +130,17 @@ func TestParseActions_OpenrsyncDelete_ReturnsDeleteAction(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+// Behavior: a delete candidate whose name contains an rsync filter glob
+// metacharacter (`*`, `?`, or `[`) is dropped, not reported — applying it would
+// mean handing that name to the deletion filter, where the metacharacter could
+// match and remove the wrong file. Escaping is deferred, so detection holds these
+// back entirely. Each metacharacter is checked; a plain name is unaffected.
+func TestParseActions_DeleteWithGlobMeta_IsDropped(t *testing.T) {
+	for _, name := range []string{"a*.txt", "a?.txt", "a[1].txt"} {
+		got := parseActions("*deleting   " + name + "\n")
+		if len(got) != 0 {
+			t.Errorf("delete of %q: got %+v, want no actions (dropped)", name, got)
+		}
+	}
+}

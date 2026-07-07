@@ -182,6 +182,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the \.csync\.toml file should be reported as excluded$`, theCsyncTomlShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.git directory should not be reported as excluded$`, theGitDirectoryShouldNotBeReportedAsExcluded)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
+	ctx.Step(`^the reported removed count should be (\d+)$`, theReportedRemovedCountShouldBe)
 	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
 	ctx.Step(`^the file "([^"]*)" should still exist on the remote$`, theFileShouldStillExistOnTheRemote)
@@ -904,6 +905,23 @@ func theReportedSyncCountShouldBe(ctx context.Context, want int) error {
 	}
 	if parsed.SyncCount != want {
 		return fmt.Errorf("Synced: got %d, want %d in output:\n%s", parsed.SyncCount, want, r.Stdout)
+	}
+	return nil
+}
+
+// theReportedRemovedCountShouldBe asserts the post-sync summary called out
+// removals distinctly ("… M of which were removed") and that M equals want. It
+// reads the removal count specifically, not the total files count that
+// theReportedSyncCountShouldBe checks.
+func theReportedRemovedCountShouldBe(ctx context.Context, want int) error {
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+
+	if !parsed.HasRemovedCount {
+		return fmt.Errorf("no removal clause in summary:\n%s", r.Stdout)
+	}
+	if parsed.RemovedCount != want {
+		return fmt.Errorf("removed: got %d, want %d in output:\n%s", parsed.RemovedCount, want, r.Stdout)
 	}
 	return nil
 }
