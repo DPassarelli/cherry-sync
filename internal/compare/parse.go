@@ -7,15 +7,23 @@ package compare
 import "strings"
 
 // parseActions walks rsync's --itemize-changes output and returns one
-// Action per change line. Non-itemize lines (preamble, summary) are
-// skipped naturally because they don't match the `>f` prefix.
+// Action per change line, in the order first seen. Non-itemize lines
+// (preamble, summary) are skipped naturally because they don't match the
+// `>f`/`<f`/`*deleting` shapes. Identical (verb, path) actions are collapsed to
+// one: openrsync's dry-run itemize prints a `*deleting` line for the same path
+// twice where GNU rsync prints it once, and a planned action is unique by
+// definition (a path can't take the same verb twice), so a repeat is always
+// noise, never a second distinct change.
 func parseActions(rsyncOut string) []Action {
 	var actions []Action
+	seen := make(map[Action]bool)
 	for line := range strings.SplitSeq(rsyncOut, "\n") {
 		action := actionFromLine(line)
-		if action.Verb != "" {
-			actions = append(actions, action)
+		if action.Verb == "" || seen[action] {
+			continue
 		}
+		seen[action] = true
+		actions = append(actions, action)
 	}
 	return actions
 }

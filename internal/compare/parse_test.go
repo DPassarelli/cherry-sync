@@ -131,6 +131,21 @@ func TestParseActions_OpenrsyncDelete_ReturnsDeleteAction(t *testing.T) {
 	}
 }
 
+// Behavior: openrsync's dry-run itemize prints a `*deleting` line for the same
+// path twice (GNU rsync emits it once), so a single stale file would otherwise be
+// reported — and counted — as two removals. parseActions collapses identical
+// (verb, path) actions to one, while leaving distinct deletions intact. Captured
+// from `rsync -rn --delete --itemize-changes` under openrsync (macOS), which the
+// GNU-only local smoke never exercised; a naive parser reports 3 actions here.
+func TestParseActions_DuplicateDelete_IsReportedOnce(t *testing.T) {
+	got := parseActions("*deleting   gone.txt\n*deleting   gone.txt\n*deleting   other.txt\n")
+
+	want := []Action{{Verb: "delete", Path: "gone.txt"}, {Verb: "delete", Path: "other.txt"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 // Behavior: a delete candidate whose name contains an rsync filter glob
 // metacharacter (`*`, `?`, or `[`) is dropped, not reported — applying it would
 // mean handing that name to the deletion filter, where the metacharacter could
