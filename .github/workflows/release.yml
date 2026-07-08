@@ -134,7 +134,7 @@ jobs:
           tar -xzf "$archive" -C smoketest-bin
 
       - name: Smoketest
-        run: ./_scripts/smoketest.sh smoketest-bin/csync
+        run: ./_scripts/smoketest.sh smoketest-bin/csync "${GITHUB_REF_NAME}"
 
   # Tier 1 (Phase 2) linux/arm64 leg. GitHub has no native arm64 Linux runner,
   # so this job stands up an ephemeral Azure arm64 VM, runs the released binary
@@ -197,7 +197,7 @@ jobs:
           scp -i ./id -o StrictHostKeyChecking=accept-new \
             smoketest-bin/csync _scripts/smoketest.sh "${VM_USER}@${VM_HOST}:."
           ssh -i ./id -o StrictHostKeyChecking=accept-new "${VM_USER}@${VM_HOST}" \
-            'chmod +x ./csync && bash ./smoketest.sh ./csync'
+            "chmod +x ./csync && bash ./smoketest.sh ./csync ${GITHUB_REF_NAME}"
 
       - name: Tear down VM
         if: always()

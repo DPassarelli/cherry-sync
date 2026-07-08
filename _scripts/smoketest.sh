@@ -10,9 +10,13 @@
 #
 # Contract checked (as implemented in cmd/csync/main.go): invoked with no
 # arguments, csync writes a line containing "usage:" to stderr and exits 2.
+# Invoked with --version it writes the project version line to stdout and exits
+# 0; when the caller names the expected version (the release path passes the
+# tag), that line must contain it — this is the only check that exercises the
+# -ldflags version injection, whose failure the no-argument path can't see.
 #
 # Usage:
-#   smoketest.sh <path-to-csync-binary>
+#   smoketest.sh <path-to-csync-binary> [expected-version]
 #
 # Exit status: 0 if the binary passes every check; 2 for misuse of this script;
 # 1 for a smoketest failure. The script is deliberately self-contained — it
@@ -20,13 +24,15 @@
 # run there (Phase 2 scp's it onto an Azure VM).
 set -euo pipefail
 
-# Argument handling. All input is untrusted: require exactly one operand and
-# confirm it names an executable file before running it.
-if [ "$#" -ne 1 ]; then
-  echo "usage: smoketest.sh <path-to-csync-binary>" >&2
+# Argument handling. All input is untrusted: require the binary operand, accept
+# an optional expected-version operand, and confirm the binary names an
+# executable file before running it.
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "usage: smoketest.sh <path-to-csync-binary> [expected-version]" >&2
   exit 2
 fi
 bin="$1"
+expected_version="${2:-}"
 if [ ! -f "$bin" ]; then
   echo "smoketest.sh: binary not found: $bin" >&2
   exit 1
@@ -42,10 +48,15 @@ fi
 # prompt, whatever arguments it ends up parsing.
 out="$(mktemp)"
 err="$(mktemp)"
-trap 'rm -f "$out" "$err"' EXIT
+vout="$(mktemp)"
+verr="$(mktemp)"
+trap 'rm -f "$out" "$err" "$vout" "$verr"' EXIT
 
 rc=0
 "$bin" >"$out" 2>"$err" </dev/null || rc=$?
+
+vrc=0
+"$bin" --version >"$vout" 2>"$verr" </dev/null || vrc=$?
 
 # Assertions. Each failed check increments `failures` and prints why, so a run
 # reports everything that's wrong rather than stopping at the first problem.
@@ -63,6 +74,22 @@ fi
 # 2. The usage line must be written to stderr.
 if ! grep -qF 'usage:' "$err"; then
   check_fail "expected a line containing 'usage:' on stderr; stderr was: $(cat "$err")"
+fi
+
+# 3. --version must exit 0 and print the project version line to stdout.
+if [ "$vrc" -ne 0 ]; then
+  check_fail "--version: expected exit code 0, got $vrc"
+fi
+if ! grep -qF 'cherry-sync' "$vout"; then
+  check_fail "--version: expected a line containing 'cherry-sync' on stdout; stdout was: $(cat "$vout")"
+fi
+
+# 4. When the caller states the expected release version, --version's output
+# must contain it verbatim. This is the check that catches a broken injection: a
+# binary built without the tag renders "(dev build)" and fails here. It is
+# skipped for local hand-runs against a dev build, which pass no version.
+if [ -n "$expected_version" ] && ! grep -qF "$expected_version" "$vout"; then
+  check_fail "--version: expected output to contain '$expected_version'; stdout was: $(cat "$vout")"
 fi
 
 if [ "$failures" -ne 0 ]; then

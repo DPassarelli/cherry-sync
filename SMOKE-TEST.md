@@ -57,12 +57,13 @@ The decisions that shaped Tier 1:
 
 The "documented argument contract" Tier 1 checks is the one `cmd/csync/main.go` implements today: invoked with no (or invalid) arguments, `csync` prints `usage: csync SOURCE DESTINATION` to **stderr** and exits **2**. Tier 1 asserts:
 
-- the binary executes on its target OS/arch (it loads and runs Go code rather than failing to start), and
-- with no arguments it exits `2` and writes a line containing `usage:` to stderr.
+- the binary executes on its target OS/arch (it loads and runs Go code rather than failing to start),
+- with no arguments it exits `2` and writes a line containing `usage:` to stderr, and
+- with `--version` it exits `0` and writes a `cherry-sync` version line to stdout; when the caller names the expected version (the release workflow passes the tag), that line must contain it.
 
 That is sufficient to catch a broken artifact. It deliberately does **not** invoke `compare`/`transfer` (those need rsync and a peer — Tier 2).
 
-> The smoketest exercises only the no-argument usage path. Since v0.6.0, `csync --version` also exists and prints the injected `-ldflags -X main.version` value — the one failure class named in §1 (a bad version injection) that the usage path doesn't exercise. A `--version` assertion in `smoketest.sh` would close that gap; it isn't there yet.
+The `--version` assertion exists specifically to exercise the `-ldflags -X main.version` injection — the one failure class named in §1 that the no-argument path can't reach. A binary built without the tag injected renders `cherry-sync (dev build)` instead of `cherry-sync v1.2.3`; because the release legs pass `${GITHUB_REF_NAME}` (which the rendered line contains verbatim, since goreleaser strips the leading `v` and csync re-adds it), such a binary fails the gate and never publishes. A local hand-run passes no version and so only checks that `--version` exits `0` and prints the project line, keeping the script runnable against a dev build.
 
 ### 6.2 Execution hosts
 
@@ -83,9 +84,9 @@ Mirrors the pattern already used for the test-report dashboard: **the script is 
 
 ### 7.1 Scripts (the source of truth)
 
-- **`_scripts/smoketest.sh <path-to-csync-binary>`** — the assertion runner. Executes the given binary with no arguments and asserts the §6.1 contract (exit `2`, `usage:` on stderr). Prints a clear pass/fail line and exits non-zero on failure. Host-agnostic: it does not care whether the binary arrived via download, `scp`, or a local build. This is the entire Tier 1 behavior; a human runs `./_scripts/smoketest.sh ./csync` directly.
+- **`_scripts/smoketest.sh <path-to-csync-binary> [expected-version]`** — the assertion runner. Executes the given binary with no arguments and with `--version`, asserting the §6.1 contract (no-arg: exit `2`, `usage:` on stderr; `--version`: exit `0`, `cherry-sync` line on stdout, and — when `expected-version` is given — that line contains it). Prints a clear pass/fail line and exits non-zero on failure. Host-agnostic: it does not care whether the binary arrived via download, `scp`, or a local build. A human runs `./_scripts/smoketest.sh ./csync` directly; the release legs additionally pass `${GITHUB_REF_NAME}` to gate version injection.
 
-  *Teeth requirement (house testing rule):* `smoketest.sh` must be verified against both a known-good binary (real `csync` → green) and a degenerate stand-in that violates the contract (e.g. `/bin/true`, which exits `0` and prints nothing → the script must go red). Confirm the failure is for the right reason before trusting the gate.
+  *Teeth requirement (house testing rule):* `smoketest.sh` must be verified against both a known-good binary (real `csync` → green) and a degenerate stand-in that violates the contract (e.g. `/bin/true`, which exits `0` and prints nothing csync-shaped → the script must go red). For the version check specifically, verify that a dev-build binary passed an expected release version goes red (the broken-injection class) while the same binary with no expected version stays green. Confirm each failure is for the right reason before trusting the gate.
 
 - **`_scripts/azure-smoketest-vm.sh up|down`** — provisions / tears down the ephemeral arm64 VM and prints connection details (public IP, SSH user). Parameterized (resource-group name, region, VM size, SSH key path) so a human can stand the same environment up locally for debugging and tear it down when done.
 
