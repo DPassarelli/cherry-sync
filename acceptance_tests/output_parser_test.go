@@ -22,6 +22,8 @@ type ReportedOutput struct {
 	Actions           []Action
 	SyncCount         int
 	HasSyncCount      bool
+	RemovedCount      int
+	HasRemovedCount   bool
 	Message           string
 	Version           string
 	Usage             string
@@ -60,6 +62,10 @@ var (
 	// ("Sync complete! (3 files)" / "(1 file)"), the count that used to be the
 	// "Synced: N" line.
 	syncCompleteRE = regexp.MustCompile(`Sync complete! \((\d+) `)
+	// removedRE pulls the removal count out of the summary's distinct-removals
+	// clause ("3 files total, 2 of which were removed"). Absent when the sync
+	// applied no deletions and the header stays in its plain "(N files)" form.
+	removedRE = regexp.MustCompile(`(\d+) of which (?:was|were) removed`)
 	// versionLineRE captures the first line `csync --version` prints — either
 	// "cherry-sync v<semver>" for a release build or "cherry-sync (dev build)"
 	// for an un-injected one. The description and URL follow on their own lines;
@@ -108,6 +114,14 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		n, err := strconv.Atoi(cm[1])
 		if err == nil {
 			out.SyncCount = n
+		}
+	}
+	rm := removedRE.FindStringSubmatch(summary)
+	if rm != nil {
+		out.HasRemovedCount = true
+		n, err := strconv.Atoi(rm[1])
+		if err == nil {
+			out.RemovedCount = n
 		}
 	}
 

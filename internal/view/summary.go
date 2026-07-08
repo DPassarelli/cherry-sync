@@ -14,16 +14,39 @@ import (
 )
 
 // RenderSummary builds the post-sync summary for the selected actions: a leading
-// blank line, a green ✓, then a single header line counting the files moved
+// blank line, a green ✓, then a single header line counting the changes applied
 // (pluralized), ending in a newline so it is ready to print. With nothing selected
-// it reports a zero-file header.
+// it reports a zero-count header.
+//
+// When some of the applied changes were removals, the header calls them out
+// distinctly — "(3 files total, 2 of which were removed)" — so the count doesn't
+// read as if every change was a transfer. With no removals it stays in the plain
+// "(3 files)" form.
 func RenderSummary(selected []compare.Action) string {
-	noun := "files"
-	if len(selected) == 1 {
-		noun = "file"
+	total := len(selected)
+	removed := 0
+	for _, a := range selected {
+		if a.Verb == "delete" {
+			removed++
+		}
 	}
 	check := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render("✓")
-	return fmt.Sprintf("\n%s Sync complete! (%d %s)\n", check, len(selected), noun)
+	if removed == 0 {
+		return fmt.Sprintf("\n%s Sync complete! (%d %s)\n", check, total, pluralFiles(total))
+	}
+	were := "were"
+	if removed == 1 {
+		were = "was"
+	}
+	return fmt.Sprintf("\n%s Sync complete! (%d %s total, %d of which %s removed)\n", check, total, pluralFiles(total), removed, were)
+}
+
+// pluralFiles returns "file" for a count of one and "files" otherwise.
+func pluralFiles(n int) string {
+	if n == 1 {
+		return "file"
+	}
+	return "files"
 }
 
 // Canceled returns the notice shown when the user dismisses the picker without

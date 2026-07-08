@@ -7,15 +7,23 @@ package compare
 import "strings"
 
 // parseActions walks rsync's --itemize-changes output and returns one
-// Action per change line. Non-itemize lines (preamble, summary) are
-// skipped naturally because they don't match the `>f` prefix.
+// Action per change line, in the order first seen. Non-itemize lines
+// (preamble, summary) are skipped naturally because they don't match the
+// `>f`/`<f`/`*deleting` shapes. Identical (verb, path) actions are collapsed to
+// one: openrsync's dry-run itemize prints a `*deleting` line for the same path
+// twice where GNU rsync prints it once, and a planned action is unique by
+// definition (a path can't take the same verb twice), so a repeat is always
+// noise, never a second distinct change.
 func parseActions(rsyncOut string) []Action {
 	var actions []Action
+	seen := make(map[Action]bool)
 	for line := range strings.SplitSeq(rsyncOut, "\n") {
 		action := actionFromLine(line)
-		if action.Verb != "" {
-			actions = append(actions, action)
+		if action.Verb == "" || seen[action] {
+			continue
 		}
+		seen[action] = true
+		actions = append(actions, action)
 	}
 	return actions
 }
@@ -39,6 +47,28 @@ func actionFromLine(line string) Action {
 	if !found {
 		return Action{}
 	}
+	// A removal itemizes as `*deleting <path>` — the code is a word, not a
+	// fixed-width flag run, so it's matched by name rather than by prefix byte.
+	// The path follows the code column's padding (GNU pads `*deleting` to its
+	// 11-char column, openrsync's 9-char column holds it flush), so the leading
+	// pad spaces are trimmed. A leading-space or glob-metachar name is handled by
+	// a later stage, not here.
+	if code == "*deleting" {
+		p := strings.TrimLeft(path, " ")
+		if p == "" {
+			return Action{}
+		}
+		// The transfer applies a deletion through an rsync filter rule, where `*`,
+		// `?`, and `[` are glob metacharacters — an unescaped one could match and
+		// remove the wrong file. Escaping them safely is deferred, so a delete
+		// candidate carrying one is dropped here: it is never reported, so it can't
+		// be selected or applied. Only deletion is affected — the same name still
+		// transfers on create/update, whose path list is literal (--files-from).
+		if hasFilterMeta(p) {
+			return Action{}
+		}
+		return Action{Verb: "delete", Path: p}
+	}
 	if len(code) < 2 || (code[0] != '<' && code[0] != '>') || code[1] != 'f' || path == "" {
 		return Action{}
 	}
@@ -49,6 +79,14 @@ func actionFromLine(line string) Action {
 		return Action{Verb: "create", Path: path}
 	}
 	return Action{Verb: "update", Path: path}
+}
+
+// hasFilterMeta reports whether s contains a byte rsync's filter-rule matcher
+// treats as a glob metacharacter — `*`, `?`, or `[` (the character-class opener).
+// A path holding one can't be handed to the deletion filter as a literal yet, so
+// such delete candidates are dropped until escaping is implemented.
+func hasFilterMeta(s string) bool {
+	return strings.ContainsAny(s, "*?[")
 }
 
 // isAllPlus reports whether s is non-empty and every byte is '+'. It identifies

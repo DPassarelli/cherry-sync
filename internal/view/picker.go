@@ -294,8 +294,7 @@ func scrollIndicator(style lipgloss.Style, label string, hidden int) string {
 }
 
 // verbStyle returns the lipgloss style that colors a change by its verb: green for
-// create, yellow for update, red for delete. delete is reserved — csync emits no
-// delete actions yet — and an unknown verb renders unstyled.
+// create, yellow for update, red for delete. An unknown verb renders unstyled.
 func verbStyle(verb string) lipgloss.Style {
 	switch verb {
 	case "create":
