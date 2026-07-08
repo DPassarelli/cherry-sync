@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-08
+
 ### Added
 
-- csync now detects and applies file deletions. A file present on the destination but missing from the source is shown in red alongside creates (green) and updates (yellow), and is selected by default. The post-sync summary reports deletions on their own (i.e., `Sync complete! (3 files total, 2 of which were removed)`). Unlike `rysnc`, deletes are always included by csync. _Files whose names contain a leading space or an rsync filter metacharacter (`*`, `?`, `[`) are currently excluded and will not appear in the selection list nor be deleted. (#52)
+- csync now detects and applies file deletions. A file present on the destination but missing from the source is shown in red and is selected by default. The post-sync summary reports deletions on their own (i.e., `Sync complete! (3 files total, 2 of which were removed)`). Unlike `rsync`, deletes are always included by csync. _Files whose names contain a leading space or an rsync filter metacharacter (`*`, `?`, `[`) are currently excluded and will not appear in the selection list nor be deleted._ (#52)
 
 ## [0.7.0] - 2026-07-05
 
@@ -90,7 +92,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.4.0...v0.5.0
