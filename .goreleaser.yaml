@@ -1,7 +1,7 @@
 # GoReleaser configuration — https://goreleaser.com
 #
 # Triggered by a pushed `v*` tag via .github/workflows/release.yml. Builds the
-# cross-platform binaries and publishes a GitHub Release with archives and
+# cross-platform binaries and publishes a GitHub Release with those binaries and
 # checksums. Run `goreleaser check` to validate this file and
 # `goreleaser release --snapshot --clean` to dry-run a build locally.
 version: 2
@@ -37,8 +37,14 @@ builds:
 
 archives:
   - id: csync
-    # Default format is tar.gz; the name embeds the version and target so a
-    # downloaded archive is self-identifying.
+    # Publish the bare executable rather than a tar.gz. csync carries its own MIT
+    # notice (`csync --license`) and its docs live on GitHub, so an archive would
+    # wrap a single file in a step the user has to undo. Downloading a raw binary
+    # is one `chmod +x` from a working tool.
+    formats: [binary]
+    # With `binary` this names the uploaded release asset, not a file in dist/
+    # (the binary on disk stays `csync`). The name embeds the version and target
+    # so a download is self-identifying: cherry-sync_1.2.3_darwin_arm64.
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:

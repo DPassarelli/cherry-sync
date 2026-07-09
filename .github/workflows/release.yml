@@ -98,13 +98,13 @@ jobs:
         include:
           - name: linux/amd64
             runs-on: ubuntu-latest
-            pattern: cherry-sync_*_linux_amd64.tar.gz
+            pattern: cherry-sync_*_linux_amd64
           - name: darwin/arm64
             runs-on: macos-latest
-            pattern: cherry-sync_*_darwin_arm64.tar.gz
+            pattern: cherry-sync_*_darwin_arm64
           - name: darwin/amd64
             runs-on: macos-latest
-            pattern: cherry-sync_*_darwin_amd64.tar.gz
+            pattern: cherry-sync_*_darwin_amd64
             rosetta: true
     name: smoketest ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
@@ -120,9 +120,13 @@ jobs:
         if: ${{ matrix.rosetta }}
         run: softwareupdate --install-rosetta --agree-to-license
 
-      # Download this leg's artifact from the DRAFT release by tag and unpack the
-      # csync binary. gh is preinstalled on GitHub-hosted runners.
-      - name: Download and unpack artifact
+      # Download this leg's binary from the DRAFT release by tag. The asset is the
+      # bare executable named for its target (cherry-sync_<version>_<os>_<arch>), so
+      # rename it to a fixed path the smoketest step can name unconditionally, and
+      # restore the executable bit — a release asset is an opaque blob, so the file
+      # mode does not survive the upload/download round trip. gh is preinstalled on
+      # GitHub-hosted runners.
+      - name: Download artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -130,8 +134,10 @@ jobs:
           gh release download "${GITHUB_REF_NAME}" \
             --pattern '${{ matrix.pattern }}' \
             --dir smoketest-bin
-          archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
-          tar -xzf "$archive" -C smoketest-bin
+          asset="$(find smoketest-bin -type f -print -quit)"
+          test -n "$asset" || { echo "no asset matched ${{ matrix.pattern }}" >&2; exit 1; }
+          mv "$asset" smoketest-bin/csync
+          chmod +x smoketest-bin/csync
 
       - name: Smoketest
         run: ./_scripts/smoketest.sh smoketest-bin/csync "${GITHUB_REF_NAME}"
@@ -167,16 +173,20 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Download and unpack artifact
+      # As in the native legs: the asset is the bare executable, renamed here to the
+      # fixed path the scp step below sends to the VM. No chmod on the runner — scp
+      # doesn't carry the mode across, so the VM-side command sets it.
+      - name: Download artifact
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p smoketest-bin
           gh release download "${GITHUB_REF_NAME}" \
-            --pattern 'cherry-sync_*_linux_arm64.tar.gz' \
+            --pattern 'cherry-sync_*_linux_arm64' \
             --dir smoketest-bin
-          archive="$(find smoketest-bin -name '*.tar.gz' -print -quit)"
-          tar -xzf "$archive" -C smoketest-bin
+          asset="$(find smoketest-bin -type f -print -quit)"
+          test -n "$asset" || { echo "no asset matched cherry-sync_*_linux_arm64" >&2; exit 1; }
+          mv "$asset" smoketest-bin/csync
 
       # Generate a throwaway SSH key and provision the VM (port 22 open only to
       # this runner's IP). The up script publishes host/user as step outputs
