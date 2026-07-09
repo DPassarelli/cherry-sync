@@ -157,6 +157,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
+	ctx.Step(`^the reported license should contain "([^"]*)"$`, theReportedLicenseShouldContain)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -445,6 +446,17 @@ func theReportedVersionShouldBe(ctx context.Context, want string) error {
 
 	if got != want {
 		return fmt.Errorf("Version: got %q, want %q in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// theReportedLicenseShouldContain asserts a substring appears in what csync
+// printed to stdout — used to check `csync --license` emits the MIT notices
+// without pinning the full text (which the license package's own test guards).
+func theReportedLicenseShouldContain(ctx context.Context, want string) error {
+	r := captured(ctx)
+	if !strings.Contains(r.Stdout, want) {
+		return fmt.Errorf("license output missing %q in stdout:\n%s", want, r.Stdout)
 	}
 	return nil
 }

@@ -68,6 +68,37 @@ func TestParse_Version_ShortCircuitsOperands(t *testing.T) {
 	}
 }
 
+// Behavior: --license selects License mode. Mirrors the Gherkin scenario "The
+// --license flag prints the license and exits successfully" in
+// features/report-license.feature; main.go turns License mode into the printed
+// license text.
+func TestParse_License_SelectsLicenseMode(t *testing.T) {
+	got, err := cli.Parse([]string{"--license"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := cli.Args{Mode: cli.License}
+	if got != want {
+		t.Errorf("parsed args mismatch\nwant: %+v\ngot:  %+v", want, got)
+	}
+}
+
+// Behavior: --license short-circuits — like --version it wins over trailing
+// operands rather than being rejected as the wrong argument count. Mirrors the
+// Gherkin scenario "--license short-circuits any operands".
+func TestParse_License_ShortCircuitsOperands(t *testing.T) {
+	got, err := cli.Parse([]string{"--license", "./project", "user@host:/project"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := cli.Args{Mode: cli.License}
+	if got != want {
+		t.Errorf("parsed args mismatch\nwant: %+v\ngot:  %+v", want, got)
+	}
+}
+
 // Behavior: an empty-string path is rejected. Left unchecked, "" + "/" = "/"
 // would point rsync at the filesystem root. Mirrors the Gherkin scenario
 // "Empty path argument — show usage and exit non-zero" in

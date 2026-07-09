@@ -14,6 +14,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/cli"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/config"
+	"github.com/dpassarelli/cherry-sync/internal/license"
 	"github.com/dpassarelli/cherry-sync/internal/operand"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
@@ -41,6 +42,15 @@ func main() {
 	// ignored. The line goes to stdout — it is requested output, not a diagnostic.
 	if a.Mode == cli.Version {
 		fmt.Println(view.VersionReport(version))
+		return
+	}
+
+	// --license prints the embedded MIT text and exits, so a distributed bare
+	// binary carries its own notice (nothing bundled alongside it required). Like
+	// --version it short-circuits in cli.Parse, ignoring any trailing operands.
+	// The text ends in a newline, so Print — not Println — avoids a trailing blank.
+	if a.Mode == cli.License {
+		fmt.Print(license.Text())
 		return
 	}
 

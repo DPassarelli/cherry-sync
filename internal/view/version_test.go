@@ -58,16 +58,16 @@ func TestBanner_ShowsProjectNameAndVersion(t *testing.T) {
 }
 
 // TestVersionReport covers the full --version output: the version line, the
-// one-line description, and the project URL, each on its own line and in that
-// order.
+// one-line description, the project URL, and the license pointer, each on its
+// own line and in that order.
 func TestVersionReport(t *testing.T) {
 	cases := []struct {
 		name string
 		raw  string
 		want string
 	}{
-		{"injected semver", "1.2.3", "cherry-sync v1.2.3\n" + versionDescription + "\n" + versionURL},
-		{"dev default", "dev", "cherry-sync (dev build)\n" + versionDescription + "\n" + versionURL},
+		{"injected semver", "1.2.3", "cherry-sync v1.2.3\n" + versionDescription + "\n" + versionURL + "\n" + versionLicense},
+		{"dev default", "dev", "cherry-sync (dev build)\n" + versionDescription + "\n" + versionURL + "\n" + versionLicense},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
