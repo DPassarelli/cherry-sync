@@ -43,14 +43,14 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 ### Download pre-built binary
 
-Download the archive for your platform from the [latest release](https://github.com/dpassarelli/cherry-sync/releases/latest), then extract `csync` onto your `PATH`:
+Download the binary for your platform from the [latest release](https://github.com/dpassarelli/cherry-sync/releases/latest), make it executable, and put it on your `PATH`:
 
 ```sh
-tar -xzf cherry-sync_<version>_darwin_arm64.tar.gz   # match the version and platform you downloaded
-sudo mv csync /usr/local/bin/
+chmod +x cherry-sync_<version>_darwin_arm64   # match the version and platform you downloaded
+sudo mv cherry-sync_<version>_darwin_arm64 /usr/local/bin/csync
 ```
 
-Each release also publishes a `checksums.txt` that you can use to verify the archive against.
+Each release also publishes a `checksums.txt` that you can use to verify the download against. The binary is self-contained: run `csync --license` to print the license terms it ships with.
 
 ### Build from source
 

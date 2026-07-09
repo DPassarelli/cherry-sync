@@ -6,9 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-+### Added
+### Added
 
 - `csync --license` prints csync's full MIT license text, then exits (it takes precedence over any operands, like `--version`). The text is embedded in the binary, so it travels with a bare executable rather than depending on a file bundled beside it. `csync --version` now closes with a line pointing at it. (#84)
+
+### Changed
+
+- Releases now publish each platform's `csync` as a bare executable (e.g. `cherry-sync_1.0.0_darwin_arm64`) instead of a `tar.gz`. There is nothing left to unpack — the binary carries its own license — so installing is a download, a `chmod +x`, and a move onto your `PATH`. Downloads must be made executable before they will run. (#84)
 
 ## [0.8.0] - 2026-07-08
 

@@ -31,16 +31,16 @@ The existing hermetic test harness simulates a remote by pointing rsync's remote
 
 ## 4. Artifacts under test
 
-`.goreleaser.yaml` builds one binary (`csync`, `CGO_ENABLED=0`, `-ldflags -s -w`) for the cross product of `{linux, darwin} × {amd64, arm64}` — four artifacts — and packages each as a `tar.gz`:
+`.goreleaser.yaml` builds one binary (`csync`, `CGO_ENABLED=0`, `-ldflags -s -w`) for the cross product of `{linux, darwin} × {amd64, arm64}` — four artifacts — and publishes each as a bare executable (`formats: [binary]`), not an archive:
 
-| OS | Arch | Archive (`name_template`) | Binary inside |
-|---|---|---|---|
-| linux | amd64 | `cherry-sync_<version>_linux_amd64.tar.gz` | `csync` |
-| linux | arm64 | `cherry-sync_<version>_linux_arm64.tar.gz` | `csync` |
-| darwin | amd64 | `cherry-sync_<version>_darwin_amd64.tar.gz` | `csync` |
-| darwin | arm64 | `cherry-sync_<version>_darwin_arm64.tar.gz` | `csync` |
+| OS | Arch | Release asset (`name_template`) |
+|---|---|---|
+| linux | amd64 | `cherry-sync_<version>_linux_amd64` |
+| linux | arm64 | `cherry-sync_<version>_linux_arm64` |
+| darwin | amd64 | `cherry-sync_<version>_darwin_amd64` |
+| darwin | arm64 | `cherry-sync_<version>_darwin_arm64` |
 
-A `checksums.txt` accompanies them. The smoketest downloads these published assets (see §7), so it exercises the exact bytes a user would receive — including the upload step, not just the local `dist/` output.
+A `checksums.txt` accompanies them. The smoketest downloads these published assets (see §7), so it exercises the exact bytes a user would receive — including the upload step, not just the local `dist/` output. A release asset is an opaque blob, so the executable bit does not survive the round trip: whatever runs the downloaded binary must `chmod +x` it first. The workflow's download step does that, and `smoketest.sh` fails fast with an explicit "binary is not executable" message if it is ever skipped.
 
 ## 5. Key decisions
 
@@ -95,7 +95,7 @@ Mirrors the pattern already used for the test-report dashboard: **the script is 
 The release job is split so the smoketest gate sits between build and publish:
 
 1. **Build (draft).** Set `release.draft: true` in `.goreleaser.yaml`. GoReleaser builds all four artifacts and creates the GitHub Release as a **draft** with assets attached — invisible to users. The existing release-notes extraction and pre-release-flag enforcement stay here, applied to the draft.
-2. **Smoketest (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>.tar.gz'`), unpacks the `csync` binary, and runs `_scripts/smoketest.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or for linux/arm64 by `scp`-then-SSH onto the Azure arm64 VM (`_scripts/azure-smoketest-vm.sh up`).
+2. **Smoketest (fan-out).** One job per execution host in §6.2. Each downloads its artifact from the draft release (`gh release download <tag> --pattern 'cherry-sync_*_<os>_<arch>'`), renames it to `csync` and restores its executable bit, then runs `_scripts/smoketest.sh` against it — directly on `ubuntu-latest`/`macos-latest`, or for linux/arm64 by `scp`-then-SSH onto the Azure arm64 VM (`_scripts/azure-smoketest-vm.sh up`).
 3. **Promote (gated).** A final job that `needs` every smoketest job. On success it flips the release live: `gh release edit <tag> --draft=false` (folded into the existing `gh release edit` enforcement step). If any smoketest job failed, the release stays a draft and the workflow fails.
 
 Downloading from the draft release (rather than reusing GoReleaser's local `dist/`) means the bytes the smoketest runs are the bytes that promotion reveals — the upload itself is covered.
@@ -223,7 +223,7 @@ The ephemeral resource names are derived once from `AZ_REGION_ABBR` and `AZ_INST
 Implemented as the `smoketest-linux-arm64` job in `.github/workflows/release.yml` (see there for the exact YAML, kept single-sourced rather than duplicated here). Its shape:
 
 - `needs: build`, `runs-on: ubuntu-latest`, `environment: release` (the stable OIDC subject), and job-level `permissions: { id-token: write, contents: write }` — the OIDC token for `azure/login`, and draft-release download.
-- **Steps:** checkout → `azure/login@v3` (OIDC, no stored secret) → download + unpack the `cherry-sync_*_linux_arm64.tar.gz` artifact from the draft → *provision* → *smoketest over SSH* → *tear down*.
+- **Steps:** checkout → `azure/login@v3` (OIDC, no stored secret) → download the `cherry-sync_*_linux_arm64` binary from the draft → *provision* → *smoketest over SSH* → *tear down*.
 - The **provision** step generates an ephemeral ed25519 keypair and runs `_scripts/azure-smoketest-vm.sh up`, which publishes `host`/`user` as step outputs (via `$GITHUB_OUTPUT`). Keeping provisioning in its own step means a provisioning failure fails *there*, rather than masquerading as a later SSH/DNS error. The **smoketest** step `scp`s the binary and `smoketest.sh` to the VM (using `steps.provision.outputs.host`/`user`) and runs the smoketest over SSH.
 - The **tear-down** step is separate and `if: always()`, so the VM is deleted even when the smoketest step fails (§7.3.5) — it just calls `_scripts/azure-smoketest-vm.sh down`, which reconstructs the same resource names from `GITHUB_RUN_ID`.
 
