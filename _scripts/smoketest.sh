@@ -14,6 +14,7 @@
 # 0; when the caller names the expected version (the release path passes the
 # tag), that line must contain it — this is the only check that exercises the
 # -ldflags version injection, whose failure the no-argument path can't see.
+# Invoked with --license it writes the embedded MIT notice to stdout and exits 0.
 #
 # Usage:
 #   smoketest.sh <path-to-csync-binary> [expected-version]
@@ -50,13 +51,18 @@ out="$(mktemp)"
 err="$(mktemp)"
 vout="$(mktemp)"
 verr="$(mktemp)"
-trap 'rm -f "$out" "$err" "$vout" "$verr"' EXIT
+lout="$(mktemp)"
+lerr="$(mktemp)"
+trap 'rm -f "$out" "$err" "$vout" "$verr" "$lout" "$lerr"' EXIT
 
 rc=0
 "$bin" >"$out" 2>"$err" </dev/null || rc=$?
 
 vrc=0
 "$bin" --version >"$vout" 2>"$verr" </dev/null || vrc=$?
+
+lrc=0
+"$bin" --license >"$lout" 2>"$lerr" </dev/null || lrc=$?
 
 # Assertions. Each failed check increments `failures` and prints why, so a run
 # reports everything that's wrong rather than stopping at the first problem.
@@ -90,6 +96,28 @@ fi
 # skipped for local hand-runs against a dev build, which pass no version.
 if [ -n "$expected_version" ] && ! grep -qF "$expected_version" "$vout"; then
   check_fail "--version: expected output to contain '$expected_version'; stdout was: $(cat "$vout")"
+fi
+
+# 5. --license must exit 0 and print the copyright notice to stdout. The expected
+# strings are literals rather than a comparison against the repository's LICENSE:
+# this script is copied to a bare host with nothing beside it, and exact equality
+# with the root LICENSE is already pinned by internal/license's unit test. What
+# only this check can see is whether the notice survived into the *published*
+# artifact — a shipped binary that cannot print its license is a compliance
+# failure, not merely a bug, and one that cannot be taken back after download.
+if [ "$lrc" -ne 0 ]; then
+  check_fail "--license: expected exit code 0, got $lrc"
+fi
+if ! grep -qF 'MIT License' "$lout"; then
+  check_fail "--license: expected the copyright notice ('MIT License') on stdout; stdout was: $(cat "$lout")"
+fi
+
+# 6. The permission notice must be present too, not just the title. MIT requires
+# both the copyright and the permission notice accompany every copy, so assert a
+# line from the warranty paragraph that ends the text — a truncated or partially
+# embedded license passes check 5 but fails here.
+if ! grep -qF 'THE SOFTWARE IS PROVIDED' "$lout"; then
+  check_fail "--license: expected the permission notice ('THE SOFTWARE IS PROVIDED') on stdout; stdout was: $(cat "$lout")"
 fi
 
 if [ "$failures" -ne 0 ]; then
