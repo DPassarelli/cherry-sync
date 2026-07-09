@@ -21,6 +21,8 @@ const (
 	Pull
 	// Version reports csync's version and exits; no operands are resolved.
 	Version
+	// License prints csync's license text and exits; no operands are resolved.
+	License
 )
 
 // Args is the parsed result of a csync command-line invocation. In Explicit mode
@@ -44,6 +46,12 @@ func Parse(argv []string) (Args, error) {
 	// version and exits) rather than tripping the two-operand check below.
 	if slices.Contains(argv, "--version") {
 		return Args{Mode: Version}, nil
+	}
+	// --license short-circuits the same way --version does, for the same reason:
+	// an informational flag reports and exits regardless of trailing operands.
+	// --version is checked first, so it wins if both are present.
+	if slices.Contains(argv, "--license") {
+		return Args{Mode: License}, nil
 	}
 	if len(argv) >= 1 {
 		switch argv[0] {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
++### Added
+
+- `csync --license` prints csync's full MIT license text, then exits (it takes precedence over any operands, like `--version`). The text is embedded in the binary, so it travels with a bare executable rather than depending on a file bundled beside it. `csync --version` now closes with a line pointing at it. (#84)
+
 ## [0.8.0] - 2026-07-08
 
 ### Added

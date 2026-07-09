@@ -14,6 +14,9 @@ const (
 	versionDescription = "An interactive rsync wrapper for selectively moving files over SSH."
 	// versionURL is the project home --version points users to.
 	versionURL = "https://github.com/dpassarelli/cherry-sync"
+	// versionLicense is the closing --version line pointing at the --license flag,
+	// which prints the full terms the binary carries embedded.
+	versionLicense = "MIT licensed. Run 'csync --license' to view the terms."
 )
 
 // Banner returns csync's title banner — the project name and version on one line
@@ -25,10 +28,11 @@ func Banner(raw string) string {
 }
 
 // VersionReport returns the full text the --version flag prints: the version
-// line, a one-line description of what csync does, and the project URL. The
-// interactive banner shows only the version line, so a normal run stays terse.
+// line, a one-line description of what csync does, the project URL, and a
+// pointer to --license. The interactive banner shows only the version line, so a
+// normal run stays terse.
 func VersionReport(raw string) string {
-	return versionLine(raw) + "\n" + versionDescription + "\n" + versionURL
+	return versionLine(raw) + "\n" + versionDescription + "\n" + versionURL + "\n" + versionLicense
 }
 
 // versionLine renders the project name and version, e.g. "cherry-sync v1.2.3" or
