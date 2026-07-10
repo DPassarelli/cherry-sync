@@ -86,6 +86,11 @@ type startedKey struct{}
 // it against the path csync discloses on its way out.
 type foundLogKey struct{}
 
+// changedFileKey stashes which file the parameterless `a file has been changed
+// locally` step picked, so a later step can assert the sync moved it without the
+// scenario having to name it. Which file it is was never the point.
+type changedFileKey struct{}
+
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
 // against the right one, plus the process exit code.
@@ -132,11 +137,19 @@ func (b *syncBuffer) String() string {
 // across steps so one can observe it mid-run and the next can finish it. The
 // After hook kills any child a scenario leaves behind, so a failed assertion
 // cannot strand a process blocked on a pipe nobody will ever write to.
+//
+// done carries the result of Wait, which runs in its own goroutine from the moment
+// the child starts. That is what lets a step waiting for the prompt notice a csync
+// that exited instead of asking, and say so, rather than waiting out the timeout
+// and reporting the symptom. reaped records that done has been drained, since a
+// channel can only deliver that result once.
 type runningCsync struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *syncBuffer
 	stderr *syncBuffer
+	done   chan error
+	reaped bool
 }
 
 // TestMain builds the csync binary into a temp dir once, records its path in
@@ -234,6 +247,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// what it was doing rather than falling over partway.
 	ctx.Step(`^csync should exit normally$`, csyncShouldExitNormally)
 	ctx.Step(`^the reported log path should be the one I found earlier$`, theReportedLogPathShouldBeTheOneIFoundEarlier)
+	ctx.Step(`^that csync cannot write its log$`, thatCsyncCannotWriteItsLog)
+	ctx.Step(`^the changed file should be identical between local and remote$`, theChangedFileShouldBeIdenticalBetweenLocalAndRemote)
+	ctx.Step(`^csync should warn that it could not write a run log$`, csyncShouldWarnThatItCouldNotWriteARunLog)
+	ctx.Step(`^csync should not report where it logged the run$`, csyncShouldNotReportWhereItLoggedTheRun)
+	ctx.Step(`^csync should say last of all that the run was not logged$`, csyncShouldSayLastOfAllThatTheRunWasNotLogged)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -285,10 +303,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		// tempdirs below are removed out from under a live process and `go test` waits
 		// forever on a child waiting for a stdin nobody will write to.
 		run, _ := ctx.Value(startedKey{}).(*runningCsync)
-		if run != nil && run.cmd.ProcessState == nil {
+		if run != nil && !run.reaped {
 			run.stdin.Close()
 			run.cmd.Process.Kill()
-			run.cmd.Wait()
+			<-run.done
 		}
 		localPath, _ := ctx.Value(localPathKey{}).(string)
 		if localPath != "" {
@@ -591,9 +609,12 @@ func theReportedLicenseShouldContain(ctx context.Context, want string) error {
 // behavior in its own right, not merely the seam this test reads through.
 func csyncShouldReportWhereItLoggedTheRun(ctx context.Context) error {
 	r := captured(ctx)
-	got := parseOutput(r.Stdout, r.Stderr).LogPath
-	if got == "" {
+	out := parseOutput(r.Stdout, r.Stderr)
+	if !out.HasLogPath {
 		return fmt.Errorf("csync reported no log path in stdout:\n%s", r.Stdout)
+	}
+	if out.LogPath == "" {
+		return fmt.Errorf("csync printed an empty log path in stdout:\n%s", r.Stdout)
 	}
 	return nil
 }
@@ -627,7 +648,73 @@ func thatAFileHasBeenChangedLocally(ctx context.Context) (context.Context, error
 	if err != nil {
 		return ctx, err
 	}
-	return theFileHasBeenChangedLocally(ctx, "README.md")
+	const changed = "README.md"
+	ctx, err = theFileHasBeenChangedLocally(ctx, changed)
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, changedFileKey{}, changed), nil
+}
+
+// thatCsyncCannotWriteItsLog puts a regular file where csync expects to create its
+// state directory, so every attempt to make one fails with ENOTDIR.
+//
+// A file rather than a chmod-ed directory: root ignores permission bits, so a
+// read-only directory would quietly stop testing anything the day this suite runs
+// as root (in a container, say). Nothing gets to mkdir inside a regular file.
+func thatCsyncCannotWriteItsLog(ctx context.Context) error {
+	root := stateHome(ctx)
+	if root == "" {
+		return fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	err := os.WriteFile(root, []byte("not a directory\n"), 0o600)
+	if err != nil {
+		return fmt.Errorf("blocking the state directory at %s: %w", root, err)
+	}
+	return nil
+}
+
+// theChangedFileShouldBeIdenticalBetweenLocalAndRemote asserts the sync moved the
+// file the parameterless setup step changed — the whole point of a run that logged
+// nothing still being a run that worked.
+func theChangedFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context) error {
+	changed, _ := ctx.Value(changedFileKey{}).(string)
+	if changed == "" {
+		return fmt.Errorf("no file was changed; missing a step that changes one?")
+	}
+	return theFileShouldBeIdenticalBetweenLocalAndRemote(ctx, changed)
+}
+
+// csyncShouldWarnThatItCouldNotWriteARunLog asserts csync said out loud that this
+// run went unlogged. Declining silently would be the worst of the three outcomes:
+// the user goes looking for the record of a destructive run, finds nothing, and
+// cannot tell whether csync failed to write it or they misremembered where it goes.
+func csyncShouldWarnThatItCouldNotWriteARunLog(ctx context.Context) error {
+	r := captured(ctx)
+	warning := parseOutput(r.Stdout, r.Stderr).Warning
+	if warning == "" {
+		return fmt.Errorf("csync issued no warning; stderr:\n%s", r.Stderr)
+	}
+	if !strings.Contains(warning, "log") {
+		return fmt.Errorf("csync warned about something other than the run log: %q", warning)
+	}
+	return nil
+}
+
+// csyncShouldNotReportWhereItLoggedTheRun asserts csync named no log path. It is
+// the counterpart of csyncShouldReportWhereItLoggedTheRun: a path is disclosed when
+// there is a file at the end of it, and withheld when there is not. Sending the
+// user to a log that was never created is a worse answer than admitting there is
+// none.
+// It reads the presence of the disclosure line, not the truth of its value: csync
+// printing a bare "Log:" with nothing after it is a disclosure, and a useless one.
+func csyncShouldNotReportWhereItLoggedTheRun(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.HasLogPath {
+		return fmt.Errorf("csync reported a log path %q, but it wrote no log", out.LogPath)
+	}
+	return nil
 }
 
 // iHaveStartedCsyncButNotYetAnsweredThePrompt starts csync and returns once it is
@@ -656,19 +743,30 @@ func iHaveStartedCsyncButNotYetAnsweredThePrompt(ctx context.Context) (context.C
 	if err != nil {
 		return ctx, fmt.Errorf("stdin pipe: %w", err)
 	}
-	run := &runningCsync{cmd: cmd, stdin: stdin, stdout: &syncBuffer{}, stderr: &syncBuffer{}}
+	run := &runningCsync{cmd: cmd, stdin: stdin, stdout: &syncBuffer{}, stderr: &syncBuffer{}, done: make(chan error, 1)}
 	cmd.Stdout = run.stdout
 	cmd.Stderr = run.stderr
 	err = cmd.Start()
 	if err != nil {
 		return ctx, fmt.Errorf("start csync: %w", err)
 	}
+	go func() { run.done <- cmd.Wait() }()
 	// Stash before waiting: if the prompt never comes, the After hook still has the
 	// child to kill.
 	ctx = context.WithValue(ctx, startedKey{}, run)
 
 	deadline := time.Now().Add(promptWait)
 	for !strings.Contains(run.stderr.String(), selectionPrompt) {
+		select {
+		case waitErr := <-run.done:
+			// csync exited rather than asking. Report that, not the timeout it would
+			// otherwise become: a scenario whose csync died has a different problem
+			// from one whose csync hung, and the two should not read alike.
+			run.reaped = true
+			return ctx, fmt.Errorf("csync exited (%v) before reaching the selection prompt\nstdout:\n%s\nstderr:\n%s",
+				waitErr, run.stdout.String(), run.stderr.String())
+		default:
+		}
 		if time.Now().After(deadline) {
 			return ctx, fmt.Errorf("csync never reached the selection prompt within %s\nstdout:\n%s\nstderr:\n%s",
 				promptWait, run.stdout.String(), run.stderr.String())
@@ -750,7 +848,8 @@ func iAnswerThePrompt(ctx context.Context) (context.Context, error) {
 	}
 
 	exitCode := 0
-	err = run.cmd.Wait()
+	err = <-run.done
+	run.reaped = true
 	if err != nil {
 		exitErr, ok := err.(*exec.ExitError)
 		if !ok {
@@ -781,6 +880,28 @@ func theReportedLogPathShouldBeTheOneIFoundEarlier(ctx context.Context) error {
 	got := parseOutput(r.Stdout, r.Stderr).LogPath
 	if got != want {
 		return fmt.Errorf("csync reported log path %q, but the log it was writing is %q", got, want)
+	}
+	return nil
+}
+
+// csyncShouldSayLastOfAllThatTheRunWasNotLogged asserts the final thing csync
+// prints is that it kept no record, and why.
+//
+// Last of all, not merely somewhere: the warning csync gives before the prompt can
+// scroll away behind a long change list, and the whole point of repeating it is
+// that the notice survives to where the user is still looking when the run ends. A
+// step that only checked the notice was present would pass against the warning
+// alone and prove nothing.
+func csyncShouldSayLastOfAllThatTheRunWasNotLogged(ctx context.Context) error {
+	r := captured(ctx)
+	reason := parseOutput(r.Stdout, r.Stderr).NotLogged
+	if reason == "" {
+		return fmt.Errorf("csync gave no reason for keeping no record; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
+	}
+	lines := strings.Split(strings.TrimRight(r.Stdout, "\n"), "\n")
+	last := lines[len(lines)-1]
+	if !strings.HasPrefix(last, "Not logged:") {
+		return fmt.Errorf("csync's last word was %q, not that the run went unlogged", last)
 	}
 	return nil
 }

@@ -27,6 +27,9 @@ type ReportedOutput struct {
 	Message           string
 	Version           string
 	LogPath           string
+	HasLogPath        bool
+	NotLogged         string
+	Warning           string
 	Usage             string
 }
 
@@ -73,10 +76,26 @@ var (
 	// this matches only the version line.
 	versionLineRE = regexp.MustCompile(`(?m)^(cherry-sync (?:v.+|\(dev build\)))\s*$`)
 	// logPathRE captures the path of the run log csync wrote. It is matched against
-	// the whole of stdout rather than the report region, so where csync chooses to
-	// disclose the path — beside the operands, or below the summary — is not
-	// something the scenarios depend on.
-	logPathRE = regexp.MustCompile(`(?m)^Log:\s+(.+?)\s*$`)
+	// both whole streams rather than the report region, so where csync chooses to
+	// disclose the path is not something the scenarios depend on: a clean run reports
+	// it on stdout below the summary, a failed one on stderr beside the error. The
+	// scenario that asserts csync named NO log needs both, or a stray path on the
+	// stream it did not read would pass for silence.
+	//
+	// The path is captured with `*`, not `+`, so a "Log:" line with nothing after it
+	// still matches: HasLogPath then reports the line, and LogPath its empty value.
+	// Requiring a character would make an empty disclosure indistinguishable from no
+	// disclosure, and csync printing "Log: " for a file it never wrote would read as
+	// silence.
+	logPathRE = regexp.MustCompile(`(?m)^Log:[^\S\n]*(.*?)[^\S\n]*$`)
+	// notLoggedRE captures the reason csync gives, as it exits, for having kept no
+	// record of the run. It stands in the same place as the Log: line and carries a
+	// different label, so a reader — and the scenario asserting csync named no log —
+	// cannot mistake one for the other.
+	notLoggedRE = regexp.MustCompile(`(?m)^Not logged:[^\S\n]*(.*?)[^\S\n]*$`)
+	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
+	// past — today, only its inability to write a run log.
+	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
 )
 
 // operandValue strips the inline "(rewritten from …)" disclosure the header
@@ -137,8 +156,25 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	}
 
 	lm := logPathRE.FindStringSubmatch(stdout)
+	if lm == nil {
+		lm = logPathRE.FindStringSubmatch(stderr)
+	}
 	if lm != nil {
+		out.HasLogPath = true
 		out.LogPath = lm[1]
+	}
+
+	nm := notLoggedRE.FindStringSubmatch(stdout)
+	if nm == nil {
+		nm = notLoggedRE.FindStringSubmatch(stderr)
+	}
+	if nm != nil {
+		out.NotLogged = nm[1]
+	}
+
+	wm := warningRE.FindStringSubmatch(stderr)
+	if wm != nil {
+		out.Warning = wm[1]
 	}
 
 	for _, m := range labeledLineRE.FindAllStringSubmatch(report, -1) {

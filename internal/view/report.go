@@ -57,6 +57,17 @@ func LogPath(path string) string {
 	return dim.Render("Log: "+path) + "\n"
 }
 
+// NotLogged returns the footer for a run that kept no record: a dimmed "Not logged:
+// <reason>" line standing where a logged run names its file. csync warns about this
+// before it asks what to sync, in time for the user to stop; it says so again here
+// because a long change list scrolls that warning away, and the end of the run is
+// where someone who wanted the record will come looking for it. A distinct label,
+// not an empty "Log:", so nothing points at a file that was never created.
+func NotLogged(reason string) string {
+	dim := lipgloss.NewStyle().Faint(true)
+	return dim.Render("Not logged: "+reason) + "\n"
+}
+
 // ChangeList returns the non-TTY change report: a "Changes: N" count followed by
 // the actions numbered from 1 in displayed order. The number is the selection
 // affordance — the digit a user types at the typed-grammar prompt to pick that

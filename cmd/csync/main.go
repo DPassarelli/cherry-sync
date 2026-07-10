@@ -110,27 +110,43 @@ func run() (code int) {
 	// usage error have all returned by now: they run no rsync, so they leave
 	// nothing to troubleshoot and must not litter the state directory.
 	//
-	// Exiting when the log can't be opened is a placeholder. A record is a
-	// diagnostic, never a precondition — a read-only state directory must not stop
-	// a sync — but that behavior has no failing test yet, so it isn't written yet.
+	// A log that cannot be opened warns and is replaced by one that records nothing.
+	// The record is a diagnostic, never a precondition: a state directory gone
+	// read-only says nothing about whether the files should move, and a tool that
+	// refuses to work because it cannot keep a diary is a tool nobody keeps. It
+	// warns rather than declining silently, because a user hunting the record of a
+	// destructive run must not be left wondering whether csync skipped it or they
+	// misremembered where it goes.
 	runLog, err := runlog.Create()
+	notLogged := ""
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		notLogged = err.Error()
+		fmt.Fprintf(os.Stderr, "warning: this run will not be logged (%v)\n", err)
+		runLog = runlog.Discard()
 	}
 
-	// Say where the run was logged on the way out, once, whichever way run leaves.
-	// Deferring it is the point of the os.Exit(run()) shape: the disclosure cannot
-	// be forgotten at a new exit, and it costs the interactive picker no row of the
-	// terminal it holds above its scroll region. A failed run points at its log on
-	// stderr, beside the error the log explains; a clean one reports it on stdout
-	// with the rest of the report.
+	// Every run ends by accounting for its record: where it was written, or why it
+	// was not. Deferring that is the point of the os.Exit(run()) shape — the
+	// accounting cannot be forgotten at a new exit, and it costs the interactive
+	// picker no row of the terminal it holds above its scroll region. A failed run
+	// says so on stderr, beside the error the log would have explained; a clean one
+	// on stdout with the rest of the report.
+	//
+	// The unlogged run repeats here what the warning above already said, because a
+	// long change list scrolls that warning off the top and this is where someone
+	// who wanted the record will look. It carries its own label rather than an empty
+	// "Log:", so nothing sends the user after a file that was never created.
 	defer func() {
 		out := os.Stdout
 		if code != 0 {
 			out = os.Stderr
 		}
-		fmt.Fprint(out, view.LogPath(runLog.Path()))
+		path := runLog.Path()
+		if path == "" {
+			fmt.Fprint(out, view.NotLogged(notLogged))
+			return
+		}
+		fmt.Fprint(out, view.LogPath(path))
 	}()
 
 	// Registered last, so it runs first: the log is closed before csync points at

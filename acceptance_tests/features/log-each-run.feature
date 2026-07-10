@@ -66,6 +66,50 @@ Feature: Log each run
     Then  csync should exit normally
     And   the reported log path should be the one I found earlier
 
+  Scenario: A log that cannot be written does not stop the sync
+    # The record is a diagnostic, never a precondition. A state directory that has
+    # gone read-only, or an XDG_STATE_HOME pointing at something that is not a
+    # directory, says nothing about whether the files should move — and a tool that
+    # refuses to work because it cannot keep a diary is a tool nobody keeps.
+    Given that csync cannot write its log
+    And   that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the changed file should be identical between local and remote
+
+  Scenario: csync warns when it cannot write a log
+    # Silently declining to log would be worse than not logging: the user would go
+    # looking for the record of a destructive run and find nothing, with no way to
+    # know whether csync failed to write it or they had misremembered where it went.
+    Given that csync cannot write its log
+    And   that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should warn that it could not write a run log
+
+  Scenario: A run that could not log says so again when it ends
+    # The warning comes before csync asks what to sync, so the user can still stop.
+    # But a long change list scrolls it away, and the interactive picker holds only
+    # the rows it printed itself on screen — so by the time the run is over, the
+    # notice may be gone. A run that logged nothing therefore says so once more as
+    # it exits, in the same place a run that logged something names its file.
+    Given that csync cannot write its log
+    And   that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should say last of all that the run was not logged
+
+  Scenario: csync names no log when it wrote none
+    # csync discloses a path only when there is a file at the end of it. Printing
+    # one here would send the user to a log that was never created, which is a
+    # worse answer than admitting there is none.
+    Given that csync cannot write its log
+    And   that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should not report where it logged the run
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, agreed but not yet drafted.
   # Each becomes a real Scenario block as we drill into it, one at a time.
@@ -104,7 +148,3 @@ Feature: Log each run
   # - The actions csync classified, and which of them the user selected, are
   #   recorded — the two can differ, and a removal that was applied is the fact
   #   the log exists to preserve.
-  #
-  # - A run log that cannot be written (a read-only state directory, or
-  #   XDG_STATE_HOME naming something that is not one) warns once on stderr and
-  #   does not fail the sync. The record is a diagnostic, never a precondition.
