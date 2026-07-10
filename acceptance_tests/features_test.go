@@ -69,6 +69,12 @@ type remotePathKey struct{}
 // than local-to-local — the only way the suite exercises the `<` push direction.
 type remoteModeKey struct{}
 
+// homeKey stashes a per-scenario throwaway home directory, created by the Before
+// hook and removed by the After hook. runCsync points the csync child's HOME and
+// XDG_STATE_HOME into it so a run log lands inside the scenario's own tempdir
+// rather than the developer's real ~/.local/state.
+type homeKey struct{}
+
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
 // against the right one, plus the process exit code.
@@ -158,6 +164,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
 	ctx.Step(`^the reported license should contain "([^"]*)"$`, theReportedLicenseShouldContain)
+	ctx.Step(`^csync should report where it logged the run$`, csyncShouldReportWhereItLoggedTheRun)
+	ctx.Step(`^a run log should exist at the reported path$`, aRunLogShouldExistAtTheReportedPath)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -190,9 +198,14 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the file "([^"]*)" should still differ between local and remote$`, theFileShouldStillDifferBetweenLocalAndRemote)
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
+		home, err := os.MkdirTemp("", "csync-home-*")
+		if err != nil {
+			return ctx, fmt.Errorf("mktempdir: %w", err)
+		}
+		ctx = context.WithValue(ctx, homeKey{}, home)
 		for _, tag := range sc.Tags {
 			if tag.Name == "@remote" {
-				return context.WithValue(ctx, remoteModeKey{}, true), nil
+				ctx = context.WithValue(ctx, remoteModeKey{}, true)
 			}
 		}
 		return ctx, nil
@@ -206,6 +219,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		remotePath, _ := ctx.Value(remotePathKey{}).(string)
 		if remotePath != "" {
 			os.RemoveAll(remotePath)
+		}
+		home, _ := ctx.Value(homeKey{}).(string)
+		if home != "" {
+			os.RemoveAll(home)
 		}
 		return ctx, nil
 	})
@@ -279,6 +296,40 @@ func resolvedRemote(ctx context.Context) string {
 	return remotePath
 }
 
+// stateHome returns the directory the csync child sees as XDG_STATE_HOME, or ""
+// when no scenario home was set up. It is deliberately NOT the home directory's
+// ~/.local/state: csync falls back to that path when the variable is unset, so
+// pointing both at the same place would let a csync that ignored XDG_STATE_HOME
+// pass the location scenario by accident. Kept distinct, the two are
+// distinguishable, and a run that lands in the wrong one is visible.
+func stateHome(ctx context.Context) string {
+	home, _ := ctx.Value(homeKey{}).(string)
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, "xdg-state")
+}
+
+// csyncEnv builds the environment for the csync child: the ambient environment
+// with HOME and XDG_STATE_HOME redirected into the scenario's throwaway home, and
+// RSYNC_RSH added under @remote. Later entries win over earlier duplicates (see
+// exec.Cmd.Env), so the redirections override whatever the developer's shell had.
+func csyncEnv(ctx context.Context) []string {
+	env := os.Environ()
+	home, _ := ctx.Value(homeKey{}).(string)
+	if home != "" {
+		env = append(env, "HOME="+home, "XDG_STATE_HOME="+stateHome(ctx))
+	}
+	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
+	if remoteMode {
+		// rsync reads RSYNC_RSH as its remote shell; fakeRsh execs locally so the
+		// `fakehost:` operand transfers on this machine over the real remote code
+		// path. csync's own rsync child inherits this environment.
+		env = append(env, "RSYNC_RSH="+fakeRsh)
+	}
+	return env
+}
+
 // runCsync splits the command, substitutes the Gherkin placeholders
 // (`./project`, `user@host:/project`, `<empty>`) with the scenario's real
 // tempdir paths, runs the csync binary with the given stdin, and stashes the
@@ -301,7 +352,6 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 	if localPath != "" {
 		subs["./project"] = localPath
 	}
-	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
 	remote := resolvedRemote(ctx)
 	if remote != "" {
 		subs["user@host:/project"] = remote
@@ -318,12 +368,7 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	if remoteMode {
-		// rsync reads RSYNC_RSH as its remote shell; fakeRsh execs locally so the
-		// `fakehost:` operand transfers on this machine over the real remote code
-		// path. csync's own rsync child inherits this environment.
-		cmd.Env = append(os.Environ(), "RSYNC_RSH="+fakeRsh)
-	}
+	cmd.Env = csyncEnv(ctx)
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
@@ -457,6 +502,40 @@ func theReportedLicenseShouldContain(ctx context.Context, want string) error {
 	r := captured(ctx)
 	if !strings.Contains(r.Stdout, want) {
 		return fmt.Errorf("license output missing %q in stdout:\n%s", want, r.Stdout)
+	}
+	return nil
+}
+
+// csyncShouldReportWhereItLoggedTheRun asserts csync disclosed the path of the
+// run log it wrote. Nothing else in the suite may name that path: the scenarios
+// learn it from csync, and one location scenario holds csync to putting it in the
+// right place. A record nobody can find is not a record, so the disclosure is a
+// behavior in its own right, not merely the seam this test reads through.
+func csyncShouldReportWhereItLoggedTheRun(ctx context.Context) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).LogPath
+	if got == "" {
+		return fmt.Errorf("csync reported no log path in stdout:\n%s", r.Stdout)
+	}
+	return nil
+}
+
+// aRunLogShouldExistAtTheReportedPath asserts the path csync disclosed names a
+// regular file that is really there. Pairing the two steps is what keeps csync
+// honest: reporting a path it never wrote to fails here, and writing a log it
+// never mentions fails the step above.
+func aRunLogShouldExistAtTheReportedPath(ctx context.Context) error {
+	r := captured(ctx)
+	path := parseOutput(r.Stdout, r.Stderr).LogPath
+	if path == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to look for; stdout:\n%s", r.Stdout)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("run log reported at %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("run log reported at %q is not a regular file (mode %s)", path, info.Mode())
 	}
 	return nil
 }

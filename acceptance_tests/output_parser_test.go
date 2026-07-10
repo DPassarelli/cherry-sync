@@ -26,6 +26,7 @@ type ReportedOutput struct {
 	HasRemovedCount   bool
 	Message           string
 	Version           string
+	LogPath           string
 	Usage             string
 }
 
@@ -71,6 +72,11 @@ var (
 	// for an un-injected one. The description and URL follow on their own lines;
 	// this matches only the version line.
 	versionLineRE = regexp.MustCompile(`(?m)^(cherry-sync (?:v.+|\(dev build\)))\s*$`)
+	// logPathRE captures the path of the run log csync wrote. It is matched against
+	// the whole of stdout rather than the report region, so where csync chooses to
+	// disclose the path — beside the operands, or below the summary — is not
+	// something the scenarios depend on.
+	logPathRE = regexp.MustCompile(`(?m)^Log:\s+(.+?)\s*$`)
 )
 
 // operandValue strips the inline "(rewritten from …)" disclosure the header
@@ -128,6 +134,11 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	vm := versionLineRE.FindStringSubmatch(report)
 	if vm != nil {
 		out.Version = vm[1]
+	}
+
+	lm := logPathRE.FindStringSubmatch(stdout)
+	if lm != nil {
+		out.LogPath = lm[1]
 	}
 
 	for _, m := range labeledLineRE.FindAllStringSubmatch(report, -1) {

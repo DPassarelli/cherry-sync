@@ -16,6 +16,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/license"
 	"github.com/dpassarelli/cherry-sync/internal/operand"
+	"github.com/dpassarelli/cherry-sync/internal/runlog"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
 	"github.com/dpassarelli/cherry-sync/internal/view"
@@ -27,14 +28,25 @@ import (
 // which the version line renders as "cherry-sync (dev build)".
 var version = "dev"
 
-// main parses the command-line arguments, runs the dry-run comparison, asks which
-// changes to sync — through the interactive picker on a terminal, or the typed
-// prompt otherwise — and transfers the chosen files.
+// main runs csync and exits with the status it reports. It holds no logic of its
+// own: os.Exit skips deferred functions, so confining it to this one line is what
+// lets run own the resources — the run log above all — and release them on every
+// path out.
 func main() {
+	os.Exit(run())
+}
+
+// run parses the command-line arguments, runs the dry-run comparison, asks which
+// changes to sync — through the interactive picker on a terminal, or the typed
+// prompt otherwise — transfers the chosen files, and returns the process exit
+// status. Every failure leaves through a `return` so the deferred disclosure of
+// the run log's path happens on the runs that fail as much as on the ones that
+// succeed; those are the runs worth reading.
+func run() (code int) {
 	a, err := cli.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "usage: csync SOURCE DESTINATION")
-		os.Exit(2)
+		return 2
 	}
 
 	// --version reports the build and exits before any operand resolution or
@@ -42,7 +54,7 @@ func main() {
 	// ignored. The line goes to stdout — it is requested output, not a diagnostic.
 	if a.Mode == cli.Version {
 		fmt.Println(view.VersionReport(version))
-		return
+		return 0
 	}
 
 	// --license prints the embedded MIT text and exits, so a distributed bare
@@ -51,7 +63,7 @@ func main() {
 	// The text ends in a newline, so Print — not Println — avoids a trailing blank.
 	if a.Mode == cli.License {
 		fmt.Print(license.Text())
-		return
+		return 0
 	}
 
 	// With a saved-target verb the operands aren't on the command line: resolve
@@ -63,7 +75,7 @@ func main() {
 		cfg, err := config.Load(".")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 		switch a.Mode {
 		case cli.Push:
@@ -85,14 +97,41 @@ func main() {
 	srcN, err := operand.Normalize(source)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	dstN, err := operand.Normalize(destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	source, destination = srcN.Path, dstN.Path
+
+	// Open this run's log before any work happens. --version, --license, and a
+	// usage error have all returned by now: they run no rsync, so they leave
+	// nothing to troubleshoot and must not litter the state directory.
+	//
+	// Exiting when the log can't be opened is a placeholder. A record is a
+	// diagnostic, never a precondition — a read-only state directory must not stop
+	// a sync — but that behavior has no failing test yet, so it isn't written yet.
+	runLog, err := runlog.Create()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	// Say where the run was logged on the way out, once, whichever way run leaves.
+	// Deferring it is the point of the os.Exit(run()) shape: the disclosure cannot
+	// be forgotten at a new exit, and it costs the interactive picker no row of the
+	// terminal it holds above its scroll region. A failed run points at its log on
+	// stderr, beside the error the log explains; a clean one reports it on stdout
+	// with the rest of the report.
+	defer func() {
+		out := os.Stdout
+		if code != 0 {
+			out = os.Stderr
+		}
+		fmt.Fprint(out, view.LogPath(runLog.Path()))
+	}()
 
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
@@ -125,7 +164,7 @@ func main() {
 	result, err := compare.Run(source, destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Disclose what was held out of the comparison — with no opt-out flag, this
@@ -158,7 +197,7 @@ func main() {
 			fmt.Print(view.ChangeList(nil))
 		}
 		fmt.Println("\nNo changes to sync.")
-		return
+		return 0
 	}
 
 	// Pick the selection front-end by whether we're attached to a terminal on both
@@ -171,14 +210,14 @@ func main() {
 		picked, err := view.RunPicker(result.Actions, preamble.String())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
 		// transfer that would print "Sync complete! (0 files)".
 		if len(picked) == 0 {
 			fmt.Print(view.Canceled())
-			return
+			return 0
 		}
 		selected = picked
 	} else {
@@ -188,7 +227,7 @@ func main() {
 		selected, err = selection.SelectActions(os.Stdin, result.Actions)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -208,12 +247,12 @@ func main() {
 	err = transfer.Run(source, destination, transferPaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	err = transfer.Remove(source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Report what moved with the post-sync summary: the past-tense list of changes.
@@ -221,6 +260,7 @@ func main() {
 	// human fallback, not a machine interface — so it gets the same summary, only
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
+	return 0
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both
