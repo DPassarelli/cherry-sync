@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,6 +76,16 @@ type remoteModeKey struct{}
 // rather than the developer's real ~/.local/state.
 type homeKey struct{}
 
+// startedKey stashes a runningCsync — a csync child left alive and blocked at the
+// selection prompt — so a later step can read the log it is midway through
+// writing, then answer the prompt and let it finish.
+type startedKey struct{}
+
+// foundLogKey stashes the path of the log file located under the scenario's
+// XDG_STATE_HOME while csync was still running. The reconciliation step compares
+// it against the path csync discloses on its way out.
+type foundLogKey struct{}
+
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
 // against the right one, plus the process exit code.
@@ -82,6 +93,50 @@ type runResult struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
+}
+
+// selectionPrompt is the fragment csync writes to stderr when it blocks on stdin
+// waiting to be told what to sync. Seeing it means the comparison has finished and
+// no transfer has begun, which is the only moment a test can read a half-written
+// log without racing the process that is writing it.
+const selectionPrompt = "Press Enter"
+
+// promptWait bounds how long a step will wait for csync to reach the selection
+// prompt before giving up. It is a deadlock guard, not a timing assumption: the
+// wait ends as soon as the prompt appears, so a slow machine costs nothing.
+const promptWait = 20 * time.Second
+
+// syncBuffer is a bytes.Buffer safe for a reader and a writer at once. A live
+// csync child has os/exec goroutines copying its streams in while a step polls
+// them for the prompt, which a bare bytes.Buffer does not allow.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+// Write appends to the buffer under the lock, satisfying io.Writer for exec.Cmd.
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+// String returns everything written so far, safe to call while writes continue.
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// runningCsync is a csync child that has been started but not yet reaped, held
+// across steps so one can observe it mid-run and the next can finish it. The
+// After hook kills any child a scenario leaves behind, so a failed assertion
+// cannot strand a process blocked on a pipe nobody will ever write to.
+type runningCsync struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *syncBuffer
+	stderr *syncBuffer
 }
 
 // TestMain builds the csync binary into a temp dir once, records its path in
@@ -166,6 +221,19 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported license should contain "([^"]*)"$`, theReportedLicenseShouldContain)
 	ctx.Step(`^csync should report where it logged the run$`, csyncShouldReportWhereItLoggedTheRun)
 	ctx.Step(`^a run log should exist at the reported path$`, aRunLogShouldExistAtTheReportedPath)
+	ctx.Step(`^that a file has been changed locally$`, thatAFileHasBeenChangedLocally)
+	ctx.Step(`^I have started csync but not yet answered the prompt$`, iHaveStartedCsyncButNotYetAnsweredThePrompt)
+	// Two phrasings of the same act, kept apart because Gherkin reads better when a
+	// Given narrates in the past and a When in the present. Both locate the log.
+	ctx.Step(`^I look for the log file$`, iLocateTheLogFile)
+	ctx.Step(`^I have taken note of where the log file is$`, iLocateTheLogFile)
+	ctx.Step(`^the log file should already have content$`, theLogFileShouldAlreadyHaveContent)
+	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
+	// A restatement of `csync should return exit code 0` in the vocabulary of a
+	// scenario that has no interest in the number, only in csync having finished
+	// what it was doing rather than falling over partway.
+	ctx.Step(`^csync should exit normally$`, csyncShouldExitNormally)
+	ctx.Step(`^the reported log path should be the one I found earlier$`, theReportedLogPathShouldBeTheOneIFoundEarlier)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -212,6 +280,16 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	})
 
 	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
+		// Reap a csync left blocked at the prompt — by a scenario that means to leave
+		// it there, or by one that failed before it could answer. Without this, the
+		// tempdirs below are removed out from under a live process and `go test` waits
+		// forever on a child waiting for a stdin nobody will write to.
+		run, _ := ctx.Value(startedKey{}).(*runningCsync)
+		if run != nil && run.cmd.ProcessState == nil {
+			run.stdin.Close()
+			run.cmd.Process.Kill()
+			run.cmd.Wait()
+		}
 		localPath, _ := ctx.Value(localPathKey{}).(string)
 		if localPath != "" {
 			os.RemoveAll(localPath)
@@ -536,6 +614,173 @@ func aRunLogShouldExistAtTheReportedPath(ctx context.Context) error {
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("run log reported at %q is not a regular file (mode %s)", path, info.Mode())
+	}
+	return nil
+}
+
+// thatAFileHasBeenChangedLocally arranges the one condition the run-log scenarios
+// need from a comparison: something to sync, so csync stops at the prompt. Which
+// file, and how many, is not what those scenarios are about — they name neither —
+// so this composes the existing steps and picks a file from the Background itself.
+func thatAFileHasBeenChangedLocally(ctx context.Context) (context.Context, error) {
+	ctx, err := allFilesIdenticalBetweenLocalAndRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	return theFileHasBeenChangedLocally(ctx, "README.md")
+}
+
+// iHaveStartedCsyncButNotYetAnsweredThePrompt starts csync and returns once it is
+// blocked on stdin at the selection prompt, leaving it there for the steps that
+// follow. The operands are not in the Gherkin: the scenarios that use this step
+// are about the run log, not about how csync is invoked, so the command line is an
+// implementation detail of the step rather than a fact of the scenario.
+//
+// Waiting for the prompt to appear on stderr is what makes the observation that
+// follows deterministic. csync writes it after the comparison and before any
+// transfer, then blocks — so the process is suspended, not merely slow, and a step
+// that reads the log now cannot be racing a csync that is still writing it.
+func iHaveStartedCsyncButNotYetAnsweredThePrompt(ctx context.Context) (context.Context, error) {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return ctx, fmt.Errorf("local path not set; missing Background step?")
+	}
+	remote := resolvedRemote(ctx)
+	if remote == "" {
+		return ctx, fmt.Errorf("remote path not set; missing a step that creates one?")
+	}
+
+	cmd := exec.Command(csyncBinary, local, remote)
+	cmd.Env = csyncEnv(ctx)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return ctx, fmt.Errorf("stdin pipe: %w", err)
+	}
+	run := &runningCsync{cmd: cmd, stdin: stdin, stdout: &syncBuffer{}, stderr: &syncBuffer{}}
+	cmd.Stdout = run.stdout
+	cmd.Stderr = run.stderr
+	err = cmd.Start()
+	if err != nil {
+		return ctx, fmt.Errorf("start csync: %w", err)
+	}
+	// Stash before waiting: if the prompt never comes, the After hook still has the
+	// child to kill.
+	ctx = context.WithValue(ctx, startedKey{}, run)
+
+	deadline := time.Now().Add(promptWait)
+	for !strings.Contains(run.stderr.String(), selectionPrompt) {
+		if time.Now().After(deadline) {
+			return ctx, fmt.Errorf("csync never reached the selection prompt within %s\nstdout:\n%s\nstderr:\n%s",
+				promptWait, run.stdout.String(), run.stderr.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ctx, nil
+}
+
+// iLocateTheLogFile finds the run log under the scenario's XDG_STATE_HOME and
+// stashes its path. It backs both `When I look for the log file` and `Given I have
+// taken note of where the log file is`.
+//
+// It searches rather than being told, because the scenarios must not name the
+// path: csync has not yet disclosed it (that happens as csync exits) and where it
+// belongs is pinned by the location scenario alone. Insisting on exactly one match
+// is what makes the search an honest stand-in for the disclosure — with two logs
+// under the state directory, "the log file" would not mean anything.
+func iLocateTheLogFile(ctx context.Context) (context.Context, error) {
+	root := stateHome(ctx)
+	if root == "" {
+		return ctx, fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	var found []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			found = append(found, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return ctx, fmt.Errorf("searching %s for a run log: %w", root, err)
+	}
+	if len(found) != 1 {
+		return ctx, fmt.Errorf("want exactly one run log under %s, found %d: %v", root, len(found), found)
+	}
+	return context.WithValue(ctx, foundLogKey{}, found[0]), nil
+}
+
+// theLogFileShouldAlreadyHaveContent asserts the log is not empty at the moment
+// csync is blocked at the prompt. Content, not existence: csync opens the file as
+// it starts, so an empty one proves only that it was created. Bytes on disk here
+// prove the records were written as the run proceeded — a log assembled in memory
+// and flushed on the way out would be empty at this moment, and would be lost
+// entirely on the abnormal exits the log exists to survive.
+func theLogFileShouldAlreadyHaveContent(ctx context.Context) error {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		return fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("run log at %q: %w", path, err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("run log at %q is empty while csync waits at the prompt; nothing has been written to disk yet", path)
+	}
+	return nil
+}
+
+// iAnswerThePrompt sends a bare Enter to the waiting csync — accept every change —
+// and waits for it to finish, stashing its streams and exit code where the ordinary
+// Then steps read them.
+func iAnswerThePrompt(ctx context.Context) (context.Context, error) {
+	run, _ := ctx.Value(startedKey{}).(*runningCsync)
+	if run == nil {
+		return ctx, fmt.Errorf("csync was not started; missing a step that starts it?")
+	}
+	_, err := io.WriteString(run.stdin, "\n")
+	if err != nil {
+		return ctx, fmt.Errorf("answering the prompt: %w", err)
+	}
+	err = run.stdin.Close()
+	if err != nil {
+		return ctx, fmt.Errorf("closing stdin: %w", err)
+	}
+
+	exitCode := 0
+	err = run.cmd.Wait()
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			return ctx, fmt.Errorf("waiting for csync: %w", err)
+		}
+		exitCode = exitErr.ExitCode()
+	}
+	result := runResult{Stdout: run.stdout.String(), Stderr: run.stderr.String(), ExitCode: exitCode}
+	return context.WithValue(ctx, outputKey{}, result), nil
+}
+
+// csyncShouldExitNormally asserts csync ran to completion rather than falling over
+// partway. It is `exit code 0` said in the vocabulary of a scenario that cares only
+// that the run finished, since a csync that died has nothing to report about a log.
+func csyncShouldExitNormally(ctx context.Context) error {
+	return csyncShouldReturnExitCode(ctx, 0)
+}
+
+// theReportedLogPathShouldBeTheOneIFoundEarlier ties the log csync discloses on the
+// way out to the file it was seen filling in mid-run. Without it the two halves are
+// each honest and jointly useless: csync could write one file and name another.
+func theReportedLogPathShouldBeTheOneIFoundEarlier(ctx context.Context) error {
+	want, _ := ctx.Value(foundLogKey{}).(string)
+	if want == "" {
+		return fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).LogPath
+	if got != want {
+		return fmt.Errorf("csync reported log path %q, but the log it was writing is %q", got, want)
 	}
 	return nil
 }

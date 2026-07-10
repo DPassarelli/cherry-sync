@@ -13,16 +13,25 @@ import (
 )
 
 // Log is an open run log: the record of a single csync invocation. Its path is
-// disclosed to the user, since a record nobody can find is not a record.
+// disclosed to the user, since a record nobody can find is not a record. The file
+// stays open for the length of the run and every record is written to it as the
+// run reaches it — see Create.
 type Log struct {
 	path string
+	file *os.File
 }
 
-// Create opens a run log for this invocation and returns it. The file is named
-// for the moment the run started and the process that made it, so concurrent
-// runs cannot collide and a reader can order runs without opening them. It is
-// created exclusively: a name that already exists is an error rather than a
-// silent overwrite of another run's record.
+// Create opens a run log for this invocation, records that the run started, and
+// returns the open log. The file is named for the moment the run started and the
+// process that made it, so concurrent runs cannot collide and a reader can order
+// runs without opening them. It is created exclusively: a name that already exists
+// is an error rather than a silent overwrite of another run's record.
+//
+// The started record is written before Create returns, and every later record as
+// the run reaches it. Nothing is held back to be flushed on the way out: csync can
+// be interrupted at the selection prompt or killed outright, and those are the runs
+// a reader most wants. A log assembled in memory would be empty in exactly the
+// cases it exists for.
 func Create() (*Log, error) {
 	dir, err := stateDir()
 	if err != nil {
@@ -34,22 +43,32 @@ func Create() (*Log, error) {
 	if err != nil {
 		return nil, fmt.Errorf("run log directory: %w", err)
 	}
-	name := fmt.Sprintf("run-%s-%d.log", time.Now().UTC().Format("20060102T150405Z"), os.Getpid())
+	started := time.Now().UTC()
+	name := fmt.Sprintf("run-%s-%d.log", started.Format("20060102T150405Z"), os.Getpid())
 	path := filepath.Join(dir, name)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("run log: %w", err)
 	}
-	err = f.Close()
+	l := &Log{path: path, file: f}
+	_, err = fmt.Fprintf(f, "%s started\n", started.Format(time.RFC3339))
 	if err != nil {
+		f.Close()
 		return nil, fmt.Errorf("run log: %w", err)
 	}
-	return &Log{path: path}, nil
+	return l, nil
 }
 
 // Path reports where this run's log was written, so the CLI can disclose it.
 func (l *Log) Path() string {
 	return l.path
+}
+
+// Close releases the log file. The records are already on disk — each is written
+// with its own syscall rather than buffered — so closing preserves nothing and
+// only returns the descriptor.
+func (l *Log) Close() error {
+	return l.file.Close()
 }
 
 // stateDir returns the directory csync keeps its run logs in: the XDG state

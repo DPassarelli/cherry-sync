@@ -29,6 +29,43 @@ Feature: Log each run
     And   csync should report where it logged the run
     And   a run log should exist at the reported path
 
+  Scenario: The log is written as csync runs, not when it ends
+    # Records reach the disk as the run proceeds, not in one flush at the end.
+    # csync can die without warning — a Ctrl-C at the prompt, a closed laptop, a
+    # kill — and the runs worth reading are exactly the ones that ended badly. A
+    # log assembled in memory and written on the way out is empty in every case it
+    # exists for.
+    #
+    # The selection prompt is the observation point. csync blocks there on stdin,
+    # after the comparison and before any transfer, so the log can be read mid-run
+    # without racing it: the run is suspended, not merely slow.
+    #
+    # What is asserted is that a record is *there*, not what it says — the contents
+    # are pinned one fact at a time by the scenarios below. Every one of those would
+    # pass against a log flushed at exit. This one would not, and that is the whole
+    # of its job.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log file should already have content
+
+  Scenario: csync reports the log it has been writing all along
+    # The log csync names on its way out is the same file it was filling in while it
+    # ran. Without this, the scenario above could be satisfied by any file that
+    # happened to be lying around, and csync could disclose a path it never wrote
+    # to — each half honest on its own, and useless together.
+    #
+    # csync discloses the path as it exits, which has not happened yet while it
+    # waits at the prompt. So the log is found first and reconciled afterwards. No
+    # path is named here either way: where the log belongs is pinned once, by the
+    # location scenario below, and nowhere else in the suite.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    And   I have taken note of where the log file is
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the reported log path should be the one I found earlier
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, agreed but not yet drafted.
   # Each becomes a real Scenario block as we drill into it, one at a time.
@@ -52,12 +89,10 @@ Feature: Log each run
   # - One log per run, so a second run does not overwrite the first, and old
   #   logs are pruned rather than accumulating without bound.
   #
-  # - Records reach the disk as the run proceeds, not at the end. While csync is
-  #   blocked at the selection prompt, the log already names the run's start,
-  #   csync's version, both operands, and the comparison rsync invoked. This is
-  #   what proves a record survives an abnormal exit: csync leaves via os.Exit on
-  #   every error path, which skips deferred flushes, and the runs worth reading
-  #   are exactly the ones that ended badly.
+  # - By the time csync blocks at the selection prompt, the log names the run's
+  #   start, csync's version, both operands, and the comparison rsync invoked.
+  #   One scenario per fact; the scenario above already holds csync to writing
+  #   them before it asks, rather than at the end.
   #
   # - Each external command csync runs — rsync for the comparison, the transfer,
   #   and the removal pass; git for the ignore rules — is recorded with its

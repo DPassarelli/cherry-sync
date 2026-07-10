@@ -133,6 +133,12 @@ func run() (code int) {
 		fmt.Fprint(out, view.LogPath(runLog.Path()))
 	}()
 
+	// Registered last, so it runs first: the log is closed before csync points at
+	// it. Failing to close cannot fail the sync — every record is already on disk,
+	// each written with its own syscall rather than buffered — so the descriptor is
+	// all that is being given back here.
+	defer func() { _ = runLog.Close() }()
+
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
 	// shows — piped output stays clean.
