@@ -59,6 +59,9 @@ func Create() (*Log, error) {
 	started := time.Now().UTC()
 	name := fmt.Sprintf("run-%s-%d.log", started.Format("20060102T150405Z"), os.Getpid())
 	path := filepath.Join(dir, name)
+	// #nosec G304 -- path is stateDir() (a trusted base) joined with a
+	// program-generated "run-<timestamp>-<pid>.log" name; no external input reaches
+	// the filename, so there is no path-traversal surface here.
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("could not create the log file %s: %w", path, reason(err))
@@ -66,7 +69,9 @@ func Create() (*Log, error) {
 	l := &Log{path: path, file: f}
 	_, err = fmt.Fprintf(f, "%s started\n", started.Format(time.RFC3339))
 	if err != nil {
-		f.Close()
+		// The write, not the close, is the failure worth reporting; close what we
+		// opened and surface the original error.
+		_ = f.Close()
 		return nil, fmt.Errorf("could not write to the log file %s: %w", path, reason(err))
 	}
 	return l, nil
