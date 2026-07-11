@@ -3,6 +3,7 @@ package acceptance_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -90,6 +91,11 @@ type foundLogKey struct{}
 // locally` step picked, so a later step can assert the sync moved it without the
 // scenario having to name it. Which file it is was never the point.
 type changedFileKey struct{}
+
+// noXdgKey flags a scenario (via `Given the environment variable XDG_STATE_HOME is
+// not set`) as needing the csync child to run without XDG_STATE_HOME, so its log
+// falls back to ~/.local/state under the throwaway home. csyncEnv reads it.
+type noXdgKey struct{}
 
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
@@ -252,6 +258,12 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should warn that it could not write a run log$`, csyncShouldWarnThatItCouldNotWriteARunLog)
 	ctx.Step(`^csync should not report where it logged the run$`, csyncShouldNotReportWhereItLoggedTheRun)
 	ctx.Step(`^csync should say last of all that the run was not logged$`, csyncShouldSayLastOfAllThatTheRunWasNotLogged)
+	ctx.Step(`^no run log should have been written$`, noRunLogShouldHaveBeenWritten)
+	ctx.Step(`^the environment variable XDG_STATE_HOME is set$`, xdgStateHomeIsSet)
+	ctx.Step(`^the environment variable XDG_STATE_HOME is not set$`, xdgStateHomeIsNotSet)
+	ctx.Step(`^the run log should be under "([^"]*)" in (.+)$`, theRunLogShouldBeUnderIn)
+	ctx.Step(`^the run log directory should be accessible only by its owner$`, theRunLogDirectoryShouldBeAccessibleOnlyByItsOwner)
+	ctx.Step(`^the run log file should be accessible only by its owner$`, theRunLogFileShouldBeAccessibleOnlyByItsOwner)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -408,13 +420,24 @@ func stateHome(ctx context.Context) string {
 
 // csyncEnv builds the environment for the csync child: the ambient environment
 // with HOME and XDG_STATE_HOME redirected into the scenario's throwaway home, and
-// RSYNC_RSH added under @remote. Later entries win over earlier duplicates (see
-// exec.Cmd.Env), so the redirections override whatever the developer's shell had.
+// RSYNC_RSH added under @remote.
+//
+// The two variables are filtered out of the ambient environment before being set,
+// rather than appended to override by last-duplicate-wins. Filtering is what makes
+// the fallback testable: under `XDG_STATE_HOME is not set` the child must see no
+// XDG_STATE_HOME at all, which an append can never achieve if the developer's own
+// shell exported one. It also makes the child's view of both variables the same
+// whoever runs the suite.
 func csyncEnv(ctx context.Context) []string {
 	env := os.Environ()
 	home, _ := ctx.Value(homeKey{}).(string)
 	if home != "" {
-		env = append(env, "HOME="+home, "XDG_STATE_HOME="+stateHome(ctx))
+		env = withoutVars(env, "HOME", "XDG_STATE_HOME")
+		env = append(env, "HOME="+home)
+		noXdg, _ := ctx.Value(noXdgKey{}).(bool)
+		if !noXdg {
+			env = append(env, "XDG_STATE_HOME="+stateHome(ctx))
+		}
 	}
 	remoteMode, _ := ctx.Value(remoteModeKey{}).(bool)
 	if remoteMode {
@@ -424,6 +447,24 @@ func csyncEnv(ctx context.Context) []string {
 		env = append(env, "RSYNC_RSH="+fakeRsh)
 	}
 	return env
+}
+
+// withoutVars returns env with every `NAME=...` entry for the named variables
+// removed, so a caller can set them cleanly without an ambient value surviving.
+func withoutVars(env []string, names ...string) []string {
+	drop := make(map[string]bool, len(names))
+	for _, n := range names {
+		drop[n] = true
+	}
+	kept := env[:0:0]
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		if drop[name] {
+			continue
+		}
+		kept = append(kept, kv)
+	}
+	return kept
 }
 
 // runCsync splits the command, substitutes the Gherkin placeholders
@@ -786,27 +827,11 @@ func iHaveStartedCsyncButNotYetAnsweredThePrompt(ctx context.Context) (context.C
 // is what makes the search an honest stand-in for the disclosure — with two logs
 // under the state directory, "the log file" would not mean anything.
 func iLocateTheLogFile(ctx context.Context) (context.Context, error) {
-	root := stateHome(ctx)
-	if root == "" {
-		return ctx, fmt.Errorf("no scenario state home; the Before hook did not run?")
-	}
-	var found []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			found = append(found, p)
-		}
-		return nil
-	})
+	log, err := theOneRunLog(ctx)
 	if err != nil {
-		return ctx, fmt.Errorf("searching %s for a run log: %w", root, err)
+		return ctx, err
 	}
-	if len(found) != 1 {
-		return ctx, fmt.Errorf("want exactly one run log under %s, found %d: %v", root, len(found), found)
-	}
-	return context.WithValue(ctx, foundLogKey{}, found[0]), nil
+	return context.WithValue(ctx, foundLogKey{}, log), nil
 }
 
 // theLogFileShouldAlreadyHaveContent asserts the log is not empty at the moment
@@ -904,6 +929,93 @@ func csyncShouldSayLastOfAllThatTheRunWasNotLogged(ctx context.Context) error {
 		return fmt.Errorf("csync's last word was %q, not that the run went unlogged", last)
 	}
 	return nil
+}
+
+// noRunLogShouldHaveBeenWritten asserts nothing was recorded under the scenario's
+// state home: no log file anywhere beneath it, the state directory not existing at
+// all counting as the same thing. It is the counterpart of iLocateTheLogFile —
+// where that insists on exactly one log, this insists on none — and it is how a run
+// that never reached rsync proves it left the state directory untouched.
+func noRunLogShouldHaveBeenWritten(ctx context.Context) error {
+	root := stateHome(ctx)
+	if root == "" {
+		return fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	logs, err := logsUnder(root)
+	if err != nil {
+		return fmt.Errorf("searching %s for run logs: %w", root, err)
+	}
+	if len(logs) != 0 {
+		return fmt.Errorf("expected no run log under %s, but found %d: %v", root, len(logs), logs)
+	}
+	return nil
+}
+
+// xdgStateHomeIsSet documents the precondition that holds by default: the Before
+// hook points the csync child's XDG_STATE_HOME into the scenario's throwaway home
+// (see csyncEnv), so this step changes nothing. It is here so the location scenario
+// names the condition it depends on, symmetric with its `... is not set` sibling.
+func xdgStateHomeIsSet(ctx context.Context) error {
+	return nil
+}
+
+// xdgStateHomeIsNotSet arranges for the csync child to run with no XDG_STATE_HOME,
+// so its log falls back to ~/.local/state under the throwaway home. csyncEnv reads
+// the flag and omits the variable (and filters any ambient one), which is the only
+// way the fallback path is reached.
+func xdgStateHomeIsNotSet(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, noXdgKey{}, true), nil
+}
+
+// theRunLogShouldBeUnderIn asserts the run log sits in the named subdirectory of a
+// state-directory base — the one place in the suite that pins the layout. base is
+// the symbol the scenario used, resolved to the throwaway home so the test names no
+// real path: "$XDG_STATE_HOME" is where the harness points the variable, and
+// "~/.local/state" is the spec's fallback under the child's HOME.
+func theRunLogShouldBeUnderIn(ctx context.Context, sub, base string) error {
+	var root string
+	switch base {
+	case "$XDG_STATE_HOME":
+		root = stateHome(ctx)
+	case "~/.local/state":
+		home, _ := ctx.Value(homeKey{}).(string)
+		if home == "" {
+			return fmt.Errorf("no scenario home; the Before hook did not run?")
+		}
+		root = filepath.Join(home, ".local", "state")
+	default:
+		return fmt.Errorf("unknown state-directory base %q in scenario", base)
+	}
+	log, err := singleLogUnder(root)
+	if err != nil {
+		return err
+	}
+	wantDir := filepath.Join(root, sub)
+	gotDir := filepath.Dir(log)
+	if gotDir != wantDir {
+		return fmt.Errorf("run log is in %s, want it in %s", gotDir, wantDir)
+	}
+	return nil
+}
+
+// theRunLogDirectoryShouldBeAccessibleOnlyByItsOwner asserts the run log's
+// directory is 0700 — the shape of a work tree is nobody else's business.
+func theRunLogDirectoryShouldBeAccessibleOnlyByItsOwner(ctx context.Context) error {
+	log, err := theOneRunLog(ctx)
+	if err != nil {
+		return err
+	}
+	return assertPerm(filepath.Dir(log), 0o700)
+}
+
+// theRunLogFileShouldBeAccessibleOnlyByItsOwner asserts the run log file itself is
+// 0600, for the same reason its directory is 0700.
+func theRunLogFileShouldBeAccessibleOnlyByItsOwner(ctx context.Context) error {
+	log, err := theOneRunLog(ctx)
+	if err != nil {
+		return err
+	}
+	return assertPerm(log, 0o600)
 }
 
 // aLocalDirectoryContainingTheseFiles creates a local tempdir populated with
@@ -1461,6 +1573,69 @@ func theFileShouldStillExistOnTheRemote(ctx context.Context, relPath string) err
 func captured(ctx context.Context) runResult {
 	r, _ := ctx.Value(outputKey{}).(runResult)
 	return r
+}
+
+// logsUnder returns every regular file beneath root, in walk order. A root that
+// does not exist yields no files rather than an error: a run that wrote no log
+// leaves the state directory uncreated, which is the same observation as an empty
+// one. It underlies the log-location assertions — none, exactly one, and under a
+// named directory.
+func logsUnder(root string) ([]string, error) {
+	var found []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() {
+			found = append(found, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return found, nil
+}
+
+// singleLogUnder returns the one run log beneath root, or an error naming what it
+// found instead. Insisting on exactly one is what lets a caller speak of "the run
+// log" — with two under the state directory the phrase would mean nothing.
+func singleLogUnder(root string) (string, error) {
+	logs, err := logsUnder(root)
+	if err != nil {
+		return "", fmt.Errorf("searching %s for a run log: %w", root, err)
+	}
+	if len(logs) != 1 {
+		return "", fmt.Errorf("want exactly one run log under %s, found %d: %v", root, len(logs), logs)
+	}
+	return logs[0], nil
+}
+
+// theOneRunLog returns the single run log under the scenario's XDG_STATE_HOME, the
+// path the assertions that inspect a log's location or permissions read through.
+func theOneRunLog(ctx context.Context) (string, error) {
+	root := stateHome(ctx)
+	if root == "" {
+		return "", fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	return singleLogUnder(root)
+}
+
+// assertPerm checks that path carries exactly the permission bits want, so a
+// location or file whose bits drifted (a 0644 log, a 0755 directory) is caught.
+func assertPerm(path string, want fs.FileMode) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	got := info.Mode().Perm()
+	if got != want {
+		return fmt.Errorf("%s has permissions %#o, want %#o", path, got, want)
+	}
+	return nil
 }
 
 // copyTree recursively copies the file tree rooted at src into dst, recreating

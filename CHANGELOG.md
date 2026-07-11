@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `csync --license` prints csync's full MIT license text, then exits (it takes precedence over any operands, like `--version`). The text is embedded in the binary, so it travels with a bare executable rather than depending on a file bundled beside it. `csync --version` now closes with a line pointing at it. (#84)
+- csync now records every run to a log file. Logs are written to either `$XDG_STATE_HOME/cherry-sync/` or `~/.local/state/cherry-sync/` (when `XDG_STATE_HOME` is unset), and csync names the file it wrote as it exits. Runs that do no work (`--version`, `--license`, a usage error) write nothing. (#82)
 
 ### Changed
 

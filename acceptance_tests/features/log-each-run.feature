@@ -110,6 +110,72 @@ Feature: Log each run
     When  I answer the prompt
     Then  csync should not report where it logged the run
 
+  Scenario: --version writes no log
+    # A run that only reports the version invokes no rsync, so it has nothing to
+    # troubleshoot. It returns before the log is ever opened, and must not leave a
+    # state directory behind — a shell completion or a package manager probing the
+    # binary this way should cost nothing on disk.
+    When I run "csync --version"
+    Then no run log should have been written
+
+  Scenario: --license writes no log
+    # As with --version: the license text is printed and csync returns, before any
+    # operand is resolved and before rsync runs.
+    When I run "csync --license"
+    Then no run log should have been written
+
+  Scenario: A usage error writes no log
+    # A run rejected for the wrong arguments never reaches rsync either, so it too
+    # records nothing. The log is for troubleshooting a sync that happened, not a
+    # command that was never valid.
+    When I run "csync"
+    Then no run log should have been written
+
+  Scenario: A run rejected before it reaches rsync writes no log
+    # A ~user home shortcut has no relative form, so csync rejects it as it
+    # normalizes the operands — after the command parses, but before it opens a log
+    # or runs rsync. The run fails and leaves nothing behind: the log is opened only
+    # once csync knows there is a sync worth recording. This is the case that pins
+    # that ordering; the others are caught earlier, at parse time.
+    When I run "csync ./project host:~alice/x"
+    Then no run log should have been written
+
+  # These three scenarios are the only ones in the suite that name where the log
+  # lives. Every other scenario learns the path from csync, so the state-directory
+  # layout is pinned here and nowhere else — change it, and only this block moves.
+
+  Scenario: The log is written under the XDG state directory
+    # The identical-pair setup is scaffolding, not the point: it is the simplest
+    # run that reaches rsync and so writes a log (nothing differs, so csync reports
+    # no changes and returns without prompting). What is under test is that the log
+    # honors XDG_STATE_HOME.
+    Given the environment variable XDG_STATE_HOME is set
+    And   that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  the run log should be under "cherry-sync" in $XDG_STATE_HOME
+
+  Scenario: With no XDG_STATE_HOME, the log falls back to the home state directory
+    # The variable most users never set. csync then keeps its logs where the XDG
+    # base-directory spec says state belongs: ~/.local/state. This must be a path
+    # distinct from the one above, or a csync that ignored XDG_STATE_HOME entirely
+    # and always used the home fallback would pass the XDG scenario by accident.
+    Given the environment variable XDG_STATE_HOME is not set
+    And   that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  the run log should be under "cherry-sync" in ~/.local/state
+
+  Scenario: The log is kept private to the user
+    # The log names every path a run touched, which discloses the shape of the
+    # user's work tree. Nothing outside the account has cause to read it, so the
+    # directory and the file are the owner's alone. Never the project directory,
+    # for a sharper reason: csync withholds only .csync.toml and .git from a
+    # comparison, so a log written in-tree would show up as a change and be pushed
+    # to the remote — but the scenarios above already pin it outside the project.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  the run log directory should be accessible only by its owner
+    And   the run log file should be accessible only by its owner
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, agreed but not yet drafted.
   # Each becomes a real Scenario block as we drill into it, one at a time.
@@ -118,17 +184,6 @@ Feature: Log each run
   # - csync discloses the log path on every run that writes one: the no-changes
   #   run, the completed sync, and the runs that fail at the comparison or mid
   #   transfer. A record nobody can find is not a record.
-  #
-  # - "csync --version" and "csync --license" write no run log, and neither does
-  #   a usage error. All three return before any operand is resolved and before
-  #   rsync runs, so there is nothing to troubleshoot — and a shell-completion
-  #   probe must not litter the state directory.
-  #
-  # - The log is written under $XDG_STATE_HOME/cherry-sync/, falling back to
-  #   ~/.local/state/cherry-sync/ when that variable is unset. This is the only
-  #   scenario that may name the path. Never the project directory: csync
-  #   withholds only .csync.toml and .git from a comparison, so an in-tree log
-  #   would show up as a change and be pushed to the remote.
   #
   # - One log per run, so a second run does not overwrite the first, and old
   #   logs are pruned rather than accumulating without bound.

@@ -93,6 +93,18 @@ csync push
 
 The `push`/`pull` verbs take no other arguments. csync never offers the `.csync.toml` itself for transfer — like `.git`, it is held out of the comparison and reported as excluded. If the file is missing, malformed, or sets no `remote`, csync says so and exits non-zero rather than guessing. An explicit `csync SOURCE DESTINATION` is unaffected and does not read `.csync.toml` for its target.
 
+### Run logs
+
+Every run that gets as far as comparing directories writes a log of itself, without being asked. A sync that removed files cannot be re-run to find out what it touched, so csync records as it goes rather than when you think to ask. Runs that do no work — `csync --version`, `csync --license`, a usage error — write nothing.
+
+Logs are written to `$XDG_STATE_HOME/cherry-sync/`, or `~/.local/state/cherry-sync/` when that variable is unset, one file per run, each named for the moment the run began. csync closes every run by naming the file it wrote, so you never have to go looking for it.
+
+The directory is created `0700` and each log `0600`: a log names every path a run touched, which says more about your work tree than you may want readable by others on the machine. The logs are plain text, they accumulate, and nothing here deletes them for you — remove them whenever you like, csync neither notices nor minds.
+
+The **location** is a stable interface you can rely on. The **contents** are not: they are meant to be read by a person after something has gone wrong, and what they record will change between releases. Don't parse them.
+
+If the log cannot be written at all — the state directory is read-only, or `XDG_STATE_HOME` points at something that isn't a directory — csync tells you before it asks what to sync, and syncs anyway. A record is a diagnostic, not a precondition. The run ends with a `Not logged:` line explaining why, in place of the usual `Log:` line.
+
 ## Roadmap
 
 Near-term enhancements are tracked as [open `enhancement` issues](https://github.com/DPassarelli/cherry-sync/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement) on GitHub.
