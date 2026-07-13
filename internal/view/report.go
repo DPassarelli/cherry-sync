@@ -43,6 +43,31 @@ func Excluded(parts []string) string {
 	return dim.Render("(excluding "+joinAnd(parts)+")") + "\n"
 }
 
+// LogPath returns the disclosure of where this run's log was written, as a dimmed
+// "Log: <path>" line. csync always says where it logged, on the runs that fail as
+// much as on the ones that succeed — those are the runs worth reading, and a
+// record the user cannot find is no use to them. The caller prints it last, on the
+// way out: nobody reads the path until something has already gone wrong, so it
+// earns no room above the interactive picker, which holds every preceding line out
+// of its scroll region. Like the Excluded disclosure it is faint rather than
+// aligned with anything — an aside the eye can skip. The styling drops to plain
+// text when stdout is not a terminal.
+func LogPath(path string) string {
+	dim := lipgloss.NewStyle().Faint(true)
+	return dim.Render("Log: "+path) + "\n"
+}
+
+// NotLogged returns the footer for a run that kept no record: a dimmed "Not logged:
+// <reason>" line standing where a logged run names its file. csync warns about this
+// before it asks what to sync, in time for the user to stop; it says so again here
+// because a long change list scrolls that warning away, and the end of the run is
+// where someone who wanted the record will come looking for it. A distinct label,
+// not an empty "Log:", so nothing points at a file that was never created.
+func NotLogged(reason string) string {
+	dim := lipgloss.NewStyle().Faint(true)
+	return dim.Render("Not logged: "+reason) + "\n"
+}
+
 // ChangeList returns the non-TTY change report: a "Changes: N" count followed by
 // the actions numbered from 1 in displayed order. The number is the selection
 // affordance — the digit a user types at the typed-grammar prompt to pick that

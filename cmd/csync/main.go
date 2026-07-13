@@ -16,6 +16,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/license"
 	"github.com/dpassarelli/cherry-sync/internal/operand"
+	"github.com/dpassarelli/cherry-sync/internal/runlog"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
 	"github.com/dpassarelli/cherry-sync/internal/view"
@@ -27,14 +28,25 @@ import (
 // which the version line renders as "cherry-sync (dev build)".
 var version = "dev"
 
-// main parses the command-line arguments, runs the dry-run comparison, asks which
-// changes to sync — through the interactive picker on a terminal, or the typed
-// prompt otherwise — and transfers the chosen files.
+// main runs csync and exits with the status it reports. It holds no logic of its
+// own: os.Exit skips deferred functions, so confining it to this one line is what
+// lets run own the resources — the run log above all — and release them on every
+// path out.
 func main() {
+	os.Exit(run())
+}
+
+// run parses the command-line arguments, runs the dry-run comparison, asks which
+// changes to sync — through the interactive picker on a terminal, or the typed
+// prompt otherwise — transfers the chosen files, and returns the process exit
+// status. Every failure leaves through a `return` so the deferred disclosure of
+// the run log's path happens on the runs that fail as much as on the ones that
+// succeed; those are the runs worth reading.
+func run() (code int) {
 	a, err := cli.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "usage: csync SOURCE DESTINATION")
-		os.Exit(2)
+		return 2
 	}
 
 	// --version reports the build and exits before any operand resolution or
@@ -42,7 +54,7 @@ func main() {
 	// ignored. The line goes to stdout — it is requested output, not a diagnostic.
 	if a.Mode == cli.Version {
 		fmt.Println(view.VersionReport(version))
-		return
+		return 0
 	}
 
 	// --license prints the embedded MIT text and exits, so a distributed bare
@@ -51,7 +63,7 @@ func main() {
 	// The text ends in a newline, so Print — not Println — avoids a trailing blank.
 	if a.Mode == cli.License {
 		fmt.Print(license.Text())
-		return
+		return 0
 	}
 
 	// With a saved-target verb the operands aren't on the command line: resolve
@@ -63,7 +75,7 @@ func main() {
 		cfg, err := config.Load(".")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 		switch a.Mode {
 		case cli.Push:
@@ -85,14 +97,63 @@ func main() {
 	srcN, err := operand.Normalize(source)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	dstN, err := operand.Normalize(destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	source, destination = srcN.Path, dstN.Path
+
+	// Open this run's log before any work happens. --version, --license, and a
+	// usage error have all returned by now: they run no rsync, so they leave
+	// nothing to troubleshoot and must not litter the state directory.
+	//
+	// A log that cannot be opened warns and is replaced by one that records nothing.
+	// The record is a diagnostic, never a precondition: a state directory gone
+	// read-only says nothing about whether the files should move, and a tool that
+	// refuses to work because it cannot keep a diary is a tool nobody keeps. It
+	// warns rather than declining silently, because a user hunting the record of a
+	// destructive run must not be left wondering whether csync skipped it or they
+	// misremembered where it goes.
+	runLog, err := runlog.Create()
+	notLogged := ""
+	if err != nil {
+		notLogged = err.Error()
+		fmt.Fprintf(os.Stderr, "warning: this run will not be logged (%v)\n", err)
+		runLog = runlog.Discard()
+	}
+
+	// Every run ends by accounting for its record: where it was written, or why it
+	// was not. Deferring that is the point of the os.Exit(run()) shape — the
+	// accounting cannot be forgotten at a new exit, and it costs the interactive
+	// picker no row of the terminal it holds above its scroll region. A failed run
+	// says so on stderr, beside the error the log would have explained; a clean one
+	// on stdout with the rest of the report.
+	//
+	// The unlogged run repeats here what the warning above already said, because a
+	// long change list scrolls that warning off the top and this is where someone
+	// who wanted the record will look. It carries its own label rather than an empty
+	// "Log:", so nothing sends the user after a file that was never created.
+	defer func() {
+		out := os.Stdout
+		if code != 0 {
+			out = os.Stderr
+		}
+		path := runLog.Path()
+		if path == "" {
+			fmt.Fprint(out, view.NotLogged(notLogged))
+			return
+		}
+		fmt.Fprint(out, view.LogPath(path))
+	}()
+
+	// Registered last, so it runs first: the log is closed before csync points at
+	// it. Failing to close cannot fail the sync — every record is already on disk,
+	// each written with its own syscall rather than buffered — so the descriptor is
+	// all that is being given back here.
+	defer func() { _ = runLog.Close() }()
 
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
@@ -125,7 +186,7 @@ func main() {
 	result, err := compare.Run(source, destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Disclose what was held out of the comparison — with no opt-out flag, this
@@ -158,7 +219,7 @@ func main() {
 			fmt.Print(view.ChangeList(nil))
 		}
 		fmt.Println("\nNo changes to sync.")
-		return
+		return 0
 	}
 
 	// Pick the selection front-end by whether we're attached to a terminal on both
@@ -171,14 +232,14 @@ func main() {
 		picked, err := view.RunPicker(result.Actions, preamble.String())
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
 		// transfer that would print "Sync complete! (0 files)".
 		if len(picked) == 0 {
 			fmt.Print(view.Canceled())
-			return
+			return 0
 		}
 		selected = picked
 	} else {
@@ -188,7 +249,7 @@ func main() {
 		selected, err = selection.SelectActions(os.Stdin, result.Actions)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -208,12 +269,12 @@ func main() {
 	err = transfer.Run(source, destination, transferPaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 	err = transfer.Remove(source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Report what moved with the post-sync summary: the past-tense list of changes.
@@ -221,6 +282,7 @@ func main() {
 	// human fallback, not a machine interface — so it gets the same summary, only
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
+	return 0
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both
