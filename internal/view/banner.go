@@ -9,8 +9,9 @@ const (
 	// projectName leads the banner and the --version report. It is the project's
 	// name, deliberately not the "csync" binary name.
 	projectName = "cherry-sync"
-	// versionDescription is the one-line summary --version prints. csync has no
-	// --help yet, so this is the only in-tool statement of what it does.
+	// versionDescription is the one-line summary --version prints. --help reuses
+	// the same VersionReport header, so both flags state what csync does the same
+	// way.
 	versionDescription = "An interactive rsync wrapper for selectively moving files over SSH."
 	// versionURL is the project home --version points users to.
 	versionURL = "https://github.com/dpassarelli/cherry-sync"

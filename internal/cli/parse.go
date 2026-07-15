@@ -6,6 +6,7 @@ package cli
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // Mode is how csync resolves its source and destination operands.
@@ -23,6 +24,8 @@ const (
 	Version
 	// License prints csync's license text and exits; no operands are resolved.
 	License
+	// Help prints csync's usage summary and exits; no operands are resolved.
+	Help
 )
 
 // Args is the parsed result of a csync command-line invocation. In Explicit mode
@@ -41,6 +44,13 @@ type Args struct {
 // .csync.toml); anything else returns an error. The caller (main.go) decides how
 // to surface that error to the user.
 func Parse(argv []string) (Args, error) {
+	// --help (and its "-h" alias) short-circuits ahead of everything: it is the
+	// escape hatch a lost user reaches for, so it wins over operands and over the
+	// other informational flags. `tool --help <anything>` printing usage and
+	// exiting is the near-universal convention.
+	if slices.Contains(argv, "--help") || slices.Contains(argv, "-h") {
+		return Args{Mode: Help}, nil
+	}
 	// --version short-circuits: it wins over any operands (matching the near-
 	// universal CLI convention that `tool --version <anything>` still reports the
 	// version and exits) rather than tripping the two-operand check below.
@@ -61,7 +71,7 @@ func Parse(argv []string) (Args, error) {
 			// pair whose source happens to be named "push". Reject it rather than
 			// fall through to the two-operand path below.
 			if len(argv) != 1 {
-				return Args{}, fmt.Errorf("%s takes no arguments", argv[0])
+				return Args{}, fmt.Errorf("'%s' takes no arguments", argv[0])
 			}
 			if argv[0] == "pull" {
 				return Args{Mode: Pull}, nil
@@ -70,16 +80,36 @@ func Parse(argv []string) (Args, error) {
 		}
 	}
 	if len(argv) != 2 {
-		return Args{}, fmt.Errorf("expected 2 arguments, got %d", len(argv))
+		// A lone argument that can't be a path is far more likely a mistyped verb
+		// than half of an operand pair, so name it as such and point at the real
+		// commands — a clearer nudge than "wrong argument count". Anything
+		// path-shaped, or the wrong count outright, falls to the operand message.
+		if len(argv) == 1 && !looksLikePath(argv[0]) {
+			return Args{}, fmt.Errorf("'%s' is not a command. Did you mean 'push' or 'pull'?", argv[0])
+		}
+		return Args{}, fmt.Errorf("csync needs two paths: a source and a destination")
 	}
 	if argv[0] == "" {
-		return Args{}, fmt.Errorf("source path is empty")
+		return Args{}, fmt.Errorf("the source path is empty")
 	}
 	if argv[1] == "" {
-		return Args{}, fmt.Errorf("destination path is empty")
+		return Args{}, fmt.Errorf("the destination path is empty")
 	}
 	return Args{
 		Source:      argv[0],
 		Destination: argv[1],
 	}, nil
+}
+
+// looksLikePath reports whether a lone argument is shaped like a filesystem or
+// remote path rather than a mistyped subcommand. A path carries a marker a bare
+// command word never would: a "/" component, a "host:" remote colon, or a
+// leading "." or "~". This only picks which error message a single bad argument
+// gets — a lone operand is an error either way — so a false guess costs wording,
+// not correctness.
+func looksLikePath(s string) bool {
+	if strings.ContainsAny(s, "/:") {
+		return true
+	}
+	return strings.HasPrefix(s, ".") || strings.HasPrefix(s, "~")
 }

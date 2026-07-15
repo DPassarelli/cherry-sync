@@ -45,8 +45,19 @@ func main() {
 func run() (code int) {
 	a, err := cli.Parse(os.Args[1:])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "usage: csync SOURCE DESTINATION")
+		// State the specific problem cli.Parse diagnosed, then point at --help for
+		// the full usage rather than dumping it here — a lost user gets a one-line
+		// reason and a next step. The reason goes to stderr; it is a diagnostic.
+		fmt.Fprintf(os.Stderr, "ERROR: %s\nRun 'csync --help' for usage.\n", err)
 		return 2
+	}
+
+	// --help prints the usage summary and exits before any operand resolution. It
+	// short-circuits in cli.Parse, so any trailing operands are ignored. The
+	// summary goes to stdout — it is requested output, not a diagnostic.
+	if a.Mode == cli.Help {
+		fmt.Println(view.Usage(version))
+		return 0
 	}
 
 	// --version reports the build and exits before any operand resolution or
@@ -135,7 +146,7 @@ func run() (code int) {
 	// The unlogged run repeats here what the warning above already said, because a
 	// long change list scrolls that warning off the top and this is where someone
 	// who wanted the record will look. It carries its own label rather than an empty
-	// "Log:", so nothing sends the user after a file that was never created.
+	// "Log written to", so nothing sends the user after a file that was never created.
 	defer func() {
 		out := os.Stdout
 		if code != 0 {

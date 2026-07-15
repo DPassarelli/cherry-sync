@@ -13,29 +13,32 @@ Feature: Invoke command
     Then the reported source should be "user@host:/project"
     And  the reported destination should be "./project"
 
-  Scenario: No arguments — show usage and exit non-zero
+  Scenario: No arguments — report the problem and exit non-zero
     When I run "csync"
     Then csync should return exit code 2
-    And  the reported usage should begin with "usage: csync"
+    And  the reported error should mention "a source and a destination"
+    And  the reported error should mention "csync --help"
 
-  Scenario: One argument — show usage and exit non-zero
+  Scenario: One path only — report that both are required
     When I run "csync ./project"
     Then csync should return exit code 2
-    And  the reported usage should begin with "usage: csync"
+    And  the reported error should mention "a source and a destination"
 
-  Scenario: Empty path argument — show usage and exit non-zero
+  Scenario: A mistyped command is reported as such
+    When I run "csync pill"
+    Then csync should return exit code 2
+    And  the reported error should mention "'pill' is not a command"
+    And  the reported error should mention "pull"
+
+  Scenario: Empty path argument — report the empty operand and exit non-zero
     When I run "csync <empty> user@host:/project"
     Then csync should return exit code 2
-    And  the reported usage should begin with "usage: csync"
+    And  the reported error should mention "source path is empty"
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
   # ---------------------------------------------------------------------------
-  #
-  # - Usage-message content: once we settle what the rest of the message
-  #   should include (synopsis line, brief description, pointer to `--help`),
-  #   add scenarios asserting those fields beyond the `usage: csync` prefix.
   #
   # - Three or more arguments: rejected in v0.1 (we are not supporting multiple
   #   sources yet).

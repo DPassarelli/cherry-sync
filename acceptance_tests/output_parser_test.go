@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// ReportedOutput mirrors the labeled lines csync prints to stdout, plus the
-// usage message it may print to stderr. It is the single point of translation
-// between rendered output and test assertions — when the rendering changes,
-// parseOutput is the only thing that needs to change with it.
+// ReportedOutput mirrors the labeled lines csync prints to stdout. It is the
+// single point of translation between rendered output and test assertions — when
+// the rendering changes, parseOutput is the only thing that needs to change with
+// it. Free-text error output on stderr is asserted directly, not parsed here.
 type ReportedOutput struct {
 	Source            string
 	Destination       string
@@ -30,7 +30,6 @@ type ReportedOutput struct {
 	HasLogPath        bool
 	NotLogged         string
 	Warning           string
-	Usage             string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -82,14 +81,14 @@ var (
 	// scenario that asserts csync named NO log needs both, or a stray path on the
 	// stream it did not read would pass for silence.
 	//
-	// The path is captured with `*`, not `+`, so a "Log:" line with nothing after it
-	// still matches: HasLogPath then reports the line, and LogPath its empty value.
-	// Requiring a character would make an empty disclosure indistinguishable from no
-	// disclosure, and csync printing "Log: " for a file it never wrote would read as
-	// silence.
-	logPathRE = regexp.MustCompile(`(?m)^Log:[^\S\n]*(.*?)[^\S\n]*$`)
+	// The path is captured with `*`, not `+`, so a "Log written to" line with nothing
+	// after it still matches: HasLogPath then reports the line, and LogPath its empty
+	// value. Requiring a character would make an empty disclosure indistinguishable
+	// from no disclosure, and csync printing "Log written to " for a file it never
+	// wrote would read as silence.
+	logPathRE = regexp.MustCompile(`(?m)^Log written to[^\S\n]*(.*?)[^\S\n]*$`)
 	// notLoggedRE captures the reason csync gives, as it exits, for having kept no
-	// record of the run. It stands in the same place as the Log: line and carries a
+	// record of the run. It stands in the same place as the log line and carries a
 	// different label, so a reader — and the scenario asserting csync named no log —
 	// cannot mistake one for the other.
 	notLoggedRE = regexp.MustCompile(`(?m)^Not logged:[^\S\n]*(.*?)[^\S\n]*$`)
@@ -230,6 +229,5 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		out.Message = strings.TrimSpace(line)
 		break
 	}
-	out.Usage = strings.TrimSpace(stderr)
 	return out
 }

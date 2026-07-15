@@ -44,7 +44,7 @@ func Excluded(parts []string) string {
 }
 
 // LogPath returns the disclosure of where this run's log was written, as a dimmed
-// "Log: <path>" line. csync always says where it logged, on the runs that fail as
+// "Log written to <path>" line. csync always says where it logged, on the runs that fail as
 // much as on the ones that succeed — those are the runs worth reading, and a
 // record the user cannot find is no use to them. The caller prints it last, on the
 // way out: nobody reads the path until something has already gone wrong, so it
@@ -54,7 +54,7 @@ func Excluded(parts []string) string {
 // text when stdout is not a terminal.
 func LogPath(path string) string {
 	dim := lipgloss.NewStyle().Faint(true)
-	return dim.Render("Log: "+path) + "\n"
+	return dim.Render("Log written to "+path) + "\n"
 }
 
 // NotLogged returns the footer for a run that kept no record: a dimmed "Not logged:
@@ -62,7 +62,7 @@ func LogPath(path string) string {
 // before it asks what to sync, in time for the user to stop; it says so again here
 // because a long change list scrolls that warning away, and the end of the run is
 // where someone who wanted the record will come looking for it. A distinct label,
-// not an empty "Log:", so nothing points at a file that was never created.
+// not an empty "Log written to", so nothing points at a file that was never created.
 func NotLogged(reason string) string {
 	dim := lipgloss.NewStyle().Faint(true)
 	return dim.Render("Not logged: "+reason) + "\n"

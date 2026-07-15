@@ -234,7 +234,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
 	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
-	ctx.Step(`^the reported usage should begin with "([^"]*)"$`, theReportedUsageShouldBeginWith)
+	ctx.Step(`^the help text should contain "([^"]*)"$`, theHelpTextShouldContain)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
 	ctx.Step(`^the reported license should contain "([^"]*)"$`, theReportedLicenseShouldContain)
@@ -571,14 +571,14 @@ func csyncShouldReturnANonZeroExitCode(ctx context.Context) error {
 	return nil
 }
 
-// theReportedUsageShouldBeginWith asserts the usage text parsed from stderr
-// starts with want.
-func theReportedUsageShouldBeginWith(ctx context.Context, want string) error {
+// theHelpTextShouldContain asserts a substring appears in what csync printed to
+// stdout for `--help` — used to check the help summary carries its version
+// header, sections, commands, and flags without pinning the full block (the
+// view package's own tests guard the exact layout).
+func theHelpTextShouldContain(ctx context.Context, want string) error {
 	r := captured(ctx)
-	got := parseOutput(r.Stdout, r.Stderr).Usage
-
-	if !strings.HasPrefix(got, want) {
-		return fmt.Errorf("Usage: got %q, want prefix %q", got, want)
+	if !strings.Contains(r.Stdout, want) {
+		return fmt.Errorf("help output missing %q in stdout:\n%s", want, r.Stdout)
 	}
 	return nil
 }
@@ -748,7 +748,7 @@ func csyncShouldWarnThatItCouldNotWriteARunLog(ctx context.Context) error {
 // user to a log that was never created is a worse answer than admitting there is
 // none.
 // It reads the presence of the disclosure line, not the truth of its value: csync
-// printing a bare "Log:" with nothing after it is a disclosure, and a useless one.
+// printing a bare "Log written to" with nothing after it is a disclosure, and a useless one.
 func csyncShouldNotReportWhereItLoggedTheRun(ctx context.Context) error {
 	r := captured(ctx)
 	out := parseOutput(r.Stdout, r.Stderr)

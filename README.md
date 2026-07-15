@@ -72,9 +72,9 @@ csync compares the two directories and lets you choose what to transfer. In a te
 
 When input or output is redirected (a pipe, a file, CI), csync falls back to a typed prompt on stderr — so the report on stdout stays uncluttered — where you press **Enter** (or `a`) to sync every change, `n` or `ctrl-c` to cancel, or pick a subset by number: a single number, a range like `1-3`, a comma list like `1,3`, or any combination thereof (`1-2,4`); whitespace around the numbers is ignored.
 
-If the two directories are identical, csync reports there is nothing to sync and exits cleanly. A missing or wrong number of arguments prints a usage message on stderr and exits with code 2.
+If the two directories are identical, csync reports there is nothing to sync and exits cleanly. An invalid invocation prints an error on stderr that explains the problem and points to `csync --help`, then exits with code 2.
 
-`csync --version` prints the version and exits, taking precedence over any other arguments.
+`csync --help` (or `-h`) prints a usage summary — the usage forms, examples, commands, and flags — and exits. `csync --version` prints the version and exits. Both take precedence over any other arguments.
 
 ### Saved targets
 

@@ -213,13 +213,13 @@ Feature: Saved sync targets
     # asserted here.
     When  I run "csync push ./project"
     Then  csync should return exit code 2
-    And   the reported usage should begin with "usage: csync"
+    And   the reported error should mention "'push' takes no arguments"
 
   Scenario: pull rejects extra arguments
     # The pull mirror of the guard above, so the rejection is not push-only.
     When  I run "csync pull ./project"
     Then  csync should return exit code 2
-    And   the reported usage should begin with "usage: csync"
+    And   the reported error should mention "'pull' takes no arguments"
 
   Scenario: A configured remote that looks like an rsync option is treated as a path
     # Security regression guard — the config mirror of the same scenario in
