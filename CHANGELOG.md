@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-15
+
 ### Added
 
 - `csync --help` (and `-h`) prints a usage summary and exits. Like `--version` and `--license`, it takes precedence over any operands. (#91)
@@ -103,7 +105,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.5.0...v0.6.0
