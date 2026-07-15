@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/dpassarelli/cherry-sync/internal/cli"
+	"github.com/dpassarelli/cherry-sync/internal/command"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/license"
@@ -166,6 +167,17 @@ func run() (code int) {
 	// all that is being given back here.
 	defer func() { _ = runLog.Close() }()
 
+	// Record which build made this run, up front, so a run abandoned at the prompt
+	// still names its binary. A failed record write can't fail the sync — the log is
+	// a diagnostic, never a precondition — so the error is deliberately dropped; the
+	// unwritable-log case is already surfaced when Create fell back to Discard above.
+	_ = runLog.Version(version)
+
+	// Every external command csync runs goes through this runner, which reports each
+	// invocation to the run log. A discarding log is a valid recorder that keeps
+	// nothing, so there is no separate unlogged path to maintain here.
+	runner := command.New(runLog)
+
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
 	// shows — piped output stays clean.
@@ -194,7 +206,7 @@ func run() (code int) {
 		view.Endpoint{Path: destination, From: dstN.From},
 	))
 
-	result, err := compare.Run(source, destination)
+	result, err := compare.Run(runner, source, destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

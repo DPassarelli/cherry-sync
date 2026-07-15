@@ -4,7 +4,8 @@ package compare
 
 import (
 	"fmt"
-	"os/exec"
+
+	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
 // Action is a single planned change between source and destination.
@@ -32,26 +33,26 @@ type Result struct {
 	CsyncTomlExcluded bool
 }
 
-// Run invokes rsync to compute the diff between source and destination.
-// Both paths get a trailing slash so rsync compares directory contents
-// rather than nesting source under destination.
-func Run(source, destination string) (Result, error) {
+// Run invokes rsync to compute the diff between source and destination, running it
+// through r so the invocation lands in the run log. Both paths get a trailing slash
+// so rsync compares directory contents rather than nesting source under destination.
+func Run(r *command.Runner, source, destination string) (Result, error) {
 	exc, err := localExclusions(source, destination)
 	if err != nil {
 		return Result{}, err
 	}
 
 	args := rsyncArgs(source, destination, exc.patterns)
-	// The variable args are safe by construction — see SECURITY.md: no shell
-	// (exec.Command, not sh -c), a `--` separator added by rsyncArgs, and path
-	// operands validated in cli.Parse. The guard is proven behaviorally by the
-	// "treated as a path" scenario in compare-directories.feature, which fails
-	// if the `--` is removed. gosec G204 flags the exec pattern regardless.
-	out, err := exec.Command("rsync", args...).Output() // #nosec G204 -- justified above
+	// The variable args are safe by construction — see SECURITY.md: no shell (the
+	// runner uses exec.Command, not sh -c), a `--` separator added by rsyncArgs, and
+	// path operands validated in cli.Parse. The guard is proven behaviorally by the
+	// "treated as a path" scenario in compare-directories.feature, which fails if the
+	// `--` is removed.
+	out, err := r.Run("rsync", args, nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("rsync: %w", err)
 	}
-	actions := parseActions(string(out))
+	actions := parseActions(string(out.Stdout))
 	sortActions(actions)
 	excluded := exc.gitignored
 	// The --exclude pre-filter is built from `git ls-files`, which sees only the

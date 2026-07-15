@@ -247,6 +247,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I look for the log file$`, iLocateTheLogFile)
 	ctx.Step(`^I have taken note of where the log file is$`, iLocateTheLogFile)
 	ctx.Step(`^the log file should already have content$`, theLogFileShouldAlreadyHaveContent)
+	ctx.Step(`^the log should record that the version was "([^"]*)"$`, theLogShouldRecordThatTheVersionWas)
+	ctx.Step(`^the log should record running "([^"]*)" for the comparison$`, theLogShouldRecordRunningForTheComparison)
 	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
 	// A restatement of `csync should return exit code 0` in the vocabulary of a
 	// scenario that has no interest in the number, only in csync having finished
@@ -851,6 +853,49 @@ func theLogFileShouldAlreadyHaveContent(ctx context.Context) error {
 	}
 	if info.Size() == 0 {
 		return fmt.Errorf("run log at %q is empty while csync waits at the prompt; nothing has been written to disk yet", path)
+	}
+	return nil
+}
+
+// theLogShouldRecordThatTheVersionWas asserts the located log names the version
+// csync ran as. It reads the file while csync is still blocked at the prompt, so a
+// pass proves the version was recorded up front rather than at exit. The check ties
+// the record to the known version the harness injected (see report-version): a log
+// that named some other constant, or named nothing, fails here. The match is on the
+// "version <value>" pairing rather than the value alone, so the value appearing in
+// some unrelated field (a path, the timestamp) cannot satisfy it.
+func theLogShouldRecordThatTheVersionWas(ctx context.Context, want string) error {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		return fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	if err != nil {
+		return fmt.Errorf("run log at %q: %w", path, err)
+	}
+	if !strings.Contains(string(content), "version "+want) {
+		return fmt.Errorf("run log at %q does not record version %q; contents:\n%s", path, want, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordRunningForTheComparison asserts the located log names the
+// external command csync ran to compare the two sides. Read while csync is blocked
+// at the prompt, the comparison is the only command that has run, so an "exec
+// <name>" record for it proves csync logs what it actually invoked — the fact a
+// destructive run cannot be re-run to recover. It keys on the "exec <name>"
+// pairing, not the name alone, so the name appearing elsewhere cannot satisfy it.
+func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string) error {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		return fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	if err != nil {
+		return fmt.Errorf("run log at %q: %w", path, err)
+	}
+	if !strings.Contains(string(content), "exec "+name+" ") {
+		return fmt.Errorf("run log at %q does not record running %q; contents:\n%s", path, name, content)
 	}
 	return nil
 }

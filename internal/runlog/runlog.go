@@ -11,7 +11,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
 // Log is an open run log: the record of a single csync invocation. Its path is
@@ -89,6 +92,60 @@ func reason(err error) error {
 		return pathErr.Err
 	}
 	return err
+}
+
+// Version records which build of csync made this run — the first thing a
+// troubleshooter needs and the field a bug report most often omits. It is written
+// up front, so a run abandoned at the selection prompt still names its binary. The
+// value is recorded verbatim (a dev build logs "dev"); csync injects a release
+// version at build time.
+func (l *Log) Version(v string) error {
+	return l.record("version", v)
+}
+
+// Record writes one external command csync ran — what it was, its argument vector,
+// its exit code, and how long it took. It satisfies command.Recorder, so the
+// packages that shell out report through it without depending on this one. The
+// argument vector is written as space-separated quoted tokens, so a path holding a
+// space stays a single argument a reader can pick out. A discarding log ignores it.
+func (l *Log) Record(e command.Execution) error {
+	rest := fmt.Sprintf("%s %s exit=%d dur=%s", e.Name, quoteArgs(e.Args), e.ExitCode, e.Duration)
+	return l.record("exec", rest)
+}
+
+// quoteArgs renders an argument vector as a bracketed list of double-quoted tokens
+// — ["--recursive" "src dir/"] — so the boundary between arguments survives in the
+// log even when an argument contains a space. %q also escapes an embedded quote,
+// so no argument can forge a boundary that isn't there.
+func quoteArgs(args []string) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, a := range args {
+		if i > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%q", a)
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
+// record appends one line to the log: the current UTC time in RFC 3339, a label
+// naming the fact, and the rest of the line. Every record after "started" shares
+// this shape, so the label is what a reader (or a later field type) keys on. On a
+// discarding log it does nothing, so no caller needs a second code path. The line
+// is written with its own syscall, not buffered — the run may be killed before it
+// ends, and the records already on disk are the ones worth having.
+func (l *Log) record(label, rest string) error {
+	if l.file == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fmt.Fprintf(l.file, "%s %s %s\n", now, label, rest)
+	if err != nil {
+		return fmt.Errorf("could not write to the log file %s: %w", l.path, reason(err))
+	}
+	return nil
 }
 
 // Path reports where this run's log was written, so the CLI can disclose it.

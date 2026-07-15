@@ -66,6 +66,35 @@ Feature: Log each run
     Then  csync should exit normally
     And   the reported log path should be the one I found earlier
 
+  Scenario: By the time it prompts, the log names the version that ran
+    # Which build produced this run is the first thing a troubleshooter needs and
+    # the thing a bug report most often omits. csync records it up front, before it
+    # asks what to sync, so a run abandoned at the prompt still says which binary
+    # made it. The prompt is the observation point for the same reason as the
+    # write-as-you-go scenario: csync is suspended there, so the log can be read
+    # without racing the run.
+    #
+    # The version is the known one the harness injects (see report-version); tying
+    # the record to that literal is what proves csync logged its own version and
+    # not a constant.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record that the version was "0.0.0-test"
+
+  Scenario: The log records the comparison csync ran
+    # The comparison is the one external command every run makes, so it is where the
+    # record of "what csync actually invoked" begins. A troubleshooter reading the log
+    # can see the exact rsync that produced the change list — the dry-run that a
+    # destructive run can no longer be repeated to reproduce.
+    #
+    # Read at the prompt, before any transfer, the comparison is the only command
+    # that has run — so finding it there needs no other command to be filtered out.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record running "rsync" for the comparison
+
   Scenario: A log that cannot be written does not stop the sync
     # The record is a diagnostic, never a precondition. A state directory that has
     # gone read-only, or an XDG_STATE_HOME pointing at something that is not a
