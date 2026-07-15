@@ -52,6 +52,16 @@ sudo mv cherry-sync_<version>_darwin_arm64 /usr/local/bin/csync
 
 Each release also publishes a `checksums.txt` that you can use to verify the download against. The binary is self-contained: run `csync --license` to print the license terms it ships with.
 
+#### macOS Gatekeeper
+
+macOS tags anything downloaded through a browser with a quarantine flag, and Gatekeeper blocks the binary from running because it is not yet signed by a registered Apple developer. If you see a "cannot be opened because Apple cannot check it for malware" message, clear the flag before making the binary executable:
+
+```sh
+xattr -d com.apple.quarantine cherry-sync_<version>_darwin_arm64   # match the file you downloaded
+```
+
+(Downloading with `curl`/`wget` instead of a browser avoids the quarantine flag altogether.) Signed, notarized releases are planned, which will remove this step.
+
 ### Build from source
 
 Clone this repo or [download the latest from main](https://github.com/DPassarelli/cherry-sync/archive/refs/heads/main.zip), and then:
