@@ -8,11 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- `csync --license` prints csync's full MIT license text, then exits (it takes precedence over any operands, like `--version`). The text is embedded in the binary, so it travels with a bare executable rather than depending on a file bundled beside it. `csync --version` now closes with a line pointing at it. (#84)
+- `csync --help` (and `-h`) prints a usage summary and exits. Like `--version` and `--license`, it takes precedence over any operands. (#91)
+- `csync --license` prints csync's full MIT license text and exits. The text is embedded in the binary, so it travels with a bare executable rather than depending on a file bundled beside it. `csync --version` now closes with a line pointing at it. (#84)
 - csync now records every run to a log file. Logs are written to either `$XDG_STATE_HOME/cherry-sync/` or `~/.local/state/cherry-sync/` (when `XDG_STATE_HOME` is unset), and csync names the file it wrote as it exits. Runs that do no work (`--version`, `--license`, a usage error) write nothing. (#82)
 
 ### Changed
 
+- An invalid invocation now explains what was wrong and points to `csync --help`, instead of printing a bare `usage: csync SOURCE DESTINATION`. A mistyped verb (`csync pll`) is called out as an unknown command that suggests `push`/`pull`; a lone or missing path says a source and destination are both required; every message ends with a pointer to `--help`. (#91)
 - Releases now publish each platform's `csync` as a bare executable (e.g. `cherry-sync_1.0.0_darwin_arm64`) instead of a `tar.gz`. There is nothing left to unpack — the binary carries its own license — so installing is a download, a `chmod +x`, and a move onto your `PATH`. Downloads must be made executable before they will run. (#84)
 
 ## [0.8.0] - 2026-07-08
