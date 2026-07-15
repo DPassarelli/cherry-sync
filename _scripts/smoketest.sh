@@ -9,7 +9,8 @@
 # provisioned VM, or a developer's laptop.
 #
 # Contract checked (as implemented in cmd/csync/main.go): invoked with no
-# arguments, csync writes a line containing "usage:" to stderr and exits 2.
+# arguments, csync writes an error to stderr that points the user at
+# "csync --help", and exits 2.
 # Invoked with --version it writes the project version line to stdout and exits
 # 0; when the caller names the expected version (the release path passes the
 # tag), that line must contain it — this is the only check that exercises the
@@ -77,9 +78,12 @@ if [ "$rc" -ne 2 ]; then
   check_fail "expected exit code 2, got $rc"
 fi
 
-# 2. The usage line must be written to stderr.
-if ! grep -qF 'usage:' "$err"; then
-  check_fail "expected a line containing 'usage:' on stderr; stderr was: $(cat "$err")"
+# 2. The error must point the user at --help on stderr. csync no longer dumps a
+# bare "usage:" block for a bad invocation (#91); it prints a one-line reason and
+# a pointer to `csync --help`, which every usage error ends with, so that pointer
+# is the stable signal to assert here.
+if ! grep -qF -- '--help' "$err"; then
+  check_fail "expected the error on stderr to point at 'csync --help'; stderr was: $(cat "$err")"
 fi
 
 # 3. --version must exit 0 and print the project version line to stdout.
