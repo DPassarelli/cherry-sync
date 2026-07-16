@@ -263,6 +263,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a local directory whose path contains a double quote$`, aLocalDirectoryWhosePathContainsADoubleQuote)
 	ctx.Step(`^a local source path that does not exist$`, aLocalSourcePathThatDoesNotExist)
 	ctx.Step(`^the log should record the comparison's failing exit code$`, theLogShouldRecordTheComparisonsFailingExitCode)
+	ctx.Step(`^the logged duration should be a positive whole number of milliseconds$`, theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds)
 	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
@@ -989,6 +990,42 @@ func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error 
 	}
 	if cmd.ExitCode != want {
 		return fmt.Errorf("run log records rsync exit=%d, want %d (what csync reported); contents:\n%s", cmd.ExitCode, want, content)
+	}
+	return nil
+}
+
+// wholeMillisRE matches a duration expressed as a whole number of milliseconds with no
+// fractional part — "44ms", not "43.7ms". The capture is the millisecond count, so the
+// duration scenario can also check it is greater than zero.
+var wholeMillisRE = regexp.MustCompile(`^(\d+)ms$`)
+
+// theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds asserts a recorded
+// command's duration is present, decimal-free, and greater than zero — the shape a
+// rounded-up whole-millisecond value takes. It reads the comparison's duration through
+// the facade, which keeps the raw duration text, so this pins the rendered format: an
+// unrounded "43.764397ms" fails the whole-millisecond match, and a "0ms" fails the
+// greater-than-zero check that rounding up exists to uphold.
+func theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	m := wholeMillisRE.FindStringSubmatch(cmd.Duration)
+	if m == nil {
+		return fmt.Errorf("run log records duration %q, want a whole number of milliseconds like %q; contents:\n%s", cmd.Duration, "44ms", content)
+	}
+	ms, _ := strconv.Atoi(m[1])
+	if ms <= 0 {
+		return fmt.Errorf("run log records duration %q, want greater than zero; contents:\n%s", cmd.Duration, content)
 	}
 	return nil
 }

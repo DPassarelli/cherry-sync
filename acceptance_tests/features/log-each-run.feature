@@ -187,6 +187,20 @@ Feature: Log each run
     Then  csync should return a non-zero exit code
     And   the log should record the comparison's failing exit code
 
+  Scenario: A command's duration is logged as whole milliseconds
+    # How long a command took is recorded so a troubleshooter can see where a slow run
+    # spent its time. The value is rounded up to a whole millisecond — no decimal tail,
+    # which is noise at this granularity, and rounding up rather than to nearest keeps a
+    # sub-millisecond call from reading as having taken no time at all. So every recorded
+    # command shows a positive, decimal-free duration like "44ms".
+    #
+    # The identical-pair setup reaches rsync and returns without prompting, so the
+    # comparison's duration is on hand to read once csync exits.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the logged duration should be a positive whole number of milliseconds
+
   Scenario: The log records the command line as it was invoked
     # The literal invocation — what the user actually typed — heads the log, distinct
     # from the resolved source and destination below it. For an explicit run the two
@@ -358,9 +372,9 @@ Feature: Log each run
   #   them before it asks, rather than at the end.
   #
   # - Every external command csync runs (the rsync comparison, transfer, and
-  #   removal; the git ignore-rule queries) is now recorded with its argument
-  #   vector, and a failed comparison records its real non-zero exit — scenarios
-  #   above. Still to pin on its own: that the recorded duration reflects the call.
+  #   removal; the git ignore-rule queries) is recorded with its argument vector,
+  #   its exit code (a failed comparison records its real non-zero exit), and its
+  #   duration (whole milliseconds, rounded up) — scenarios above.
   #
   # - The actions csync classified, and which of them the user selected, are
   #   recorded — the two can differ, and a removal that was applied is the fact

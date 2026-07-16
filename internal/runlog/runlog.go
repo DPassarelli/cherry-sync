@@ -113,8 +113,17 @@ func (l *Log) Invocation(name string, args []string) error {
 // argument vector is written as space-separated quoted tokens, so a path holding a
 // space stays a single argument a reader can pick out. A discarding log ignores it.
 func (l *Log) Record(e command.Execution) error {
-	rest := fmt.Sprintf("%s %s exit=%d dur=%s", e.Name, quoteArgs(e.Args), e.ExitCode, e.Duration)
+	rest := fmt.Sprintf("%s %s exit=%d dur=%s", e.Name, quoteArgs(e.Args), e.ExitCode, roundUpMillis(e.Duration))
 	return l.record("exec", rest)
+}
+
+// roundUpMillis renders d as a whole number of milliseconds, rounding up — "44ms", not
+// the unrounded "43.764397ms". The fractional tail is noise at this granularity, and
+// rounding up rather than to nearest keeps any command that took time at all from
+// reading as 0ms: the ceiling of a positive duration is at least one millisecond.
+func roundUpMillis(d time.Duration) string {
+	ms := (int64(d) + int64(time.Millisecond) - 1) / int64(time.Millisecond)
+	return fmt.Sprintf("%dms", ms)
 }
 
 // quoteArgs renders an argument vector as a bracketed list of double-quoted tokens
