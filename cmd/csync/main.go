@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/term"
@@ -129,7 +130,7 @@ func run() (code int) {
 	// warns rather than declining silently, because a user hunting the record of a
 	// destructive run must not be left wondering whether csync skipped it or they
 	// misremembered where it goes.
-	runLog, err := runlog.Create()
+	runLog, err := runlog.Create(version)
 	notLogged := ""
 	if err != nil {
 		notLogged = err.Error()
@@ -167,11 +168,20 @@ func run() (code int) {
 	// all that is being given back here.
 	defer func() { _ = runLog.Close() }()
 
-	// Record which build made this run, up front, so a run abandoned at the prompt
-	// still names its binary. A failed record write can't fail the sync — the log is
-	// a diagnostic, never a precondition — so the error is deliberately dropped; the
-	// unwritable-log case is already surfaced when Create fell back to Discard above.
-	_ = runLog.Version(version)
+	// Record the literal invocation, up front, so the log opens with the command as
+	// run — what the user actually typed, the raw args before any resolution.
+	// filepath.Base trims the arg0 path down to "csync". A failed record write can't
+	// fail the sync — the log is a diagnostic, never a precondition — so the error is
+	// deliberately dropped; the unwritable-log case is already surfaced when Create
+	// fell back to Discard above.
+	_ = runLog.Invocation(filepath.Base(os.Args[0]), os.Args[1:])
+
+	// Then the operands: what csync compared and which way the sync went, the frame
+	// the rest of the log hangs on. These are the normalized paths the header echoes
+	// and the comparison uses, so the log agrees with what the user saw — and under a
+	// saved-target push/pull they are the resolved paths the invocation above does not
+	// show. (The version heads the log already — Create wrote it.)
+	_ = runLog.Operands(source, destination)
 
 	// Every external command csync runs goes through this runner, which reports each
 	// invocation to the run log. A discarding log is a valid recorder that keeps

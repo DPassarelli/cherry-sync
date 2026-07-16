@@ -95,6 +95,49 @@ Feature: Log each run
     When  I look for the log file
     Then  the log should record running "rsync" for the comparison
 
+  Scenario: The log records the command line as it was invoked
+    # The literal invocation — what the user actually typed — heads the log, distinct
+    # from the resolved source and destination below it. For an explicit run the two
+    # look alike; the distinction earns its keep for a saved-target push or pull,
+    # where the operands are derived and only this line still shows the verb.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should record the command line that was run
+
+  Scenario: The log names both operands of the run
+    # A run's operands — what it compared, and in which direction — are the frame the
+    # rest of the log hangs on. csync records both, and they are the same source and
+    # destination it echoed in its header: the log agrees with what the user saw, so a
+    # reader is never left guessing which way the sync went.
+    #
+    # The identical-pair setup is the simplest run that reaches rsync and returns
+    # without prompting, so the whole run — header, log, disclosed path — is on hand
+    # to reconcile once it exits. No path is named here; csync is the source of truth
+    # for what the operands resolved to.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should name the source and destination csync reported
+
+  @remote
+  Scenario: Under a saved-target push, the log keeps the verb and the resolved operands apart
+    # This is where the invocation line earns its place. On an explicit run it and the
+    # source/destination lines look alike; under `csync push` they diverge — the
+    # invocation stays the verb the user typed, while source and destination are what
+    # csync resolved that verb to from .csync.toml (here, "." and the saved remote).
+    # A troubleshooter reading a "push went the wrong way" report needs both halves:
+    # what was asked for, and what it became.
+    Given that all of the files are identical between local and remote
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project"
+      """
+    When  I run "csync push" from the project directory
+    Then  csync should return exit code 0
+    And   the log should record the command line that was run
+    And   the log should name the source and destination csync reported
+
   Scenario: A log that cannot be written does not stop the sync
     # The record is a diagnostic, never a precondition. A state directory that has
     # gone read-only, or an XDG_STATE_HOME pointing at something that is not a

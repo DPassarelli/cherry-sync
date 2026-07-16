@@ -92,6 +92,12 @@ type foundLogKey struct{}
 // scenario having to name it. Which file it is was never the point.
 type changedFileKey struct{}
 
+// invokedArgsKey stashes the argument vector runCsync actually passed to the csync
+// child — after the `./project`/`user@host:/project` placeholders are substituted —
+// so the invocation-line step can reconcile the log against what was really run
+// rather than reconstruct the substitution itself.
+type invokedArgsKey struct{}
+
 // noXdgKey flags a scenario (via `Given the environment variable XDG_STATE_HOME is
 // not set`) as needing the csync child to run without XDG_STATE_HOME, so its log
 // falls back to ~/.local/state under the throwaway home. csyncEnv reads it.
@@ -249,6 +255,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the log file should already have content$`, theLogFileShouldAlreadyHaveContent)
 	ctx.Step(`^the log should record that the version was "([^"]*)"$`, theLogShouldRecordThatTheVersionWas)
 	ctx.Step(`^the log should record running "([^"]*)" for the comparison$`, theLogShouldRecordRunningForTheComparison)
+	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
+	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
 	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
 	// A restatement of `csync should return exit code 0` in the vocabulary of a
 	// scenario that has no interest in the number, only in csync having finished
@@ -527,6 +535,7 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		Stderr:   stderrBuf.String(),
 		ExitCode: exitCode,
 	}
+	ctx = context.WithValue(ctx, invokedArgsKey{}, args)
 	return context.WithValue(ctx, outputKey{}, result), nil
 }
 
@@ -857,24 +866,40 @@ func theLogFileShouldAlreadyHaveContent(ctx context.Context) error {
 	return nil
 }
 
+// parseLogAt reads the run log at path and returns it parsed, along with the raw
+// contents for error messages. It is the one place the log steps turn a path into a
+// ParsedLog, so each reads structured fields rather than matching substrings.
+func parseLogAt(path string) (ParsedLog, string, error) {
+	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	if err != nil {
+		return ParsedLog{}, "", fmt.Errorf("run log at %q: %w", path, err)
+	}
+	return parseLog(string(content)), string(content), nil
+}
+
+// locatedLog returns the parsed log the scenario found under XDG_STATE_HOME (via
+// `I look for the log file`), for the steps that read it while csync is still
+// blocked at the prompt — before csync has disclosed the path itself.
+func locatedLog(ctx context.Context) (ParsedLog, string, error) {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		return ParsedLog{}, "", fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	return parseLogAt(path)
+}
+
 // theLogShouldRecordThatTheVersionWas asserts the located log names the version
 // csync ran as. It reads the file while csync is still blocked at the prompt, so a
 // pass proves the version was recorded up front rather than at exit. The check ties
 // the record to the known version the harness injected (see report-version): a log
-// that named some other constant, or named nothing, fails here. The match is on the
-// "version <value>" pairing rather than the value alone, so the value appearing in
-// some unrelated field (a path, the timestamp) cannot satisfy it.
+// that named some other build, or named none, fails here.
 func theLogShouldRecordThatTheVersionWas(ctx context.Context, want string) error {
-	path, _ := ctx.Value(foundLogKey{}).(string)
-	if path == "" {
-		return fmt.Errorf("no run log was located; missing a step that looks for it?")
-	}
-	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	log, content, err := locatedLog(ctx)
 	if err != nil {
-		return fmt.Errorf("run log at %q: %w", path, err)
+		return err
 	}
-	if !strings.Contains(string(content), "version "+want) {
-		return fmt.Errorf("run log at %q does not record version %q; contents:\n%s", path, want, content)
+	if log.Version != want {
+		return fmt.Errorf("run log records version %q, want %q; contents:\n%s", log.Version, want, content)
 	}
 	return nil
 }
@@ -886,16 +911,63 @@ func theLogShouldRecordThatTheVersionWas(ctx context.Context, want string) error
 // destructive run cannot be re-run to recover. It keys on the "exec <name>"
 // pairing, not the name alone, so the name appearing elsewhere cannot satisfy it.
 func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string) error {
-	path, _ := ctx.Value(foundLogKey{}).(string)
-	if path == "" {
-		return fmt.Errorf("no run log was located; missing a step that looks for it?")
-	}
-	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	log, content, err := locatedLog(ctx)
 	if err != nil {
-		return fmt.Errorf("run log at %q: %w", path, err)
+		return err
 	}
-	if !strings.Contains(string(content), "exec "+name+" ") {
-		return fmt.Errorf("run log at %q does not record running %q; contents:\n%s", path, name, content)
+	if _, ok := log.command(name); !ok {
+		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheCommandLineThatWasRun asserts the log's invocation line is
+// the literal command csync was run with: "csync" followed by the argument vector
+// runCsync actually passed (placeholders already substituted). Reconciling against
+// the stashed argv keeps the check honest without the scenario reconstructing the
+// tempdir substitution, and pins that the line is the raw invocation — not the
+// resolved operands, which get their own lines.
+func theLogShouldRecordTheCommandLineThatWasRun(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	args, _ := ctx.Value(invokedArgsKey{}).([]string)
+	want := strings.Join(append([]string{"csync"}, args...), " ")
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	if log.Invocation != want {
+		return fmt.Errorf("run log records invocation %q, want %q; contents:\n%s", log.Invocation, want, content)
+	}
+	return nil
+}
+
+// theLogShouldNameTheSourceAndDestinationReported asserts the log records both
+// operands, and that they are the same source and destination csync printed in its
+// header. Reconciling the two is what makes the check honest: csync is the source of
+// truth for what the operands resolved to, so a log that named some other path, or
+// named none, fails here — without the scenario having to know the tempdir layout.
+func theLogShouldNameTheSourceAndDestinationReported(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	if out.Source == "" || out.Destination == "" {
+		return fmt.Errorf("csync reported an empty operand (source %q, destination %q); nothing to reconcile", out.Source, out.Destination)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	if log.Source != out.Source {
+		return fmt.Errorf("run log names source %q, want %q (what csync reported); contents:\n%s", log.Source, out.Source, content)
+	}
+	if log.Destination != out.Destination {
+		return fmt.Errorf("run log names destination %q, want %q (what csync reported); contents:\n%s", log.Destination, out.Destination, content)
 	}
 	return nil
 }

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The run log now records which build of csync produced the run (written up front, so a run abandoned at the selection prompt still names its binary) and the rsync comparison csync invoked — its argument vector, exit code, and how long it took. (#82)
+- The run log now records what a run did: which build of csync produced it, the command line as invoked, the source and destination it resolved, and the rsync comparison it ran (argument vector, exit code, duration) — written as the run proceeds, so a run abandoned at the selection prompt still says what it was. (#82)
 
 ## [0.9.0] - 2026-07-15
 

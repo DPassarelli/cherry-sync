@@ -37,18 +37,21 @@ func Discard() *Log {
 	return &Log{}
 }
 
-// Create opens a run log for this invocation, records that the run started, and
-// returns the open log. The file is named for the moment the run started and the
-// process that made it, so concurrent runs cannot collide and a reader can order
-// runs without opening them. It is created exclusively: a name that already exists
-// is an error rather than a silent overwrite of another run's record.
+// Create opens a run log for this invocation, records that the run started and
+// which build made it, and returns the open log. version is the first thing a
+// troubleshooter needs and the field a bug report most often omits, so it heads the
+// log rather than trailing on its own line; it is written verbatim (a dev build
+// logs "dev"). The file is named for the moment the run started and the process
+// that made it, so concurrent runs cannot collide and a reader can order runs
+// without opening them. It is created exclusively: a name that already exists is an
+// error rather than a silent overwrite of another run's record.
 //
 // The started record is written before Create returns, and every later record as
 // the run reaches it. Nothing is held back to be flushed on the way out: csync can
 // be interrupted at the selection prompt or killed outright, and those are the runs
 // a reader most wants. A log assembled in memory would be empty in exactly the
 // cases it exists for.
-func Create() (*Log, error) {
+func Create(version string) (*Log, error) {
 	dir, err := stateDir()
 	if err != nil {
 		return nil, err
@@ -70,7 +73,7 @@ func Create() (*Log, error) {
 		return nil, fmt.Errorf("could not create the log file %s: %w", path, reason(err))
 	}
 	l := &Log{path: path, file: f}
-	_, err = fmt.Fprintf(f, "%s started\n", started.Format(time.RFC3339))
+	_, err = fmt.Fprintf(f, "%s csync started (version %s)\n", started.Format(time.RFC3339), version)
 	if err != nil {
 		// The write, not the close, is the failure worth reporting; close what we
 		// opened and surface the original error.
@@ -94,13 +97,14 @@ func reason(err error) error {
 	return err
 }
 
-// Version records which build of csync made this run — the first thing a
-// troubleshooter needs and the field a bug report most often omits. It is written
-// up front, so a run abandoned at the selection prompt still names its binary. The
-// value is recorded verbatim (a dev build logs "dev"); csync injects a release
-// version at build time.
-func (l *Log) Version(v string) error {
-	return l.record("version", v)
+// Invocation records the command line as it was actually run — the program name
+// and the raw arguments the user gave — as the second line of the log. It is the
+// literal invocation, distinct from the resolved source and destination below it:
+// under a saved-target push or pull the operands are derived from .csync.toml and
+// only this line still shows the verb the user typed. The parts are joined with
+// spaces for a reader; the exec records below preserve exact argument boundaries.
+func (l *Log) Invocation(name string, args []string) error {
+	return l.record("invocation", strings.Join(append([]string{name}, args...), " "))
 }
 
 // Record writes one external command csync ran — what it was, its argument vector,
@@ -130,6 +134,19 @@ func quoteArgs(args []string) string {
 	return b.String()
 }
 
+// Operands records the run's source and destination — what csync compared and
+// which way the sync went — the frame every later record hangs on. Each is written
+// on its own labeled line, so a value containing a space needs no quoting: the whole
+// remainder of the line is the operand. They are the same paths csync echoes in its
+// header, recorded up front so an abandoned run still says what it was about.
+func (l *Log) Operands(source, destination string) error {
+	err := l.record("source", source)
+	if err != nil {
+		return err
+	}
+	return l.record("destination", destination)
+}
+
 // record appends one line to the log: the current UTC time in RFC 3339, a label
 // naming the fact, and the rest of the line. Every record after "started" shares
 // this shape, so the label is what a reader (or a later field type) keys on. On a
@@ -141,7 +158,7 @@ func (l *Log) record(label, rest string) error {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := fmt.Fprintf(l.file, "%s %s %s\n", now, label, rest)
+	_, err := fmt.Fprintf(l.file, "%s %s: %s\n", now, label, rest)
 	if err != nil {
 		return fmt.Errorf("could not write to the log file %s: %w", l.path, reason(err))
 	}
