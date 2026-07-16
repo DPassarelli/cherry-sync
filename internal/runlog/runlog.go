@@ -156,6 +156,49 @@ func (l *Log) Operands(source, destination string) error {
 	return l.record("destination", destination)
 }
 
+// Action is one change the run log records — a verb (create/update/delete) and the
+// path it applies to. It is runlog's own type, not compare's, so the log package owns
+// what it records and does not depend on the comparison package that produces them;
+// the caller adapts across the two.
+type Action struct {
+	Verb string
+	Path string
+}
+
+// Classified records the full change list csync detected — every create, update, and
+// delete it found, before the user chooses among them. It is written after the
+// comparison and before the prompt, so a run abandoned at the selection still shows
+// what was on offer.
+func (l *Log) Classified(actions []Action) error {
+	return l.record("classified", renderActions(actions))
+}
+
+// Selected records the subset of the classified changes the user chose to apply. It is
+// written once the selection is made — the counterpart to Classified, kept separate
+// because the two can differ, and a removal that was selected (and so applied) is the
+// fact the log most exists to preserve.
+func (l *Log) Selected(actions []Action) error {
+	return l.record("selected", renderActions(actions))
+}
+
+// renderActions renders an action list as "<count> [<verb> \"<path>\"; ...]" — the
+// count first for a quick read, then each action with its path %q-quoted so a space or
+// quote in a filename survives, semicolon-separated. An empty list renders "0 []". The
+// path is quoted for the same reason quoteArgs quotes an argument: a boundary must not
+// be forgeable by the contents of a name.
+func renderActions(actions []Action) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d [", len(actions))
+	for i, a := range actions {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "%s %q", a.Verb, a.Path)
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
 // record appends one line to the log: the current UTC time in RFC 3339, a label
 // naming the fact, and the rest of the line. Every record after "started" shares
 // this shape, so the label is what a reader (or a later field type) keys on. On a

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- The run log now records what a run did: which build of csync produced it, the command line as invoked, the source and destination it resolved, and the external commands it ran — the rsync dry-run comparison, the transfer that moved files, the removal pass that pruned the destination, and the git query for a local repository's ignore rules — each with its argument vector, exit code, and duration, written as the run proceeds, so a run abandoned at the selection prompt still says what it was. (#82)
+- The run log now records what a run did: which build of csync produced it, the command line as invoked, the source and destination it resolved, the changes it classified and which of them the user selected, and the external commands it ran — the rsync dry-run comparison, the transfer that moved files, the removal pass that pruned the destination, and the git query for a local repository's ignore rules — each with its argument vector, exit code, and duration, written as the run proceeds, so a run abandoned at the selection prompt still says what it was. (#82)
 
 ## [0.9.0] - 2026-07-15
 

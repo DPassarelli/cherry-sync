@@ -201,6 +201,43 @@ Feature: Log each run
     Then  csync should return exit code 0
     And   the logged duration should be a positive whole number of milliseconds
 
+  Scenario: By the time it prompts, the log lists the changes csync classified
+    # csync records the change list it built before it asks what to sync, so a run
+    # abandoned at the prompt still shows what was on offer. Read here, before any
+    # selection, the classification names every detected change; the matching selection
+    # record comes only once the user answers.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record 2 classified changes
+    And   the classified changes should include "update" of "README.md"
+    And   the classified changes should include "delete" of "src/main.go"
+
+  Scenario: The log records the selection apart from the classification
+    # What csync found and what the user chose are two different facts, so the log keeps
+    # them apart. Declining every change is the sharpest case: the classification still
+    # lists both changes, while the selection records that none were taken — a run that
+    # conflated the two would show the same list twice.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "n"
+    Then  csync should return exit code 0
+    And   the log should record 2 classified changes
+    And   the log should record 0 selected changes
+
+  Scenario: An applied removal is on record in what the user selected
+    # The reason the log exists: once a file is gone the run cannot be repeated to show
+    # it happened, so the record of a selected — and applied — removal is the only
+    # evidence left. Syncing everything takes the deletion, and the selection records it.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the log should record 2 selected changes
+    And   the selected changes should include "delete" of "src/main.go"
+
   Scenario: The log records the command line as it was invoked
     # The literal invocation — what the user actually typed — heads the log, distinct
     # from the resolved source and destination below it. For an explicit run the two
@@ -376,6 +413,6 @@ Feature: Log each run
   #   its exit code (a failed comparison records its real non-zero exit), and its
   #   duration (whole milliseconds, rounded up) — scenarios above.
   #
-  # - The actions csync classified, and which of them the user selected, are
+  # - The changes csync classified, and which of them the user selected, are
   #   recorded — the two can differ, and a removal that was applied is the fact
-  #   the log exists to preserve.
+  #   the log exists to preserve — scenarios above.

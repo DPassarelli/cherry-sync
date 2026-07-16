@@ -16,6 +16,36 @@ type ParsedLog struct {
 	Source      string
 	Destination string
 	Commands    []LoggedCommand
+	// Classified/Selected are the changes csync recorded detecting and the subset the
+	// user chose. Has* distinguishes "recorded an empty list" (0 changes, list present)
+	// from "recorded nothing at all" (no such record), and *Count is the leading count
+	// the log states, kept apart from the list length so a test can catch the two
+	// disagreeing.
+	HasClassified   bool
+	ClassifiedCount int
+	Classified      []LoggedAction
+	HasSelected     bool
+	SelectedCount   int
+	Selected        []LoggedAction
+}
+
+// LoggedAction is one classified or selected change the log recorded: a verb
+// (create/update/delete) and the path it applies to, the path unquoted so a space or
+// quote in a filename is restored rather than read as a separator.
+type LoggedAction struct {
+	Verb string
+	Path string
+}
+
+// has reports whether a list of recorded actions contains the given verb and path —
+// the action-list equivalent of asking "does the log say csync deleted that file?".
+func (p ParsedLog) has(actions []LoggedAction, verb, path string) bool {
+	for _, a := range actions {
+		if a.Verb == verb && a.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 // LoggedCommand is one external command csync recorded running: the program, the
@@ -65,6 +95,9 @@ var (
 	logDestRE       = regexp.MustCompile(`(?m)^\S+ destination: (.+?)\s*$`)
 	logExecRE       = regexp.MustCompile(`(?m)^\S+ exec: (\S+) \[(.*)\] exit=(-?\d+) dur=(\S+)\s*$`)
 	logArgRE        = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
+	logClassifiedRE = regexp.MustCompile(`(?m)^\S+ classified: (\d+) \[(.*)\]\s*$`)
+	logSelectedRE   = regexp.MustCompile(`(?m)^\S+ selected: (\d+) \[(.*)\]\s*$`)
+	logActionRE     = regexp.MustCompile(`(\w+) ("(?:[^"\\]|\\.)*")`)
 )
 
 // parseLog translates a run log's contents into a structured ParsedLog. It is the
@@ -96,7 +129,34 @@ func parseLog(content string) ParsedLog {
 			Duration: m[4],
 		})
 	}
+	if m := logClassifiedRE.FindStringSubmatch(content); m != nil {
+		log.HasClassified = true
+		log.ClassifiedCount, _ = strconv.Atoi(m[1])
+		log.Classified = parseLogActions(m[2])
+	}
+	if m := logSelectedRE.FindStringSubmatch(content); m != nil {
+		log.HasSelected = true
+		log.SelectedCount, _ = strconv.Atoi(m[1])
+		log.Selected = parseLogActions(m[2])
+	}
 	return log
+}
+
+// parseLogActions turns the bracketed body of a classified/selected record —
+// `create "src/new.go"; update "README.md"` — into its actions, pairing each verb with
+// its unquoted path. It mirrors parseLogArgs: the path is a %q token, so a boundary the
+// log escaped (a space, a semicolon, a quote) is restored rather than read as a
+// separator between entries.
+func parseLogActions(s string) []LoggedAction {
+	var out []LoggedAction
+	for _, m := range logActionRE.FindAllStringSubmatch(s, -1) {
+		path, err := strconv.Unquote(m[2])
+		if err != nil {
+			path = m[2]
+		}
+		out = append(out, LoggedAction{Verb: m[1], Path: path})
+	}
+	return out
 }
 
 // parseLogArgs turns the bracketed, %q-quoted argument vector of an exec line back

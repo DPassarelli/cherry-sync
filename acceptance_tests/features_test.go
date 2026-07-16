@@ -264,6 +264,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a local source path that does not exist$`, aLocalSourcePathThatDoesNotExist)
 	ctx.Step(`^the log should record the comparison's failing exit code$`, theLogShouldRecordTheComparisonsFailingExitCode)
 	ctx.Step(`^the logged duration should be a positive whole number of milliseconds$`, theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds)
+	ctx.Step(`^the log should record (\d+) classified changes?$`, theLogShouldRecordNClassifiedChanges)
+	ctx.Step(`^the log should record (\d+) selected changes?$`, theLogShouldRecordNSelectedChanges)
+	ctx.Step(`^the classified changes should include "([^"]*)" of "([^"]*)"$`, theClassifiedChangesShouldInclude)
+	ctx.Step(`^the selected changes should include "([^"]*)" of "([^"]*)"$`, theSelectedChangesShouldInclude)
 	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
@@ -998,6 +1002,85 @@ func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error 
 // fractional part — "44ms", not "43.7ms". The capture is the millisecond count, so the
 // duration scenario can also check it is greater than zero.
 var wholeMillisRE = regexp.MustCompile(`^(\d+)ms$`)
+
+// resolvedLog returns the parsed log a scenario is asking about, from wherever it is
+// available: the path a mid-run "look for the log file" step stashed, or the path csync
+// disclosed on its way out. This lets the classified/selected steps read the log whether
+// the scenario pauses at the prompt (classification is recorded by then) or runs to
+// completion (where the selection is too).
+func resolvedLog(ctx context.Context) (ParsedLog, string, error) {
+	if path, _ := ctx.Value(foundLogKey{}).(string); path != "" {
+		return parseLogAt(path)
+	}
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return ParsedLog{}, "", fmt.Errorf("no run log was located and csync reported none; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
+	}
+	return parseLogAt(out.LogPath)
+}
+
+// theLogShouldRecordNClassifiedChanges asserts the log recorded the classification, and
+// that its stated count and its list agree on how many changes csync found. Checking the
+// count and the list length together catches a record whose header and body disagree.
+func theLogShouldRecordNClassifiedChanges(ctx context.Context, n int) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasClassified {
+		return fmt.Errorf("run log records no classified-changes line; contents:\n%s", content)
+	}
+	if log.ClassifiedCount != n || len(log.Classified) != n {
+		return fmt.Errorf("run log records classified count=%d over a list of %d, want %d of each; contents:\n%s", log.ClassifiedCount, len(log.Classified), n, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordNSelectedChanges asserts the log recorded the selection, count and
+// list agreeing. HasSelected distinguishes "recorded that none were selected" (a real
+// 0) from "never recorded a selection at all", so "record 0 selected changes" still
+// demands the record be present.
+func theLogShouldRecordNSelectedChanges(ctx context.Context, n int) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasSelected {
+		return fmt.Errorf("run log records no selected-changes line; contents:\n%s", content)
+	}
+	if log.SelectedCount != n || len(log.Selected) != n {
+		return fmt.Errorf("run log records selected count=%d over a list of %d, want %d of each; contents:\n%s", log.SelectedCount, len(log.Selected), n, content)
+	}
+	return nil
+}
+
+// theClassifiedChangesShouldInclude asserts a specific verb/path pair is among the
+// changes csync recorded classifying — that the record names the actual changes, not
+// just a count.
+func theClassifiedChangesShouldInclude(ctx context.Context, verb, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.has(log.Classified, verb, path) {
+		return fmt.Errorf("run log's classified changes do not include %s %q; got %+v; contents:\n%s", verb, path, log.Classified, content)
+	}
+	return nil
+}
+
+// theSelectedChangesShouldInclude asserts a specific verb/path pair is among the changes
+// the user selected — the record that a removal, say, was actually taken and applied.
+func theSelectedChangesShouldInclude(ctx context.Context, verb, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.has(log.Selected, verb, path) {
+		return fmt.Errorf("run log's selected changes do not include %s %q; got %+v; contents:\n%s", verb, path, log.Selected, content)
+	}
+	return nil
+}
 
 // theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds asserts a recorded
 // command's duration is present, decimal-free, and greater than zero — the shape a

@@ -222,6 +222,11 @@ func run() (code int) {
 		return 1
 	}
 
+	// Record the change list csync classified, before it asks what to sync — so a run
+	// abandoned at the prompt still shows what was on offer. The selection is recorded
+	// separately once it is made; the two are kept apart because they can differ.
+	_ = runLog.Classified(logActions(result.Actions))
+
 	// Disclose what was held out of the comparison — with no opt-out flag, this
 	// line is the user's only signal. Up to three independent things can be
 	// withheld: csync's own .csync.toml (whenever present), the .git/ metadata
@@ -267,6 +272,10 @@ func run() (code int) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		// Record what the user chose, distinct from what was classified above, before
+		// the empty-selection stop below — so even a cancelled run records that nothing
+		// was taken.
+		_ = runLog.Selected(logActions(picked))
 		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
 		// transfer that would print "Sync complete! (0 files)".
@@ -284,6 +293,8 @@ func run() (code int) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		// The selection, recorded as its counterpart to the classification above.
+		_ = runLog.Selected(logActions(selected))
 	}
 
 	// Split the selection into transfers (create/update) and removals (delete):
@@ -316,6 +327,17 @@ func run() (code int) {
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
 	return 0
+}
+
+// logActions adapts the compare package's actions to the run log's own Action type,
+// bridging the two so runlog need not depend on compare. It is the one place the shape
+// is translated for the classified and selected records.
+func logActions(actions []compare.Action) []runlog.Action {
+	out := make([]runlog.Action, len(actions))
+	for i, a := range actions {
+		out[i] = runlog.Action{Verb: a.Verb, Path: a.Path}
+	}
+	return out
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both
