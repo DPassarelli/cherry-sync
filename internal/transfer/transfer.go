@@ -6,28 +6,32 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
-// Run transfers exactly the given relative paths from source to destination.
-// Both paths get a trailing slash so the paths in the list are interpreted
-// relative to the source root and recreated under the destination root.
+// Run transfers exactly the given relative paths from source to destination,
+// running rsync through r so the invocation lands in the run log. Both paths get a
+// trailing slash so the paths in the list are interpreted relative to the source
+// root and recreated under the destination root.
 //
 // The path list is fed to rsync on stdin via --files-from=- and NUL-delimited
 // with --from0, so a newline embedded in a filename cannot smuggle additional
 // entries into the transfer set — a SECURITY.md invariant. Passing an empty
 // list is a no-op.
-func Run(source, destination string, paths []string) error {
+func Run(r *command.Runner, source, destination string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
 	args := rsyncArgs(source, destination)
-	cmd := exec.Command("rsync", args...) // #nosec G204 -- see compare.Run / SECURITY.md
 	// Each path terminated by a NUL (not separated) so --from0 reads them all,
 	// including a trailing one, without a spurious empty final entry.
-	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := cmd.CombinedOutput()
+	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
+	out, err := r.Run("rsync", args, stdin)
 	if err != nil {
-		return fmt.Errorf("rsync: %w: %s", err, out)
+		// The runner captures stdout and stderr apart; rejoin them so the error
+		// still carries rsync's full diagnostic, as CombinedOutput did before.
+		return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
 	}
 	return nil
 }

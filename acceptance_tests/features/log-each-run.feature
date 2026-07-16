@@ -95,6 +95,20 @@ Feature: Log each run
     When  I look for the log file
     Then  the log should record running "rsync" for the comparison
 
+  Scenario: A completed sync records the transfer that moved the files
+    # The comparison is a dry run and moves nothing; the transfer is the command that
+    # actually changed the destination — and so the one a troubleshooter most needs,
+    # since a sync that removed files cannot be re-run to reproduce it. Read after the
+    # run completes, the log holds the transfer alongside the comparison, where at the
+    # prompt (the scenario above) it held the comparison alone. That second rsync
+    # record is the whole of what this pins: the pass that did the work, not just the
+    # one that planned it.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the log should record the transfer that ran
+
   Scenario: The log records the command line as it was invoked
     # The literal invocation — what the user actually typed — heads the log, distinct
     # from the resolved source and destination below it. For an explicit run the two

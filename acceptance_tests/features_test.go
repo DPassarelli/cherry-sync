@@ -255,6 +255,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the log file should already have content$`, theLogFileShouldAlreadyHaveContent)
 	ctx.Step(`^the log should record that the version was "([^"]*)"$`, theLogShouldRecordThatTheVersionWas)
 	ctx.Step(`^the log should record running "([^"]*)" for the comparison$`, theLogShouldRecordRunningForTheComparison)
+	ctx.Step(`^the log should record the transfer that ran$`, theLogShouldRecordTheTransferThatRan)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
 	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
@@ -917,6 +918,29 @@ func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string)
 	}
 	if _, ok := log.command(name); !ok {
 		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheTransferThatRan asserts a completed run logged the transfer
+// pass, not only the comparison. Both are rsync, so the transfer surfaces as a second
+// rsync record beyond the dry-run comparison: after the run finishes the log holds
+// two, where at the prompt it held one. Keying on the count of rsync records rather
+// than any flag keeps the check to the fidelity fact that matters — the transfer was
+// recorded at all — and off the argv composition a refactor might change.
+func theLogShouldRecordTheTransferThatRan(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	rsyncs := log.commands("rsync")
+	if len(rsyncs) < 2 {
+		return fmt.Errorf("run log records %d rsync command(s), want the comparison and the transfer; contents:\n%s", len(rsyncs), content)
 	}
 	return nil
 }

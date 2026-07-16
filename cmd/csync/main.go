@@ -299,7 +299,7 @@ func run() (code int) {
 	}
 	// Transfers first, removals last: the additive pass is recoverable, so if it
 	// fails we exit before deleting anything on the destination.
-	err = transfer.Run(source, destination, transferPaths)
+	err = transfer.Run(runner, source, destination, transferPaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
