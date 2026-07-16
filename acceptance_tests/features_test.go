@@ -256,6 +256,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the log should record that the version was "([^"]*)"$`, theLogShouldRecordThatTheVersionWas)
 	ctx.Step(`^the log should record running "([^"]*)" for the comparison$`, theLogShouldRecordRunningForTheComparison)
 	ctx.Step(`^the log should record the transfer that ran$`, theLogShouldRecordTheTransferThatRan)
+	ctx.Step(`^the log should record the removal that ran$`, theLogShouldRecordTheRemovalThatRan)
+	ctx.Step(`^the log should record running "([^"]*)" for the ignore rules$`, theLogShouldRecordRunningForTheIgnoreRules)
+	ctx.Step(`^a local directory whose path contains a space$`, aLocalDirectoryWhosePathContainsASpace)
+	ctx.Step(`^a local directory whose path contains a double quote$`, aLocalDirectoryWhosePathContainsADoubleQuote)
+	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
 	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
@@ -945,6 +950,87 @@ func theLogShouldRecordTheTransferThatRan(ctx context.Context) error {
 	return nil
 }
 
+// theLogShouldRecordThatSourcePathAsOneArgument asserts the source operand — a path
+// carrying a character the log format has to handle specially (a space, or the quote
+// delimiter itself) — came back out of the log's argument vector as a single element,
+// whole. It reconciles against the source csync reported (source of truth, so the check
+// needs no knowledge of the tempdir) and reads the comparison's argv through the facade,
+// whose parseLogArgs unquotes each token. The trailing slash rsync's operands carry is
+// trimmed before the compare. Two ways the operand could fail to survive: joined with
+// spaces it fractures (the space scenario's teeth), and wrapped without escaping the
+// embedded quote closes the token early (the double-quote scenario's) — either leaves no
+// element carrying the operand whole, which is the failure this reconciliation catches.
+func theLogShouldRecordThatSourcePathAsOneArgument(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	if !strings.ContainsAny(out.Source, " \"") {
+		return fmt.Errorf("csync reported source %q, which has no space or quote to test fidelity with", out.Source)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	for _, a := range cmd.Args {
+		if strings.TrimSuffix(a, "/") == out.Source {
+			return nil
+		}
+	}
+	return fmt.Errorf("run log's rsync argv does not carry source %q as one argument; args=%q; contents:\n%s", out.Source, cmd.Args, content)
+}
+
+// theLogShouldRecordRunningForTheIgnoreRules asserts a run in a git work tree logged
+// the git query csync made to learn what the repository ignores. Read after the run
+// exits (identical sides, so it never prompts), the git command appears alongside the
+// comparison — where a non-repo run logs no git at all, since the work-tree probe that
+// gates it is deliberately left unlogged. It keys on the "exec <name>" pairing, like
+// the comparison step, so the name appearing elsewhere cannot satisfy it.
+func theLogShouldRecordRunningForTheIgnoreRules(ctx context.Context, name string) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	if _, ok := log.command(name); !ok {
+		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheRemovalThatRan asserts a deletion-only run logged the removal
+// pass. Like the transfer, the removal is rsync, so it surfaces as a second rsync
+// record beyond the dry-run comparison — but here the setup deletes rather than
+// changes a file, so the second pass is the --delete removal, not a transfer (there
+// is nothing to transfer). Counting the rsync records, rather than reading a flag,
+// pins the presence-fidelity fact — the removal was recorded — and isolates it from
+// the transfer scenario by what the run did.
+func theLogShouldRecordTheRemovalThatRan(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	rsyncs := log.commands("rsync")
+	if len(rsyncs) < 2 {
+		return fmt.Errorf("run log records %d rsync command(s), want the comparison and the removal; contents:\n%s", len(rsyncs), content)
+	}
+	return nil
+}
+
 // theLogShouldRecordTheCommandLineThatWasRun asserts the log's invocation line is
 // the literal command csync was run with: "csync" followed by the argument vector
 // runCsync actually passed (placeholders already substituted). Reconciling against
@@ -1157,6 +1243,41 @@ func theRunLogFileShouldBeAccessibleOnlyByItsOwner(ctx context.Context) error {
 		return err
 	}
 	return assertPerm(log, 0o600)
+}
+
+// aLocalDirectoryWhosePathContainsASpace creates a local tempdir whose path holds a
+// space and populates it like the plain local-directory step, re-stashing it under
+// localPathKey (overriding the Background's). The space rides into the source operand
+// csync hands rsync, so the run log must quote it to keep the operand one argument —
+// which is what the space-fidelity scenario reads back out.
+func aLocalDirectoryWhosePathContainsASpace(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync local-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = writeFiles(dir, "src/main.go\nREADME.md")
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// aLocalDirectoryWhosePathContainsADoubleQuote creates a local tempdir whose path
+// holds a double-quote character, populated like the plain local-directory step and
+// re-stashed under localPathKey. The quote is the log's own delimiter: recorded naively
+// it would forge a false argument boundary, so this is the counterpart to the space
+// step — the space proves real boundaries are kept, the quote proves fake ones can't be
+// minted.
+func aLocalDirectoryWhosePathContainsADoubleQuote(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", `csync-q"-*`)
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = writeFiles(dir, "src/main.go\nREADME.md")
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
 // aLocalDirectoryContainingTheseFiles creates a local tempdir populated with

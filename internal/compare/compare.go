@@ -37,7 +37,7 @@ type Result struct {
 // through r so the invocation lands in the run log. Both paths get a trailing slash
 // so rsync compares directory contents rather than nesting source under destination.
 func Run(r *command.Runner, source, destination string) (Result, error) {
-	exc, err := localExclusions(source, destination)
+	exc, err := localExclusions(r, source, destination)
 	if err != nil {
 		return Result{}, err
 	}
@@ -62,7 +62,7 @@ func Run(r *command.Runner, source, destination string) (Result, error) {
 	// local side isn't a work tree (inWorkTree false) — nothing to ask git about.
 	if exc.inWorkTree {
 		dir, _ := localSyncDir(source, destination)
-		kept, dropped, err := dropIgnoredActions(dir, actions)
+		kept, dropped, err := dropIgnoredActions(r, dir, actions)
 		if err != nil {
 			return Result{}, err
 		}

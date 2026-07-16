@@ -4,7 +4,6 @@ package transfer
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
@@ -37,7 +36,8 @@ func Run(r *command.Runner, source, destination string, paths []string) error {
 }
 
 // Remove deletes exactly the given relative paths from the destination, leaving
-// every other destination file in place. It is a second rsync pass, separate from
+// every other destination file in place, running rsync through r so the invocation
+// lands in the run log. It is a second rsync pass, separate from
 // Run's transfer: --files-from can only move files, not remove them, so removals
 // go through --delete constrained by a filter. Each path and its ancestor
 // directories are --include'd and everything else --exclude'd, so --delete prunes
@@ -49,15 +49,16 @@ func Run(r *command.Runner, source, destination string, paths []string) error {
 // rsync filter metacharacter (`*`, `?`, `[`) or a leading space would be read as a
 // pattern rather than a literal; such names are dropped upstream at detection and
 // never reach here, so the patterns built below match literally.
-func Remove(source, destination string, paths []string) error {
+func Remove(r *command.Runner, source, destination string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
 	args := removeArgs(source, destination, paths)
-	cmd := exec.Command("rsync", args...) // #nosec G204 -- see compare.Run / SECURITY.md
-	out, err := cmd.CombinedOutput()
+	out, err := r.Run("rsync", args, nil)
 	if err != nil {
-		return fmt.Errorf("rsync: %w: %s", err, out)
+		// Rejoin the runner's separate stdout/stderr so the error carries rsync's
+		// full diagnostic, as CombinedOutput did before — see Run.
+		return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
 	}
 	return nil
 }

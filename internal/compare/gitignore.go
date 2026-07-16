@@ -13,6 +13,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
 // exclusions holds what csync withholds from the comparison for the local side of
@@ -56,7 +58,7 @@ type exclusions struct {
 // and never re-derives them. That's safe because the comparison is the single gate:
 // an excluded file never appears, so it can't be selected, so --files-from never
 // lists one.
-func localExclusions(source, destination string) (exclusions, error) {
+func localExclusions(r *command.Runner, source, destination string) (exclusions, error) {
 	dir, ok := localSyncDir(source, destination)
 	if !ok {
 		return exclusions{}, nil
@@ -67,7 +69,7 @@ func localExclusions(source, destination string) (exclusions, error) {
 		exc.csyncToml = true
 	}
 	if isGitWorkTree(dir) {
-		gitignored, err := gitignoreExcludes(dir)
+		gitignored, err := gitignoreExcludes(r, dir)
 		if err != nil {
 			return exclusions{}, err
 		}
@@ -129,17 +131,21 @@ func isRemote(path string) bool {
 // path in its own output, so splitting that output on newlines yields one pattern
 // per ignored path; each then reaches rsync as its own --exclude arg, so a newline
 // in a filename can neither split a pattern here nor smuggle a second one there.
-func gitignoreExcludes(dir string) ([]string, error) {
+//
+// It runs through r so the query lands in the run log. `-C dir` stands in for the
+// working directory the direct call set — equivalent for git's repo discovery and
+// relative-path output (verified by experiment), and it keeps the logged invocation
+// self-describing. The work-tree probe above stays a direct, unlogged capability check.
+func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
 	if !isGitWorkTree(dir) {
 		return nil, nil
 	}
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+	args := []string{"-C", dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"}
+	out, err := r.Run("git", args, nil)
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files: %w", err)
 	}
-	trimmed := strings.Trim(string(out), "\n")
+	trimmed := strings.Trim(string(out.Stdout), "\n")
 	if trimmed == "" {
 		return nil, nil
 	}
@@ -164,7 +170,7 @@ func gitignoreExcludes(dir string) ([]string, error) {
 // LOCAL files before rsync ever walks them, so they never reach this list, and this
 // pass only ever removes paths that survived to the comparison. The dropped count
 // is added to the disclosed total, since these are gitignored paths held back too.
-func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
+func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Action, int, error) {
 	if len(actions) == 0 {
 		return actions, 0, nil
 	}
@@ -172,7 +178,7 @@ func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
 	for i, a := range actions {
 		paths[i] = a.Path
 	}
-	ignored, err := checkIgnored(dir, paths)
+	ignored, err := checkIgnored(r, dir, paths)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -205,11 +211,14 @@ func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
 // for --files-from. check-ignore exits 0 when at least one path is ignored, 1 when
 // none are (NOT an error: returned as an empty set), and anything else is a real
 // failure (e.g. dir not a work tree) surfaced to the caller.
-func checkIgnored(dir string, paths []string) (map[string]bool, error) {
-	cmd := exec.Command("git", "check-ignore", "-z", "--stdin")
-	cmd.Dir = dir
-	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := cmd.Output()
+//
+// It runs through r so the query lands in the run log; `-C dir` replaces the working
+// directory the direct call set (see gitignoreExcludes). The runner returns cmd.Run's
+// error unwrapped, so the exit-code-1 test below still sees the *exec.ExitError.
+func checkIgnored(r *command.Runner, dir string, paths []string) (map[string]bool, error) {
+	args := []string{"-C", dir, "check-ignore", "-z", "--stdin"}
+	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
+	out, err := r.Run("git", args, stdin)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -218,7 +227,7 @@ func checkIgnored(dir string, paths []string) (map[string]bool, error) {
 		return nil, fmt.Errorf("git check-ignore: %w", err)
 	}
 	ignored := map[string]bool{}
-	for p := range strings.SplitSeq(strings.Trim(string(out), "\x00"), "\x00") {
+	for p := range strings.SplitSeq(strings.Trim(string(out.Stdout), "\x00"), "\x00") {
 		if p != "" {
 			ignored[p] = true
 		}

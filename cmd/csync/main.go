@@ -304,7 +304,7 @@ func run() (code int) {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = transfer.Remove(source, destination, removePaths)
+	err = transfer.Remove(runner, source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
