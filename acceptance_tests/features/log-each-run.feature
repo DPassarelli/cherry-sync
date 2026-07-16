@@ -174,6 +174,19 @@ Feature: Log each run
     When  I run "csync ./project user@host:/project"
     Then  the log should record that source path as one argument
 
+  Scenario: A comparison that fails records the exit code it failed with
+    # The runs worth reading are the ones that went wrong, so the log's exit codes have
+    # to be real — a log that recorded exit=0 for a command that failed would be a diary
+    # that omits the accident. A missing source makes rsync fail at the comparison;
+    # csync exits non-zero, and the log carries rsync's true exit code, written as the
+    # run proceeds, before the failure ends it. The code is reconciled against the one
+    # csync reports rather than hardcoded, since rsync flavors return different codes.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   the log should record the comparison's failing exit code
+
   Scenario: The log records the command line as it was invoked
     # The literal invocation — what the user actually typed — heads the log, distinct
     # from the resolved source and destination below it. For an explicit run the two
@@ -346,9 +359,8 @@ Feature: Log each run
   #
   # - Every external command csync runs (the rsync comparison, transfer, and
   #   removal; the git ignore-rule queries) is now recorded with its argument
-  #   vector — scenarios above. Still to pin on their own: that a command's
-  #   non-zero exit is captured (not just the zero-exit happy path), and that the
-  #   recorded duration reflects the call.
+  #   vector, and a failed comparison records its real non-zero exit — scenarios
+  #   above. Still to pin on its own: that the recorded duration reflects the call.
   #
   # - The actions csync classified, and which of them the user selected, are
   #   recorded — the two can differ, and a removal that was applied is the fact

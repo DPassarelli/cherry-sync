@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -260,6 +261,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the log should record running "([^"]*)" for the ignore rules$`, theLogShouldRecordRunningForTheIgnoreRules)
 	ctx.Step(`^a local directory whose path contains a space$`, aLocalDirectoryWhosePathContainsASpace)
 	ctx.Step(`^a local directory whose path contains a double quote$`, aLocalDirectoryWhosePathContainsADoubleQuote)
+	ctx.Step(`^a local source path that does not exist$`, aLocalSourcePathThatDoesNotExist)
+	ctx.Step(`^the log should record the comparison's failing exit code$`, theLogShouldRecordTheComparisonsFailingExitCode)
 	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
@@ -950,6 +953,46 @@ func theLogShouldRecordTheTransferThatRan(ctx context.Context) error {
 	return nil
 }
 
+// exitStatusRE pulls the numeric code out of the error csync surfaces when a command
+// fails — an *exec.ExitError renders as "exit status N". The reconciliation reads it so
+// the exit-code scenario need not hardcode rsync's failure code, which differs between
+// rsync flavors.
+var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
+
+// theLogShouldRecordTheComparisonsFailingExitCode asserts the run log recorded the
+// real, non-zero exit code of a comparison that failed at rsync — not a zero, not a
+// placeholder. It reconciles against the code csync surfaced in its own error ("rsync:
+// exit status N"), so the check needs no hardcoded rsync code: whatever csync saw, the
+// log must show. A runner that logged a fixed exit=0, or dropped the process's real
+// code, reddens here — which is what keeps the log honest about the runs worth reading.
+func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error {
+	r := captured(ctx)
+	m := exitStatusRE.FindStringSubmatch(r.Stderr)
+	if m == nil {
+		return fmt.Errorf("csync surfaced no rsync exit status to reconcile against; stderr:\n%s", r.Stderr)
+	}
+	want, _ := strconv.Atoi(m[1])
+	if want == 0 {
+		return fmt.Errorf("csync surfaced exit status 0, which is not a failure to test")
+	}
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.LogPath == "" {
+		return fmt.Errorf("csync reported no log path, so there is none to read; stderr:\n%s", r.Stderr)
+	}
+	log, content, err := parseLogAt(out.LogPath)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	if cmd.ExitCode != want {
+		return fmt.Errorf("run log records rsync exit=%d, want %d (what csync reported); contents:\n%s", cmd.ExitCode, want, content)
+	}
+	return nil
+}
+
 // theLogShouldRecordThatSourcePathAsOneArgument asserts the source operand — a path
 // carrying a character the log format has to handle specially (a space, or the quote
 // delimiter itself) — came back out of the log's argument vector as a single element,
@@ -1276,6 +1319,22 @@ func aLocalDirectoryWhosePathContainsADoubleQuote(ctx context.Context) (context.
 	err = writeFiles(dir, "src/main.go\nREADME.md")
 	if err != nil {
 		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// aLocalSourcePathThatDoesNotExist stashes, as the local operand, a well-formed
+// tempdir path that has been removed — so it is absent when rsync runs. It sets up a
+// comparison that fails at rsync (a missing source errors out), the case that proves
+// the run log records the real, non-zero exit code of a command that failed.
+func aLocalSourcePathThatDoesNotExist(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync-gone-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = os.RemoveAll(dir)
+	if err != nil {
+		return ctx, fmt.Errorf("removing %s: %w", dir, err)
 	}
 	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
