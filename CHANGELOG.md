@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A `.csync.toml` that the project also gitignores is no longer disclosed twice. csync withholds its own config file unconditionally, but when git reported it as ignored too it was also counted among the gitignored paths — so `(excluding .csync.toml, the .git directory, and 3 gitignored paths)` named three files when only two were held back. The count now covers only the paths your ignore rules hid. (#82)
+
 ### Added
 
 - The run log now records what a run did: which build of csync produced it, the command line as invoked, the source and destination it resolved, the changes it classified and which of them the user selected, the files it held out of the comparison (gitignored paths by name, the .git directory, and .csync.toml), and the external commands it ran — the rsync dry-run comparison, the transfer that moved files, the removal pass that pruned the destination, and the git query for a local repository's ignore rules — each with its argument vector, exit code, and duration, written as the run proceeds, so a run abandoned at the selection prompt still says what it was. (#82)

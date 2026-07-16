@@ -62,6 +62,36 @@ Feature: Honor .gitignore when comparing
     When  I run "csync ./project user@host:/project"
     Then  the reported excluded count should be 1
 
+  Scenario: A gitignored .csync.toml is disclosed once, not counted twice
+    # csync withholds its own .csync.toml unconditionally, and a project with a saved
+    # target commonly gitignores it too — so git reports it as ignored as well. It is
+    # still one exclusion: counted among the gitignored paths on top of its own
+    # disclosure, it would be announced twice, and a user reading ".csync.toml" plus
+    # "2 gitignored paths" would think three files were held back when only two were.
+    #
+    # Teeth: the count is 1 — debug.log alone. Let .csync.toml through into the
+    # gitignored set and it becomes 2, while its own disclosure stays green, which is
+    # exactly the double-count this pins.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      .csync.toml
+      """
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project"
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported excluded count should be 1
+    And   the .csync.toml file should be reported as excluded
+
   Scenario: A non-repository local side excludes nothing
     # Teeth: this local directory is NOT a git work tree, yet it carries a
     # .gitignore naming *.log. Because the trigger is "is a git work tree?" — not

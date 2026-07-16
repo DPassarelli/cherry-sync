@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
@@ -72,6 +73,16 @@ func localExclusions(r *command.Runner, source, destination string) (exclusions,
 		gitignored, err := gitignoreExcludes(r, dir)
 		if err != nil {
 			return exclusions{}, err
+		}
+		// csync withholds its own .csync.toml above, unconditionally — and a project
+		// with a saved target commonly gitignores it too, so git reports it as ignored
+		// as well. Drop it here so it stays one exclusion: left in, it would inflate the
+		// gitignored count the CLI discloses (announcing the file twice) and reach rsync
+		// as a second, redundant --exclude for the same path.
+		if exc.csyncToml {
+			gitignored = slices.DeleteFunc(gitignored, func(p string) bool {
+				return p == "/.csync.toml"
+			})
 		}
 		exc.patterns = append(exc.patterns, ".git")
 		exc.patterns = append(exc.patterns, gitignored...)
