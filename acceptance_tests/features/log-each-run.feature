@@ -238,6 +238,30 @@ Feature: Log each run
     And   the log should record 2 selected changes
     And   the selected changes should include "delete" of "src/main.go"
 
+  @git
+  Scenario: The log names the files csync held out of the comparison
+    # What was withheld is as much a part of the record as what was synced: a
+    # troubleshooter asking "why didn't debug.log move?" needs to see it was held out,
+    # not merely that some count of files was. csync records the gitignored paths by
+    # name — the .git directory too, the singleton it always withholds in a work tree.
+    # The added-but-ignored file leaves nothing to sync, so the run reports no changes
+    # and returns, its exclusion record on hand once it exits.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should record "debug.log" among the excluded paths
+    And   the log should record that the .git directory was excluded
+
   Scenario: The log records the command line as it was invoked
     # The literal invocation — what the user actually typed — heads the log, distinct
     # from the resolved source and destination below it. For an explicit run the two
@@ -416,3 +440,7 @@ Feature: Log each run
   # - The changes csync classified, and which of them the user selected, are
   #   recorded — the two can differ, and a removal that was applied is the fact
   #   the log exists to preserve — scenarios above.
+  #
+  # - What csync held out of the comparison is recorded by name — the gitignored
+  #   paths, the .git directory, the .csync.toml — so a file absent from the change
+  #   list can still be accounted for — scenario above.

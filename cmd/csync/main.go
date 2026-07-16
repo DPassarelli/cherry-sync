@@ -227,6 +227,12 @@ func run() (code int) {
 	// separately once it is made; the two are kept apart because they can differ.
 	_ = runLog.Classified(logActions(result.Actions))
 
+	// Record what was held out of the comparison too — the gitignored paths by name, the
+	// .git directory, the .csync.toml — so a file that never appears in the change list
+	// can still be accounted for. This is the same set the header discloses, named
+	// rather than counted.
+	_ = runLog.Excluded(result.Excluded, result.GitDirExcluded, result.CsyncTomlExcluded)
+
 	// Disclose what was held out of the comparison — with no opt-out flag, this
 	// line is the user's only signal. Up to three independent things can be
 	// withheld: csync's own .csync.toml (whenever present), the .git/ metadata
@@ -240,12 +246,12 @@ func run() (code int) {
 	if result.GitDirExcluded {
 		excluded = append(excluded, "the .git directory")
 	}
-	if result.Excluded > 0 {
+	if n := len(result.Excluded); n > 0 {
 		noun := "paths"
-		if result.Excluded == 1 {
+		if n == 1 {
 			noun = "path"
 		}
-		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", result.Excluded, noun))
+		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", n, noun))
 	}
 	printAbove(view.Excluded(excluded))
 

@@ -3,6 +3,7 @@ package acceptance_test
 import (
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // ParsedLog mirrors the records csync writes to a run log. Like ReportedOutput for
@@ -27,6 +28,14 @@ type ParsedLog struct {
 	HasSelected     bool
 	SelectedCount   int
 	Selected        []LoggedAction
+	// Excluded* mirror the record of what csync held out of the comparison: the named
+	// gitignored paths (the value #82 adds over a bare count), and whether the .git
+	// directory and csync's own .csync.toml were withheld. HasExcluded distinguishes a
+	// recorded "nothing" from no record at all.
+	HasExcluded        bool
+	ExcludedGitignored []string
+	ExcludedGitDir     bool
+	ExcludedCsyncToml  bool
 }
 
 // LoggedAction is one classified or selected change the log recorded: a verb
@@ -98,6 +107,8 @@ var (
 	logClassifiedRE = regexp.MustCompile(`(?m)^\S+ classified: (\d+) \[(.*)\]\s*$`)
 	logSelectedRE   = regexp.MustCompile(`(?m)^\S+ selected: (\d+) \[(.*)\]\s*$`)
 	logActionRE     = regexp.MustCompile(`(\w+) ("(?:[^"\\]|\\.)*")`)
+	logExcludedRE   = regexp.MustCompile(`(?m)^\S+ excluded: (.+?)\s*$`)
+	logExclGitRE    = regexp.MustCompile(`\d+ gitignored \[(.*?)\]`)
 )
 
 // parseLog translates a run log's contents into a structured ParsedLog. It is the
@@ -138,6 +149,15 @@ func parseLog(content string) ParsedLog {
 		log.HasSelected = true
 		log.SelectedCount, _ = strconv.Atoi(m[1])
 		log.Selected = parseLogActions(m[2])
+	}
+	if m := logExcludedRE.FindStringSubmatch(content); m != nil {
+		log.HasExcluded = true
+		body := m[1]
+		if g := logExclGitRE.FindStringSubmatch(body); g != nil {
+			log.ExcludedGitignored = parseLogArgs(g[1])
+		}
+		log.ExcludedGitDir = strings.Contains(body, "the .git directory")
+		log.ExcludedCsyncToml = strings.Contains(body, ".csync.toml")
 	}
 	return log
 }

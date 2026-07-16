@@ -25,7 +25,7 @@ import (
 // hidden — no patterns, no config file, not a work tree.
 type exclusions struct {
 	patterns   []string
-	gitignored int
+	gitignored []string
 	inWorkTree bool
 	csyncToml  bool
 }
@@ -75,7 +75,7 @@ func localExclusions(r *command.Runner, source, destination string) (exclusions,
 		}
 		exc.patterns = append(exc.patterns, ".git")
 		exc.patterns = append(exc.patterns, gitignored...)
-		exc.gitignored = len(gitignored)
+		exc.gitignored = excludedNames(gitignored)
 		exc.inWorkTree = true
 	}
 	return exc, nil
@@ -160,7 +160,7 @@ func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
 }
 
 // dropIgnoredActions removes from actions any whose path the git repository at dir
-// ignores, returning the surviving actions and how many were dropped. It closes a
+// ignores, returning the surviving actions and the names of those dropped. It closes a
 // gap the --exclude pre-filter cannot: that filter is built from `git
 // ls-files`, which lists only files present in the LOCAL tree, so on a pull a file
 // that exists only on the remote yet matches a local ignore rule slips past it and
@@ -168,11 +168,11 @@ func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
 // repo's ignore rules — file existence not required — catching exactly those
 // remote-only cases. The two filters are disjoint: the pre-filter removes ignored
 // LOCAL files before rsync ever walks them, so they never reach this list, and this
-// pass only ever removes paths that survived to the comparison. The dropped count
-// is added to the disclosed total, since these are gitignored paths held back too.
-func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Action, int, error) {
+// pass only ever removes paths that survived to the comparison. The dropped names
+// join the disclosed set, since these are gitignored paths held back too.
+func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Action, []string, error) {
 	if len(actions) == 0 {
-		return actions, 0, nil
+		return actions, nil, nil
 	}
 	paths := make([]string, len(actions))
 	for i, a := range actions {
@@ -180,21 +180,33 @@ func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Acti
 	}
 	ignored, err := checkIgnored(r, dir, paths)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 	if len(ignored) == 0 {
-		return actions, 0, nil
+		return actions, nil, nil
 	}
 	kept := make([]Action, 0, len(actions))
-	dropped := 0
+	var dropped []string
 	for _, a := range actions {
 		if ignored[a.Path] {
-			dropped++
+			dropped = append(dropped, a.Path)
 			continue
 		}
 		kept = append(kept, a)
 	}
 	return kept, dropped, nil
+}
+
+// excludedNames turns the rsync exclude patterns from gitignoreExcludes into the plain
+// names the CLI and run log show: each pattern is root-anchored with a leading slash
+// (rsync syntax), which is stripped so "/build/" reads as "build/" — the form that
+// matches the .gitignore rule a user wrote and would search the log for.
+func excludedNames(patterns []string) []string {
+	names := make([]string, len(patterns))
+	for i, p := range patterns {
+		names[i] = strings.TrimPrefix(p, "/")
+	}
+	return names
 }
 
 // checkIgnored returns the set of paths (from the given list) that the git

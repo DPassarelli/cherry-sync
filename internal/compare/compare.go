@@ -17,14 +17,16 @@ type Action struct {
 // Result is the structured outcome of comparing two paths.
 type Result struct {
 	Actions []Action
-	// Excluded is how many gitignored paths were dropped from the comparison
-	// (0 when the local side isn't a git work tree or ignores nothing). The CLI
-	// discloses this so the user knows files were hidden — there's no opt-out.
-	Excluded int
+	// Excluded holds the gitignored paths dropped from the comparison — the names,
+	// so a caller can say which files were hidden and not merely how many (the CLI's
+	// header still discloses the count via len, but the run log records the names).
+	// Empty when the local side isn't a git work tree or ignores nothing. There's no
+	// opt-out. Each name is root-relative with no rsync anchor, e.g. "build/".
+	Excluded []string
 	// GitDirExcluded reports whether the local side's .git directory was held out
 	// of the comparison — true whenever the local side is a git work tree. git
 	// never lists .git/ as ignored, so it's excluded explicitly; the CLI discloses
-	// it separately from the gitignored count (it can be true with Excluded == 0).
+	// it separately from the gitignored names (it can be true with Excluded empty).
 	GitDirExcluded bool
 	// CsyncTomlExcluded reports whether the local side's own .csync.toml was held
 	// out of the comparison — true whenever that file is present, independent of
@@ -58,7 +60,7 @@ func Run(r *command.Runner, source, destination string) (Result, error) {
 	// The --exclude pre-filter is built from `git ls-files`, which sees only the
 	// local tree, so on a pull a remote-only file matching a local ignore rule
 	// slips through. Re-check the surviving paths against the local repo's rules and
-	// drop any it ignores, folding them into the disclosed count. Skipped when the
+	// drop any it ignores, folding their names into the disclosed set. Skipped when the
 	// local side isn't a work tree (inWorkTree false) — nothing to ask git about.
 	if exc.inWorkTree {
 		dir, _ := localSyncDir(source, destination)
@@ -67,7 +69,7 @@ func Run(r *command.Runner, source, destination string) (Result, error) {
 			return Result{}, err
 		}
 		actions = kept
-		excluded += dropped
+		excluded = append(excluded, dropped...)
 	}
 	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: exc.inWorkTree, CsyncTomlExcluded: exc.csyncToml}, nil
 }

@@ -181,6 +181,52 @@ func (l *Log) Selected(actions []Action) error {
 	return l.record("selected", renderActions(actions))
 }
 
+// Excluded records what csync held out of the comparison: the gitignored paths by name
+// (so the log can answer whether a given file was withheld, not merely how many were),
+// the .git directory, and csync's own .csync.toml. Each part appears only when it
+// applied; a run that withheld nothing records "nothing", so the record is always
+// present and its absence never ambiguous.
+func (l *Log) Excluded(gitignored []string, gitDir, csyncToml bool) error {
+	return l.record("excluded", renderExclusions(gitignored, gitDir, csyncToml))
+}
+
+// renderExclusions assembles the exclusion line from the parts that apply, mirroring the
+// header's English list but naming the gitignored paths (%q-quoted, so a space or quote
+// in a name survives) rather than counting them. The count still leads the gitignored
+// part for a quick read. No part applying renders "nothing".
+func renderExclusions(gitignored []string, gitDir, csyncToml bool) string {
+	var parts []string
+	if len(gitignored) > 0 {
+		parts = append(parts, fmt.Sprintf("%d gitignored %s", len(gitignored), quoteList(gitignored)))
+	}
+	if gitDir {
+		parts = append(parts, "the .git directory")
+	}
+	if csyncToml {
+		parts = append(parts, ".csync.toml")
+	}
+	if len(parts) == 0 {
+		return "nothing"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// quoteList renders a list of strings as "[\"a\"; \"b\"]", each %q-quoted and
+// semicolon-separated — the same boundary-proof quoting quoteArgs uses, for a list that
+// carries no verb alongside each entry.
+func quoteList(items []string) string {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, it := range items {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		fmt.Fprintf(&b, "%q", it)
+	}
+	b.WriteByte(']')
+	return b.String()
+}
+
 // renderActions renders an action list as "<count> [<verb> \"<path>\"; ...]" — the
 // count first for a quick read, then each action with its path %q-quoted so a space or
 // quote in a filename survives, semicolon-separated. An empty list renders "0 []". The

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -268,6 +269,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the log should record (\d+) selected changes?$`, theLogShouldRecordNSelectedChanges)
 	ctx.Step(`^the classified changes should include "([^"]*)" of "([^"]*)"$`, theClassifiedChangesShouldInclude)
 	ctx.Step(`^the selected changes should include "([^"]*)" of "([^"]*)"$`, theSelectedChangesShouldInclude)
+	ctx.Step(`^the log should record "([^"]*)" among the excluded paths$`, theLogShouldRecordAmongTheExcludedPaths)
+	ctx.Step(`^the log should record that the \.git directory was excluded$`, theLogShouldRecordThatTheGitDirectoryWasExcluded)
 	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
 	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
 	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
@@ -1078,6 +1081,42 @@ func theSelectedChangesShouldInclude(ctx context.Context, verb, path string) err
 	}
 	if !log.has(log.Selected, verb, path) {
 		return fmt.Errorf("run log's selected changes do not include %s %q; got %+v; contents:\n%s", verb, path, log.Selected, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordAmongTheExcludedPaths asserts a specific gitignored path is named
+// in the exclusion record — the point of #82's exclusion logging over a bare count: the
+// log can answer whether a given file was held out of the comparison, not just how many
+// were. It reads through the facade, which keeps the excluded names, so the assertion is
+// on the recorded name rather than a substring of the raw line.
+func theLogShouldRecordAmongTheExcludedPaths(ctx context.Context, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasExcluded {
+		return fmt.Errorf("run log records no excluded line; contents:\n%s", content)
+	}
+	if slices.Contains(log.ExcludedGitignored, path) {
+		return nil
+	}
+	return fmt.Errorf("run log's excluded paths do not include %q; got %+v; contents:\n%s", path, log.ExcludedGitignored, content)
+}
+
+// theLogShouldRecordThatTheGitDirectoryWasExcluded asserts the exclusion record notes
+// the .git directory was withheld — the singleton exclusion csync always applies in a
+// work tree, named for free (there is only ever one) alongside the gitignored paths.
+func theLogShouldRecordThatTheGitDirectoryWasExcluded(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasExcluded {
+		return fmt.Errorf("run log records no excluded line; contents:\n%s", content)
+	}
+	if !log.ExcludedGitDir {
+		return fmt.Errorf("run log's excluded line does not note the .git directory; contents:\n%s", content)
 	}
 	return nil
 }
