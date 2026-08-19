@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The macOS binaries are now code-signed with an Apple Developer ID certificate and notarized by Apple, so a downloaded csync runs without being blocked by Gatekeeper. Clearing the quarantine flag by hand is no longer necessary, and the README no longer asks for it. (#93)
+
 ## [0.9.0] - 2026-07-15
 
 ### Added

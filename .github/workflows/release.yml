@@ -52,6 +52,15 @@ jobs:
           args: release --clean --release-notes=.release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Apple code-signing and notarization credentials, consumed by the
+          # notarize block in .goreleaser.yaml. MACOS_SIGN_P12 doubles as the
+          # on/off switch there, so a fork or a secretless run builds unsigned
+          # rather than failing.
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
 
       # GoReleaser already passes --release-notes when it creates the release, but
       # the v0.1.0 run published with the commit message as the body instead of
