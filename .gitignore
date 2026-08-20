@@ -29,6 +29,15 @@ coverage.html
 # Release notes extracted from CHANGELOG.md by the release workflow (transient)
 /.release-notes.md
 
+# Code-signing material. These never belong in the repo — they live outside the
+# working tree and in a password manager — but an accidental `git add .` is one
+# keystroke away, so refuse them here as well.
+*.p12
+*.p8
+*.key
+*.cer
+*.csr
+
 # Editor / OS
 .DS_Store
 .idea/

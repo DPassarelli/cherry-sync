@@ -35,6 +35,40 @@ builds:
       - -s -w
       - -X main.version={{ .Version }}
 
+# Sign and notarize the macOS binaries with Apple's notary service, so Gatekeeper
+# lets a downloaded csync run without the user clearing a quarantine flag by hand.
+# GoReleaser embeds anchore/quill for this, so it needs no Xcode, no `codesign`,
+# and no macOS runner — the linux job that builds the release also signs it.
+#
+# Runs between build and archive, so the uploaded asset and its checksums.txt
+# entry both describe the signed binary.
+#
+# `enabled` is keyed off a secret rather than hardcoded true: a local
+# `goreleaser release --snapshot --clean` has none of these set, and skipping is
+# the right behavior there. In CI, release.yml supplies all five from repository
+# secrets. The two file-shaped inputs (certificate, key) are base64 of the .p12
+# and .p8 respectively; the other three are plain identifiers.
+#
+# A bare Mach-O executable cannot be stapled (`xcrun stapler` handles only
+# .app/.dmg/.pkg), so Gatekeeper verifies the notarization online on first run.
+# That is the accepted cost of shipping a bare binary rather than an installer.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - csync
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        # Block until Apple returns a verdict: a release must not be promoted
+        # while notarization is still pending. 20m is the service's own cap.
+        wait: true
+        timeout: 20m
+
 archives:
   - id: csync
     # Publish the bare executable rather than a tar.gz. csync carries its own MIT
