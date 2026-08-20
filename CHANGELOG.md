@@ -8,11 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- A `.csync.toml` that the project also gitignores is no longer disclosed twice. csync withholds its own config file unconditionally, but when git reported it as ignored too it was also counted among the gitignored paths — so `(excluding .csync.toml, the .git directory, and 3 gitignored paths)` named three files when only two were held back. The count now covers only the paths your ignore rules hid. (#82)
+- A `.csync.toml` that the project also gitignores is no longer disclosed twice. (#82)
 
 ### Added
 
-- The run log now records what a run did: which build of csync produced it, the command line as invoked, the source and destination it resolved, the changes it classified and which of them the user selected, the files it held out of the comparison (gitignored paths by name, the .git directory, and .csync.toml), and the external commands it ran — the rsync dry-run comparison, the transfer that moved files, the removal pass that pruned the destination, and the git query for a local repository's ignore rules — each with its argument vector, exit code, and duration, written as the run proceeds, so a run abandoned at the selection prompt still says what it was. (#82)
+- csync now maintains a log for each run: binary version, the original command as invoked, the source and destination, the changes it classified and which of these were selected, the files it ignored, and the external commands it ran. Everything is captured on separate lines, each of which also include a timestamp, the exit code, and duration. The log is written in real-time, so cancelled or failed runs can be viewed as well. (#82)
+
+## [0.10.0] - 2026-08-19
+
+### Added
+
+- The macOS binaries are now code-signed with an Apple Developer ID certificate and notarized by Apple, so a downloaded csync runs without being blocked by Gatekeeper. Clearing the quarantine flag by hand is no longer necessary, and the README no longer asks for it. (#93)
 
 ## [0.9.0] - 2026-07-15
 
@@ -113,7 +119,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.6.0...v0.7.0
