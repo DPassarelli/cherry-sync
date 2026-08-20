@@ -111,14 +111,23 @@ jobs:
           - name: darwin/arm64
             runs-on: macos-latest
             pattern: cherry-sync_*_darwin_arm64
+            signed: true
           - name: darwin/amd64
             runs-on: macos-latest
             pattern: cherry-sync_*_darwin_amd64
+            signed: true
             rosetta: true
     name: smoketest ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
+    # Whether the build was signed at all, as a plain boolean. The signature
+    # check below is guarded by the same switch that turns signing on in
+    # .goreleaser.yaml, so a fork holding none of the Apple secrets skips the
+    # check rather than failing a release it deliberately built unsigned. Only
+    # the emptiness of the secret crosses into the job, never its value.
+    env:
+      SIGNING_ENABLED: ${{ secrets.MACOS_SIGN_P12 != '' }}
     steps:
-      # Only _scripts/smoketest.sh is needed from the tree.
+      # Only the _scripts/ checks are needed from the tree.
       - uses: actions/checkout@v6
 
       # darwin/amd64 runs on an Apple-silicon runner, so executing the x86_64
@@ -147,6 +156,17 @@ jobs:
           test -n "$asset" || { echo "no asset matched ${{ matrix.pattern }}" >&2; exit 1; }
           mv "$asset" smoketest-bin/csync
           chmod +x smoketest-bin/csync
+
+      # Prove the published darwin binary carries our Developer ID signature and
+      # an Apple notarization ticket. smoketest.sh cannot see this: an unsigned
+      # build is ad-hoc signed by the Go linker, so it executes on the runner and
+      # passes every behavioral check while still being the binary Gatekeeper
+      # blocks (#93). Runs before the smoketest so a signing fault is reported as
+      # a signing fault. A failure here leaves the release a draft, since promote
+      # needs this job.
+      - name: Verify macOS signature
+        if: ${{ matrix.signed && env.SIGNING_ENABLED == 'true' }}
+        run: ./_scripts/verify-macos-signature.sh smoketest-bin/csync
 
       - name: Smoketest
         run: ./_scripts/smoketest.sh smoketest-bin/csync "${GITHUB_REF_NAME}"
