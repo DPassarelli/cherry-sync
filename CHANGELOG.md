@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - csync now maintains a log for each run: binary version, the original command as invoked, the source and destination, the changes it classified and which of these were selected, the files it ignored, and the external commands it ran. Everything is captured on separate lines, each of which also include a timestamp, the exit code, and duration. The log is written in real-time, so cancelled or failed runs can be viewed as well. (#82)
+- csync only keeps the 25 most recent logs. Removed logs are noted in the current one. (#82)
 
 ## [0.10.0] - 2026-08-19
 

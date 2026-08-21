@@ -36,6 +36,12 @@ type ParsedLog struct {
 	ExcludedGitignored []string
 	ExcludedGitDir     bool
 	ExcludedCsyncToml  bool
+	// Pruned names the run logs this run deleted to stay under the retention ceiling.
+	// HasPruned distinguishes a run that recorded pruning nothing from one that
+	// recorded no such line, which is the difference between "there was nothing to
+	// delete" and "pruning never happened".
+	HasPruned bool
+	Pruned    []string
 }
 
 // LoggedAction is one classified or selected change the log recorded: a verb
@@ -109,6 +115,8 @@ var (
 	logActionRE     = regexp.MustCompile(`(\w+) ("(?:[^"\\]|\\.)*")`)
 	logExcludedRE   = regexp.MustCompile(`(?m)^\S+ excluded: (.+?)\s*$`)
 	logExclGitRE    = regexp.MustCompile(`\d+ gitignored \[(.*?)\]`)
+	logPrunedRE     = regexp.MustCompile(`(?m)^\S+ pruned: (.+?)\s*$`)
+	logPrunedListRE = regexp.MustCompile(`^\d+ \[(.*)\]$`)
 )
 
 // parseLog translates a run log's contents into a structured ParsedLog. It is the
@@ -158,6 +166,12 @@ func parseLog(content string) ParsedLog {
 		}
 		log.ExcludedGitDir = strings.Contains(body, "the .git directory")
 		log.ExcludedCsyncToml = strings.Contains(body, ".csync.toml")
+	}
+	if m := logPrunedRE.FindStringSubmatch(content); m != nil {
+		log.HasPruned = true
+		if g := logPrunedListRE.FindStringSubmatch(m[1]); g != nil {
+			log.Pruned = parseLogArgs(g[1])
+		}
 	}
 	return log
 }

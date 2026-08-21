@@ -11,6 +11,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -80,7 +82,80 @@ func Create(version string) (*Log, error) {
 		_ = f.Close()
 		return nil, fmt.Errorf("could not write to the log file %s: %w", path, reason(err))
 	}
+	// Pruning happens after this run's log exists, so the file being written is the
+	// newest in the directory and never a candidate for its own removal — which is
+	// what lets the ceiling be stated as "keep the newest maxLogs" with no special
+	// case. A prune that fails does not fail the run: the record of what a sync did
+	// is worth more than a tidy directory, and the failure leaves logs behind rather
+	// than losing any.
+	pruned, _ := prune(dir, maxLogs)
+	err = l.record("pruned", renderPruned(pruned))
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	return l, nil
+}
+
+// maxLogs is how many run logs csync keeps; a run that would push the directory past
+// it deletes the oldest until it fits. The ceiling exists so the directory stays
+// short enough to read through, not to reclaim space — a log runs to a couple of
+// kilobytes — which is why the number is fixed here rather than made configurable.
+const maxLogs = 25
+
+// runLogNameRE matches the names Create gives run logs, and nothing else. Pruning
+// deletes files, and the log directory belongs to the user rather than to csync: a
+// file found there that csync did not write is somebody else's and is left alone,
+// however old it is. Matching the whole name — not a "run-" prefix or a ".log"
+// suffix — is what keeps that promise.
+var runLogNameRE = regexp.MustCompile(`^run-\d{8}T\d{6}Z-\d+\.log$`)
+
+// prune deletes the oldest run logs in dir until at most keep remain, returning the
+// names it removed, oldest first. Age comes from the timestamp in each name rather
+// than the file's modification time: the name records when the run actually started,
+// while mtime is rewritten by any backup or copy that touches the file. The names
+// lead with that timestamp at a fixed width, so sorting them lexically sorts them
+// chronologically.
+//
+// A log it cannot delete is collected into the returned error but does not stop the
+// rest — one stubborn file should not leave the whole directory unpruned.
+func prune(dir string, keep int) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("could not read the log directory %s: %w", dir, reason(err))
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && runLogNameRE.MatchString(e.Name()) {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) <= keep {
+		return nil, nil
+	}
+	sort.Strings(names)
+	var removed []string
+	var failures []error
+	for _, name := range names[:len(names)-keep] {
+		err = os.Remove(filepath.Join(dir, name))
+		if err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		removed = append(removed, name)
+	}
+	return removed, errors.Join(failures...)
+}
+
+// renderPruned renders the pruned record: the count first for a quick read, then the
+// names removed, %q-quoted like every other list the log writes. A run that removed
+// nothing records "nothing", so the record is always present and its absence never
+// ambiguous.
+func renderPruned(names []string) string {
+	if len(names) == 0 {
+		return "nothing"
+	}
+	return fmt.Sprintf("%d %s", len(names), quoteList(names))
 }
 
 // reason strips a filesystem error down to the part a person still needs. The os

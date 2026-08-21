@@ -446,7 +446,8 @@ Feature: Log each run
   #   transfer. A record nobody can find is not a record.
   #
   # - One log per run, so a second run does not overwrite the first, and old
-  #   logs are pruned rather than accumulating without bound.
+  #   logs are pruned rather than accumulating without bound — scenarios in
+  #   prune-run-logs.feature.
   #
   # - By the time csync blocks at the selection prompt, the log names the run's
   #   start, csync's version, both operands, and the comparison rsync invoked.
