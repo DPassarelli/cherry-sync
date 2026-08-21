@@ -187,6 +187,27 @@ Feature: Log each run
     Then  csync should return a non-zero exit code
     And   the log should record the comparison's failing exit code
 
+  Scenario: A run that fails at the comparison still says where it logged
+    # The runs worth reading are the ones that went wrong, so the disclosure has to
+    # survive the failure — a log the user cannot find is no better than one never
+    # written. A missing source makes rsync fail at the comparison; csync exits
+    # non-zero and the log path goes to stderr beside the error, rather than to
+    # stdout with a report that never came.
+    #
+    # The non-zero exit is a guard, not a second behavior: it holds the setup to
+    # actually producing that failure. Should a missing source ever stop failing,
+    # this scenario would otherwise stay green while quietly testing the clean path
+    # the opening scenario already covers.
+    #
+    # That the disclosed path is real is not re-checked here — it is a property of
+    # the single deferred closure every exit shares, already pinned above. What
+    # varies on this path is only whether that closure speaks at all.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   csync should report where it logged the run
+
   Scenario: A command's duration is logged as whole milliseconds
     # How long a command took is recorded so a troubleshooter can see where a slow run
     # spent its time. The value is rounded up to a whole millisecond — no decimal tail,
