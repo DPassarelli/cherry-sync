@@ -208,6 +208,25 @@ Feature: Log each run
     Then  csync should return a non-zero exit code
     And   csync should report where it logged the run
 
+  Scenario: A run that fails during the transfer still says where it logged
+    # The twin of the scenario above, on the far side of the prompt. By the time the
+    # transfer runs csync has already written most of the log, so a failure here is
+    # the case where the record is most nearly complete and most worth finding — and
+    # the one where an exit that skipped the disclosure would be easiest to miss.
+    #
+    # The file is removed while csync waits at the prompt, after the comparison has
+    # already seen it and offered it. rsync cannot then open what it was told to
+    # send, and stops with a partial-transfer error. Removing a file rather than
+    # making one unreadable is deliberate: permission bits mean nothing to root, so a
+    # chmod-based setup would quietly stop testing anything the day this suite runs
+    # as root.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    And   the changed file is deleted before I answer
+    When  I answer the prompt
+    Then  csync should return a non-zero exit code
+    And   csync should report where it logged the run
+
   Scenario: A command's duration is logged as whole milliseconds
     # How long a command took is recorded so a troubleshooter can see where a slow run
     # spent its time. The value is rounded up to a whole millisecond — no decimal tail,
@@ -435,34 +454,3 @@ Feature: Log each run
     When  I run "csync ./project user@host:/project"
     Then  the run log directory should be accessible only by its owner
     And   the run log file should be accessible only by its owner
-
-  # ---------------------------------------------------------------------------
-  # TODO: Additional scenarios for this feature, agreed but not yet drafted.
-  # Each becomes a real Scenario block as we drill into it, one at a time.
-  # ---------------------------------------------------------------------------
-  #
-  # - csync discloses the log path on every run that writes one: the no-changes
-  #   run, the completed sync, and the runs that fail at the comparison or mid
-  #   transfer. A record nobody can find is not a record.
-  #
-  # - One log per run, so a second run does not overwrite the first, and old
-  #   logs are pruned rather than accumulating without bound — scenarios in
-  #   prune-run-logs.feature.
-  #
-  # - By the time csync blocks at the selection prompt, the log names the run's
-  #   start, csync's version, both operands, and the comparison rsync invoked.
-  #   One scenario per fact; the scenario above already holds csync to writing
-  #   them before it asks, rather than at the end.
-  #
-  # - Every external command csync runs (the rsync comparison, transfer, and
-  #   removal; the git ignore-rule queries) is recorded with its argument vector,
-  #   its exit code (a failed comparison records its real non-zero exit), and its
-  #   duration (whole milliseconds, rounded up) — scenarios above.
-  #
-  # - The changes csync classified, and which of them the user selected, are
-  #   recorded — the two can differ, and a removal that was applied is the fact
-  #   the log exists to preserve — scenarios above.
-  #
-  # - What csync held out of the comparison is recorded by name — the gitignored
-  #   paths, the .git directory, the .csync.toml — so a file absent from the change
-  #   list can still be accounted for — scenario above.

@@ -293,6 +293,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should exit normally$`, csyncShouldExitNormally)
 	ctx.Step(`^the reported log path should be the one I found earlier$`, theReportedLogPathShouldBeTheOneIFoundEarlier)
 	ctx.Step(`^that csync cannot write its log$`, thatCsyncCannotWriteItsLog)
+	ctx.Step(`^the changed file is deleted before I answer$`, theChangedFileIsDeletedBeforeIAnswer)
 	ctx.Step(`^the changed file should be identical between local and remote$`, theChangedFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^csync should warn that it could not write a run log$`, csyncShouldWarnThatItCouldNotWriteARunLog)
 	ctx.Step(`^csync should not report where it logged the run$`, csyncShouldNotReportWhereItLoggedTheRun)
@@ -742,6 +743,30 @@ func thatAFileHasBeenChangedLocally(ctx context.Context) (context.Context, error
 		return ctx, err
 	}
 	return context.WithValue(ctx, changedFileKey{}, changed), nil
+}
+
+// theChangedFileIsDeletedBeforeIAnswer removes the local file the scenario changed,
+// while csync sits at the prompt with the comparison already done. The transfer is
+// then told to send a file that is no longer there and stops with a partial-transfer
+// error, which is a failure on the far side of the prompt rather than before it.
+//
+// Deleting rather than chmod-ing, for the reason thatCsyncCannotWriteItsLog gives:
+// root ignores permission bits, so a setup built on them stops testing anything the
+// day this suite runs as root. Nothing gets to read a file that is gone.
+func theChangedFileIsDeletedBeforeIAnswer(ctx context.Context) error {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return fmt.Errorf("local path not set; missing Background step?")
+	}
+	changed, _ := ctx.Value(changedFileKey{}).(string)
+	if changed == "" {
+		return fmt.Errorf("no file was changed locally, so there is none to delete")
+	}
+	err := os.Remove(filepath.Join(local, changed))
+	if err != nil {
+		return fmt.Errorf("deleting the changed file: %w", err)
+	}
+	return nil
 }
 
 // thatCsyncCannotWriteItsLog puts a regular file where csync expects to create its
