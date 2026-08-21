@@ -672,18 +672,18 @@ func theReportedLicenseShouldContain(ctx context.Context, want string) error {
 }
 
 // csyncShouldReportWhereItLoggedTheRun asserts csync disclosed the path of the
-// run log it wrote. Nothing else in the suite may name that path: the scenarios
-// learn it from csync, and one location scenario holds csync to putting it in the
-// right place. A record nobody can find is not a record, so the disclosure is a
-// behavior in its own right, not merely the seam this test reads through.
+// run log it wrote. A record nobody can find is not a record, so the disclosure is a
+// behavior in its own right — which is why the steps that read a log's contents find
+// it by scanning the scenario's state home instead: were they to read through the
+// disclosure, breaking it would redden every one of them alongside this.
 func csyncShouldReportWhereItLoggedTheRun(ctx context.Context) error {
 	r := captured(ctx)
 	out := parseOutput(r.Stdout, r.Stderr)
 	if !out.HasLogPath {
-		return fmt.Errorf("csync reported no log path in stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync reported no log path; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	if out.LogPath == "" {
-		return fmt.Errorf("csync printed an empty log path in stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync printed an empty log path; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	return nil
 }
@@ -696,7 +696,7 @@ func aRunLogShouldExistAtTheReportedPath(ctx context.Context) error {
 	r := captured(ctx)
 	path := parseOutput(r.Stdout, r.Stderr).LogPath
 	if path == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to look for; stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync reported no log path, so there is none to look for; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -945,12 +945,7 @@ func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string)
 // than any flag keeps the check to the fidelity fact that matters — the transfer was
 // recorded at all — and off the argv composition a refactor might change.
 func theLogShouldRecordTheTransferThatRan(ctx context.Context) error {
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -983,11 +978,7 @@ func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error 
 	if want == 0 {
 		return fmt.Errorf("csync surfaced exit status 0, which is not a failure to test")
 	}
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stderr:\n%s", r.Stderr)
-	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1007,20 +998,21 @@ func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error 
 var wholeMillisRE = regexp.MustCompile(`^(\d+)ms$`)
 
 // resolvedLog returns the parsed log a scenario is asking about, from wherever it is
-// available: the path a mid-run "look for the log file" step stashed, or the path csync
-// disclosed on its way out. This lets the classified/selected steps read the log whether
-// the scenario pauses at the prompt (classification is recorded by then) or runs to
-// completion (where the selection is too).
+// available: the path a mid-run "look for the log file" step stashed, or else the one
+// log under the scenario's state home. It locates the log without reading what csync
+// disclosed, so that a scenario asking what a log contains fails only on the content it
+// names; whether csync says where it logged is a separate behavior with its own
+// scenarios, and coupling the two made one break redden both.
 func resolvedLog(ctx context.Context) (ParsedLog, string, error) {
-	if path, _ := ctx.Value(foundLogKey{}).(string); path != "" {
-		return parseLogAt(path)
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		found, err := theOneRunLog(ctx)
+		if err != nil {
+			return ParsedLog{}, "", err
+		}
+		path = found
 	}
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return ParsedLog{}, "", fmt.Errorf("no run log was located and csync reported none; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
-	}
-	return parseLogAt(out.LogPath)
+	return parseLogAt(path)
 }
 
 // theLogShouldRecordNClassifiedChanges asserts the log recorded the classification, and
@@ -1128,12 +1120,7 @@ func theLogShouldRecordThatTheGitDirectoryWasExcluded(ctx context.Context) error
 // unrounded "43.764397ms" fails the whole-millisecond match, and a "0ms" fails the
 // greater-than-zero check that rounding up exists to uphold.
 func theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds(ctx context.Context) error {
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1165,13 +1152,10 @@ func theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds(ctx context.Con
 func theLogShouldRecordThatSourcePathAsOneArgument(ctx context.Context) error {
 	r := captured(ctx)
 	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
 	if !strings.ContainsAny(out.Source, " \"") {
 		return fmt.Errorf("csync reported source %q, which has no space or quote to test fidelity with", out.Source)
 	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1194,12 +1178,7 @@ func theLogShouldRecordThatSourcePathAsOneArgument(ctx context.Context) error {
 // gates it is deliberately left unlogged. It keys on the "exec <name>" pairing, like
 // the comparison step, so the name appearing elsewhere cannot satisfy it.
 func theLogShouldRecordRunningForTheIgnoreRules(ctx context.Context, name string) error {
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1217,12 +1196,7 @@ func theLogShouldRecordRunningForTheIgnoreRules(ctx context.Context, name string
 // pins the presence-fidelity fact — the removal was recorded — and isolates it from
 // the transfer scenario by what the run did.
 func theLogShouldRecordTheRemovalThatRan(ctx context.Context) error {
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1240,14 +1214,9 @@ func theLogShouldRecordTheRemovalThatRan(ctx context.Context) error {
 // tempdir substitution, and pins that the line is the raw invocation — not the
 // resolved operands, which get their own lines.
 func theLogShouldRecordTheCommandLineThatWasRun(ctx context.Context) error {
-	r := captured(ctx)
-	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
 	args, _ := ctx.Value(invokedArgsKey{}).([]string)
 	want := strings.Join(append([]string{"csync"}, args...), " ")
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
@@ -1265,13 +1234,10 @@ func theLogShouldRecordTheCommandLineThatWasRun(ctx context.Context) error {
 func theLogShouldNameTheSourceAndDestinationReported(ctx context.Context) error {
 	r := captured(ctx)
 	out := parseOutput(r.Stdout, r.Stderr)
-	if out.LogPath == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to read; stdout:\n%s", r.Stdout)
-	}
 	if out.Source == "" || out.Destination == "" {
 		return fmt.Errorf("csync reported an empty operand (source %q, destination %q); nothing to reconcile", out.Source, out.Destination)
 	}
-	log, content, err := parseLogAt(out.LogPath)
+	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err
 	}
