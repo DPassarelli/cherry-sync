@@ -2,19 +2,26 @@
 #
 # verify-macos-signature.sh — pre-publish signing check for a released macOS csync binary.
 #
-# Proves a published darwin artifact carries a real Developer ID signature and an
-# Apple notarization ticket, so a release can never silently ship a binary that
-# Gatekeeper refuses to run (#93). This complements smoketest.sh, which proves the
-# binary executes but is blind to how it was signed: the Go linker ad-hoc-signs
-# every arm64 Mach-O, so a wholly unsigned build still runs on the runner AND
-# still passes `codesign --verify`. The team identifier is what separates the two
-# — a signed build reports this team, an ad-hoc one reports "not set".
+# Proves a published darwin artifact carries a real Developer ID signature, so a
+# release can never silently ship a binary Gatekeeper refuses to run for want of
+# one (#93). This complements smoketest.sh, which proves the binary executes but
+# is blind to how it was signed: the Go linker ad-hoc-signs every arm64 Mach-O, so
+# a wholly unsigned build still runs on the runner AND still passes
+# `codesign --verify`. The team identifier is what separates the two — a signed
+# build reports this team, an ad-hoc one reports "not set".
 #
-# Notarization is asserted through codesign's requirement language rather than
-# spctl: `spctl --assess` only evaluates app bundles and rejects any bare
-# executable whatever its signature ("the code is valid but does not seem to be
-# an app"). A bare Mach-O also cannot be stapled, so this check reaches Apple
-# over the network and needs connectivity.
+# Notarization is deliberately not asserted here, and cannot be: a bare Mach-O
+# cannot be stapled, so the only local evidence of a ticket is codesign's
+# `=notarized` requirement, which consults the machine's ticket cache rather than
+# Apple. It passes only where that ticket has already been fetched, so it fails on
+# an ephemeral CI runner however well notarized the binary is (proven on the
+# v1.0.0 release: both runners rejected a binary Apple had accepted minutes
+# earlier, which then satisfied the same requirement on a Mac that had evaluated
+# it once). `spctl --assess` is no substitute — it only evaluates app bundles and
+# rejects any bare executable whatever its signature ("the code is valid but does
+# not seem to be an app"). Notarization is gated where the evidence is firsthand:
+# GoReleaser waits on Apple's verdict at build time and fails the release unless
+# it comes back Accepted. Every check below is local, so this needs no network.
 #
 # Usage:
 #   verify-macos-signature.sh <path-to-csync-binary>
@@ -46,17 +53,13 @@ fi
 # output to stderr, hence the redirect on the -d call.
 verify_out="$(mktemp)"
 display_out="$(mktemp)"
-notarized_out="$(mktemp)"
-trap 'rm -f "$verify_out" "$display_out" "$notarized_out"' EXIT
+trap 'rm -f "$verify_out" "$display_out"' EXIT
 
 verify_rc=0
 codesign --verify --strict --verbose=2 "$bin" >"$verify_out" 2>&1 || verify_rc=$?
 
 display_rc=0
 codesign --display --verbose=2 "$bin" >"$display_out" 2>&1 || display_rc=$?
-
-notarized_rc=0
-codesign --verify --strict --verbose=2 -R '=notarized' "$bin" >"$notarized_out" 2>&1 || notarized_rc=$?
 
 # Assertions. Each failed check increments `failures` and prints why, so a run
 # reports everything that is wrong rather than stopping at the first problem.
@@ -86,14 +89,6 @@ fi
 # structural intent but is exactly the binary #93 was filed about.
 if ! grep -qF "TeamIdentifier=${EXPECTED_TEAM_ID}" "$display_out"; then
   check_fail "expected TeamIdentifier=${EXPECTED_TEAM_ID}; codesign reported: $(cat "$display_out")"
-fi
-
-# 4. Apple must have a notarization ticket for this exact binary. Signing alone
-# does not satisfy Gatekeeper — an unnotarized Developer ID binary is still
-# blocked on first run — so a release that signed but failed to notarize has to
-# fail here rather than reach users.
-if [ "$notarized_rc" -ne 0 ]; then
-  check_fail "binary is not notarized (exit $notarized_rc): $(cat "$notarized_out")"
 fi
 
 if [ "$failures" -ne 0 ]; then

@@ -157,13 +157,15 @@ jobs:
           mv "$asset" smoketest-bin/csync
           chmod +x smoketest-bin/csync
 
-      # Prove the published darwin binary carries our Developer ID signature and
-      # an Apple notarization ticket. smoketest.sh cannot see this: an unsigned
-      # build is ad-hoc signed by the Go linker, so it executes on the runner and
-      # passes every behavioral check while still being the binary Gatekeeper
-      # blocks (#93). Runs before the smoketest so a signing fault is reported as
-      # a signing fault. A failure here leaves the release a draft, since promote
-      # needs this job.
+      # Prove the published darwin binary carries our Developer ID signature.
+      # smoketest.sh cannot see this: an unsigned build is ad-hoc signed by the Go
+      # linker, so it executes on the runner and passes every behavioral check
+      # while still being the binary Gatekeeper blocks (#93). Runs before the
+      # smoketest so a signing fault is reported as a signing fault. A failure
+      # here leaves the release a draft, since promote needs this job.
+      #
+      # Notarization is not checked here — see the script's header for why a
+      # runner cannot prove it. GoReleaser gates that at build time instead.
       - name: Verify macOS signature
         if: ${{ matrix.signed && env.SIGNING_ENABLED == 'true' }}
         run: ./_scripts/verify-macos-signature.sh smoketest-bin/csync
