@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -92,10 +94,28 @@ type foundLogKey struct{}
 // scenario having to name it. Which file it is was never the point.
 type changedFileKey struct{}
 
+// invokedArgsKey stashes the argument vector runCsync actually passed to the csync
+// child — after the `./project`/`user@host:/project` placeholders are substituted —
+// so the invocation-line step can reconcile the log against what was really run
+// rather than reconstruct the substitution itself.
+type invokedArgsKey struct{}
+
 // noXdgKey flags a scenario (via `Given the environment variable XDG_STATE_HOME is
 // not set`) as needing the csync child to run without XDG_STATE_HOME, so its log
 // falls back to ~/.local/state under the throwaway home. csyncEnv reads it.
 type noXdgKey struct{}
+
+// seededLogsKey stashes the names of the run logs a pruning scenario planted before
+// csync ran. Knowing exactly which files were already there is what lets a later
+// step pick out the log this run wrote without sorting by age — the very ordering
+// the pruning scenarios are there to test — and what lets it name the logs that
+// should have survived.
+type seededLogsKey struct{}
+
+// plantedFileKey stashes the path of the not-a-run-log file a scenario planted in
+// the log directory, so the step that checks it survived does not have to know the
+// name the planting step chose.
+type plantedFileKey struct{}
 
 // runResult holds everything the test world cares about after a csync
 // invocation: the two output streams kept separate so step funcs can assert
@@ -247,6 +267,25 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I look for the log file$`, iLocateTheLogFile)
 	ctx.Step(`^I have taken note of where the log file is$`, iLocateTheLogFile)
 	ctx.Step(`^the log file should already have content$`, theLogFileShouldAlreadyHaveContent)
+	ctx.Step(`^the log should record that the version was "([^"]*)"$`, theLogShouldRecordThatTheVersionWas)
+	ctx.Step(`^the log should record running "([^"]*)" for the comparison$`, theLogShouldRecordRunningForTheComparison)
+	ctx.Step(`^the log should record the transfer that ran$`, theLogShouldRecordTheTransferThatRan)
+	ctx.Step(`^the log should record the removal that ran$`, theLogShouldRecordTheRemovalThatRan)
+	ctx.Step(`^the log should record running "([^"]*)" for the ignore rules$`, theLogShouldRecordRunningForTheIgnoreRules)
+	ctx.Step(`^a local directory whose path contains a space$`, aLocalDirectoryWhosePathContainsASpace)
+	ctx.Step(`^a local directory whose path contains a double quote$`, aLocalDirectoryWhosePathContainsADoubleQuote)
+	ctx.Step(`^a local source path that does not exist$`, aLocalSourcePathThatDoesNotExist)
+	ctx.Step(`^the log should record the comparison's failing exit code$`, theLogShouldRecordTheComparisonsFailingExitCode)
+	ctx.Step(`^the logged duration should be a positive whole number of milliseconds$`, theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds)
+	ctx.Step(`^the log should record (\d+) classified changes?$`, theLogShouldRecordNClassifiedChanges)
+	ctx.Step(`^the log should record (\d+) selected changes?$`, theLogShouldRecordNSelectedChanges)
+	ctx.Step(`^the classified changes should include "([^"]*)" of "([^"]*)"$`, theClassifiedChangesShouldInclude)
+	ctx.Step(`^the selected changes should include "([^"]*)" of "([^"]*)"$`, theSelectedChangesShouldInclude)
+	ctx.Step(`^the log should record "([^"]*)" among the excluded paths$`, theLogShouldRecordAmongTheExcludedPaths)
+	ctx.Step(`^the log should record that the \.git directory was excluded$`, theLogShouldRecordThatTheGitDirectoryWasExcluded)
+	ctx.Step(`^the log should record that source path as one argument$`, theLogShouldRecordThatSourcePathAsOneArgument)
+	ctx.Step(`^the log should record the command line that was run$`, theLogShouldRecordTheCommandLineThatWasRun)
+	ctx.Step(`^the log should name the source and destination csync reported$`, theLogShouldNameTheSourceAndDestinationReported)
 	ctx.Step(`^I answer the prompt$`, iAnswerThePrompt)
 	// A restatement of `csync should return exit code 0` in the vocabulary of a
 	// scenario that has no interest in the number, only in csync having finished
@@ -254,6 +293,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should exit normally$`, csyncShouldExitNormally)
 	ctx.Step(`^the reported log path should be the one I found earlier$`, theReportedLogPathShouldBeTheOneIFoundEarlier)
 	ctx.Step(`^that csync cannot write its log$`, thatCsyncCannotWriteItsLog)
+	ctx.Step(`^the changed file is deleted before I answer$`, theChangedFileIsDeletedBeforeIAnswer)
 	ctx.Step(`^the changed file should be identical between local and remote$`, theChangedFileShouldBeIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^csync should warn that it could not write a run log$`, csyncShouldWarnThatItCouldNotWriteARunLog)
 	ctx.Step(`^csync should not report where it logged the run$`, csyncShouldNotReportWhereItLoggedTheRun)
@@ -264,6 +304,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the run log should be under "([^"]*)" in (.+)$`, theRunLogShouldBeUnderIn)
 	ctx.Step(`^the run log directory should be accessible only by its owner$`, theRunLogDirectoryShouldBeAccessibleOnlyByItsOwner)
 	ctx.Step(`^the run log file should be accessible only by its owner$`, theRunLogFileShouldBeAccessibleOnlyByItsOwner)
+	ctx.Step(`^(\d+) run logs already exist$`, nRunLogsAlreadyExist)
+	ctx.Step(`^a file that is not a run log in the log directory$`, aFileThatIsNotARunLogInTheLogDirectory)
+	ctx.Step(`^the log directory should hold (\d+) run logs?$`, theLogDirectoryShouldHoldNRunLogs)
+	ctx.Step(`^the surviving run logs should be the newest ones$`, theSurvivingRunLogsShouldBeTheNewestOnes)
+	ctx.Step(`^that file should still be there$`, thatFileShouldStillBeThere)
+	ctx.Step(`^the log should name the run logs it pruned$`, theLogShouldNameTheRunLogsItPruned)
+	ctx.Step(`^the log should record that nothing was pruned$`, theLogShouldRecordThatNothingWasPruned)
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
@@ -525,6 +572,7 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		Stderr:   stderrBuf.String(),
 		ExitCode: exitCode,
 	}
+	ctx = context.WithValue(ctx, invokedArgsKey{}, args)
 	return context.WithValue(ctx, outputKey{}, result), nil
 }
 
@@ -644,18 +692,18 @@ func theReportedLicenseShouldContain(ctx context.Context, want string) error {
 }
 
 // csyncShouldReportWhereItLoggedTheRun asserts csync disclosed the path of the
-// run log it wrote. Nothing else in the suite may name that path: the scenarios
-// learn it from csync, and one location scenario holds csync to putting it in the
-// right place. A record nobody can find is not a record, so the disclosure is a
-// behavior in its own right, not merely the seam this test reads through.
+// run log it wrote. A record nobody can find is not a record, so the disclosure is a
+// behavior in its own right — which is why the steps that read a log's contents find
+// it by scanning the scenario's state home instead: were they to read through the
+// disclosure, breaking it would redden every one of them alongside this.
 func csyncShouldReportWhereItLoggedTheRun(ctx context.Context) error {
 	r := captured(ctx)
 	out := parseOutput(r.Stdout, r.Stderr)
 	if !out.HasLogPath {
-		return fmt.Errorf("csync reported no log path in stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync reported no log path; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	if out.LogPath == "" {
-		return fmt.Errorf("csync printed an empty log path in stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync printed an empty log path; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	return nil
 }
@@ -668,7 +716,7 @@ func aRunLogShouldExistAtTheReportedPath(ctx context.Context) error {
 	r := captured(ctx)
 	path := parseOutput(r.Stdout, r.Stderr).LogPath
 	if path == "" {
-		return fmt.Errorf("csync reported no log path, so there is none to look for; stdout:\n%s", r.Stdout)
+		return fmt.Errorf("csync reported no log path, so there is none to look for; stdout:\n%s\nstderr:\n%s", r.Stdout, r.Stderr)
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -695,6 +743,30 @@ func thatAFileHasBeenChangedLocally(ctx context.Context) (context.Context, error
 		return ctx, err
 	}
 	return context.WithValue(ctx, changedFileKey{}, changed), nil
+}
+
+// theChangedFileIsDeletedBeforeIAnswer removes the local file the scenario changed,
+// while csync sits at the prompt with the comparison already done. The transfer is
+// then told to send a file that is no longer there and stops with a partial-transfer
+// error, which is a failure on the far side of the prompt rather than before it.
+//
+// Deleting rather than chmod-ing, for the reason thatCsyncCannotWriteItsLog gives:
+// root ignores permission bits, so a setup built on them stops testing anything the
+// day this suite runs as root. Nothing gets to read a file that is gone.
+func theChangedFileIsDeletedBeforeIAnswer(ctx context.Context) error {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local == "" {
+		return fmt.Errorf("local path not set; missing Background step?")
+	}
+	changed, _ := ctx.Value(changedFileKey{}).(string)
+	if changed == "" {
+		return fmt.Errorf("no file was changed locally, so there is none to delete")
+	}
+	err := os.Remove(filepath.Join(local, changed))
+	if err != nil {
+		return fmt.Errorf("deleting the changed file: %w", err)
+	}
+	return nil
 }
 
 // thatCsyncCannotWriteItsLog puts a regular file where csync expects to create its
@@ -851,6 +923,373 @@ func theLogFileShouldAlreadyHaveContent(ctx context.Context) error {
 	}
 	if info.Size() == 0 {
 		return fmt.Errorf("run log at %q is empty while csync waits at the prompt; nothing has been written to disk yet", path)
+	}
+	return nil
+}
+
+// parseLogAt reads the run log at path and returns it parsed, along with the raw
+// contents for error messages. It is the one place the log steps turn a path into a
+// ParsedLog, so each reads structured fields rather than matching substrings.
+func parseLogAt(path string) (ParsedLog, string, error) {
+	content, err := os.ReadFile(path) // #nosec G304 -- path is the log this suite created under its own tempdir
+	if err != nil {
+		return ParsedLog{}, "", fmt.Errorf("run log at %q: %w", path, err)
+	}
+	return parseLog(string(content)), string(content), nil
+}
+
+// locatedLog returns the parsed log the scenario found under XDG_STATE_HOME (via
+// `I look for the log file`), for the steps that read it while csync is still
+// blocked at the prompt — before csync has disclosed the path itself.
+func locatedLog(ctx context.Context) (ParsedLog, string, error) {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		return ParsedLog{}, "", fmt.Errorf("no run log was located; missing a step that looks for it?")
+	}
+	return parseLogAt(path)
+}
+
+// theLogShouldRecordThatTheVersionWas asserts the located log names the version
+// csync ran as. It reads the file while csync is still blocked at the prompt, so a
+// pass proves the version was recorded up front rather than at exit. The check ties
+// the record to the known version the harness injected (see report-version): a log
+// that named some other build, or named none, fails here.
+func theLogShouldRecordThatTheVersionWas(ctx context.Context, want string) error {
+	log, content, err := locatedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if log.Version != want {
+		return fmt.Errorf("run log records version %q, want %q; contents:\n%s", log.Version, want, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordRunningForTheComparison asserts the located log names the
+// external command csync ran to compare the two sides. Read while csync is blocked
+// at the prompt, the comparison is the only command that has run, so an "exec
+// <name>" record for it proves csync logs what it actually invoked — the fact a
+// destructive run cannot be re-run to recover. It keys on the "exec <name>"
+// pairing, not the name alone, so the name appearing elsewhere cannot satisfy it.
+func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string) error {
+	log, content, err := locatedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if _, ok := log.command(name); !ok {
+		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheTransferThatRan asserts a completed run logged the transfer
+// pass, not only the comparison. Both are rsync, so the transfer surfaces as a second
+// rsync record beyond the dry-run comparison: after the run finishes the log holds
+// two, where at the prompt it held one. Keying on the count of rsync records rather
+// than any flag keeps the check to the fidelity fact that matters — the transfer was
+// recorded at all — and off the argv composition a refactor might change.
+func theLogShouldRecordTheTransferThatRan(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	rsyncs := log.commands("rsync")
+	if len(rsyncs) < 2 {
+		return fmt.Errorf("run log records %d rsync command(s), want the comparison and the transfer; contents:\n%s", len(rsyncs), content)
+	}
+	return nil
+}
+
+// exitStatusRE pulls the numeric code out of the error csync surfaces when a command
+// fails — an *exec.ExitError renders as "exit status N". The reconciliation reads it so
+// the exit-code scenario need not hardcode rsync's failure code, which differs between
+// rsync flavors.
+var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
+
+// theLogShouldRecordTheComparisonsFailingExitCode asserts the run log recorded the
+// real, non-zero exit code of a comparison that failed at rsync — not a zero, not a
+// placeholder. It reconciles against the code csync surfaced in its own error ("rsync:
+// exit status N"), so the check needs no hardcoded rsync code: whatever csync saw, the
+// log must show. A runner that logged a fixed exit=0, or dropped the process's real
+// code, reddens here — which is what keeps the log honest about the runs worth reading.
+func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error {
+	r := captured(ctx)
+	m := exitStatusRE.FindStringSubmatch(r.Stderr)
+	if m == nil {
+		return fmt.Errorf("csync surfaced no rsync exit status to reconcile against; stderr:\n%s", r.Stderr)
+	}
+	want, _ := strconv.Atoi(m[1])
+	if want == 0 {
+		return fmt.Errorf("csync surfaced exit status 0, which is not a failure to test")
+	}
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	if cmd.ExitCode != want {
+		return fmt.Errorf("run log records rsync exit=%d, want %d (what csync reported); contents:\n%s", cmd.ExitCode, want, content)
+	}
+	return nil
+}
+
+// wholeMillisRE matches a duration expressed as a whole number of milliseconds with no
+// fractional part — "44ms", not "43.7ms". The capture is the millisecond count, so the
+// duration scenario can also check it is greater than zero.
+var wholeMillisRE = regexp.MustCompile(`^(\d+)ms$`)
+
+// resolvedLog returns the parsed log a scenario is asking about, from wherever it is
+// available: the path a mid-run "look for the log file" step stashed, or else the one
+// log under the scenario's state home. It locates the log without reading what csync
+// disclosed, so that a scenario asking what a log contains fails only on the content it
+// names; whether csync says where it logged is a separate behavior with its own
+// scenarios, and coupling the two made one break redden both.
+func resolvedLog(ctx context.Context) (ParsedLog, string, error) {
+	path, _ := ctx.Value(foundLogKey{}).(string)
+	if path == "" {
+		found, err := theOneRunLog(ctx)
+		if err != nil {
+			return ParsedLog{}, "", err
+		}
+		path = found
+	}
+	return parseLogAt(path)
+}
+
+// theLogShouldRecordNClassifiedChanges asserts the log recorded the classification, and
+// that its stated count and its list agree on how many changes csync found. Checking the
+// count and the list length together catches a record whose header and body disagree.
+func theLogShouldRecordNClassifiedChanges(ctx context.Context, n int) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasClassified {
+		return fmt.Errorf("run log records no classified-changes line; contents:\n%s", content)
+	}
+	if log.ClassifiedCount != n || len(log.Classified) != n {
+		return fmt.Errorf("run log records classified count=%d over a list of %d, want %d of each; contents:\n%s", log.ClassifiedCount, len(log.Classified), n, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordNSelectedChanges asserts the log recorded the selection, count and
+// list agreeing. HasSelected distinguishes "recorded that none were selected" (a real
+// 0) from "never recorded a selection at all", so "record 0 selected changes" still
+// demands the record be present.
+func theLogShouldRecordNSelectedChanges(ctx context.Context, n int) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasSelected {
+		return fmt.Errorf("run log records no selected-changes line; contents:\n%s", content)
+	}
+	if log.SelectedCount != n || len(log.Selected) != n {
+		return fmt.Errorf("run log records selected count=%d over a list of %d, want %d of each; contents:\n%s", log.SelectedCount, len(log.Selected), n, content)
+	}
+	return nil
+}
+
+// theClassifiedChangesShouldInclude asserts a specific verb/path pair is among the
+// changes csync recorded classifying — that the record names the actual changes, not
+// just a count.
+func theClassifiedChangesShouldInclude(ctx context.Context, verb, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.has(log.Classified, verb, path) {
+		return fmt.Errorf("run log's classified changes do not include %s %q; got %+v; contents:\n%s", verb, path, log.Classified, content)
+	}
+	return nil
+}
+
+// theSelectedChangesShouldInclude asserts a specific verb/path pair is among the changes
+// the user selected — the record that a removal, say, was actually taken and applied.
+func theSelectedChangesShouldInclude(ctx context.Context, verb, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.has(log.Selected, verb, path) {
+		return fmt.Errorf("run log's selected changes do not include %s %q; got %+v; contents:\n%s", verb, path, log.Selected, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordAmongTheExcludedPaths asserts a specific gitignored path is named
+// in the exclusion record — the point of #82's exclusion logging over a bare count: the
+// log can answer whether a given file was held out of the comparison, not just how many
+// were. It reads through the facade, which keeps the excluded names, so the assertion is
+// on the recorded name rather than a substring of the raw line.
+func theLogShouldRecordAmongTheExcludedPaths(ctx context.Context, path string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasExcluded {
+		return fmt.Errorf("run log records no excluded line; contents:\n%s", content)
+	}
+	if slices.Contains(log.ExcludedGitignored, path) {
+		return nil
+	}
+	return fmt.Errorf("run log's excluded paths do not include %q; got %+v; contents:\n%s", path, log.ExcludedGitignored, content)
+}
+
+// theLogShouldRecordThatTheGitDirectoryWasExcluded asserts the exclusion record notes
+// the .git directory was withheld — the singleton exclusion csync always applies in a
+// work tree, named for free (there is only ever one) alongside the gitignored paths.
+func theLogShouldRecordThatTheGitDirectoryWasExcluded(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasExcluded {
+		return fmt.Errorf("run log records no excluded line; contents:\n%s", content)
+	}
+	if !log.ExcludedGitDir {
+		return fmt.Errorf("run log's excluded line does not note the .git directory; contents:\n%s", content)
+	}
+	return nil
+}
+
+// theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds asserts a recorded
+// command's duration is present, decimal-free, and greater than zero — the shape a
+// rounded-up whole-millisecond value takes. It reads the comparison's duration through
+// the facade, which keeps the raw duration text, so this pins the rendered format: an
+// unrounded "43.764397ms" fails the whole-millisecond match, and a "0ms" fails the
+// greater-than-zero check that rounding up exists to uphold.
+func theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	m := wholeMillisRE.FindStringSubmatch(cmd.Duration)
+	if m == nil {
+		return fmt.Errorf("run log records duration %q, want a whole number of milliseconds like %q; contents:\n%s", cmd.Duration, "44ms", content)
+	}
+	ms, _ := strconv.Atoi(m[1])
+	if ms <= 0 {
+		return fmt.Errorf("run log records duration %q, want greater than zero; contents:\n%s", cmd.Duration, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordThatSourcePathAsOneArgument asserts the source operand — a path
+// carrying a character the log format has to handle specially (a space, or the quote
+// delimiter itself) — came back out of the log's argument vector as a single element,
+// whole. It reconciles against the source csync reported (source of truth, so the check
+// needs no knowledge of the tempdir) and reads the comparison's argv through the facade,
+// whose parseLogArgs unquotes each token. The trailing slash rsync's operands carry is
+// trimmed before the compare. Two ways the operand could fail to survive: joined with
+// spaces it fractures (the space scenario's teeth), and wrapped without escaping the
+// embedded quote closes the token early (the double-quote scenario's) — either leaves no
+// element carrying the operand whole, which is the failure this reconciliation catches.
+func theLogShouldRecordThatSourcePathAsOneArgument(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if !strings.ContainsAny(out.Source, " \"") {
+		return fmt.Errorf("csync reported source %q, which has no space or quote to test fidelity with", out.Source)
+	}
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	for _, a := range cmd.Args {
+		if strings.TrimSuffix(a, "/") == out.Source {
+			return nil
+		}
+	}
+	return fmt.Errorf("run log's rsync argv does not carry source %q as one argument; args=%q; contents:\n%s", out.Source, cmd.Args, content)
+}
+
+// theLogShouldRecordRunningForTheIgnoreRules asserts a run in a git work tree logged
+// the git query csync made to learn what the repository ignores. Read after the run
+// exits (identical sides, so it never prompts), the git command appears alongside the
+// comparison — where a non-repo run logs no git at all, since the work-tree probe that
+// gates it is deliberately left unlogged. It keys on the "exec <name>" pairing, like
+// the comparison step, so the name appearing elsewhere cannot satisfy it.
+func theLogShouldRecordRunningForTheIgnoreRules(ctx context.Context, name string) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if _, ok := log.command(name); !ok {
+		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheRemovalThatRan asserts a deletion-only run logged the removal
+// pass. Like the transfer, the removal is rsync, so it surfaces as a second rsync
+// record beyond the dry-run comparison — but here the setup deletes rather than
+// changes a file, so the second pass is the --delete removal, not a transfer (there
+// is nothing to transfer). Counting the rsync records, rather than reading a flag,
+// pins the presence-fidelity fact — the removal was recorded — and isolates it from
+// the transfer scenario by what the run did.
+func theLogShouldRecordTheRemovalThatRan(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	rsyncs := log.commands("rsync")
+	if len(rsyncs) < 2 {
+		return fmt.Errorf("run log records %d rsync command(s), want the comparison and the removal; contents:\n%s", len(rsyncs), content)
+	}
+	return nil
+}
+
+// theLogShouldRecordTheCommandLineThatWasRun asserts the log's invocation line is
+// the literal command csync was run with: "csync" followed by the argument vector
+// runCsync actually passed (placeholders already substituted). Reconciling against
+// the stashed argv keeps the check honest without the scenario reconstructing the
+// tempdir substitution, and pins that the line is the raw invocation — not the
+// resolved operands, which get their own lines.
+func theLogShouldRecordTheCommandLineThatWasRun(ctx context.Context) error {
+	args, _ := ctx.Value(invokedArgsKey{}).([]string)
+	want := strings.Join(append([]string{"csync"}, args...), " ")
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if log.Invocation != want {
+		return fmt.Errorf("run log records invocation %q, want %q; contents:\n%s", log.Invocation, want, content)
+	}
+	return nil
+}
+
+// theLogShouldNameTheSourceAndDestinationReported asserts the log records both
+// operands, and that they are the same source and destination csync printed in its
+// header. Reconciling the two is what makes the check honest: csync is the source of
+// truth for what the operands resolved to, so a log that named some other path, or
+// named none, fails here — without the scenario having to know the tempdir layout.
+func theLogShouldNameTheSourceAndDestinationReported(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.Source == "" || out.Destination == "" {
+		return fmt.Errorf("csync reported an empty operand (source %q, destination %q); nothing to reconcile", out.Source, out.Destination)
+	}
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if log.Source != out.Source {
+		return fmt.Errorf("run log names source %q, want %q (what csync reported); contents:\n%s", log.Source, out.Source, content)
+	}
+	if log.Destination != out.Destination {
+		return fmt.Errorf("run log names destination %q, want %q (what csync reported); contents:\n%s", log.Destination, out.Destination, content)
 	}
 	return nil
 }
@@ -1016,6 +1455,57 @@ func theRunLogFileShouldBeAccessibleOnlyByItsOwner(ctx context.Context) error {
 		return err
 	}
 	return assertPerm(log, 0o600)
+}
+
+// aLocalDirectoryWhosePathContainsASpace creates a local tempdir whose path holds a
+// space and populates it like the plain local-directory step, re-stashing it under
+// localPathKey (overriding the Background's). The space rides into the source operand
+// csync hands rsync, so the run log must quote it to keep the operand one argument —
+// which is what the space-fidelity scenario reads back out.
+func aLocalDirectoryWhosePathContainsASpace(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync local-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = writeFiles(dir, "src/main.go\nREADME.md")
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// aLocalDirectoryWhosePathContainsADoubleQuote creates a local tempdir whose path
+// holds a double-quote character, populated like the plain local-directory step and
+// re-stashed under localPathKey. The quote is the log's own delimiter: recorded naively
+// it would forge a false argument boundary, so this is the counterpart to the space
+// step — the space proves real boundaries are kept, the quote proves fake ones can't be
+// minted.
+func aLocalDirectoryWhosePathContainsADoubleQuote(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", `csync-q"-*`)
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = writeFiles(dir, "src/main.go\nREADME.md")
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// aLocalSourcePathThatDoesNotExist stashes, as the local operand, a well-formed
+// tempdir path that has been removed — so it is absent when rsync runs. It sets up a
+// comparison that fails at rsync (a missing source errors out), the case that proves
+// the run log records the real, non-zero exit code of a command that failed.
+func aLocalSourcePathThatDoesNotExist(ctx context.Context) (context.Context, error) {
+	dir, err := os.MkdirTemp("", "csync-gone-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	err = os.RemoveAll(dir)
+	if err != nil {
+		return ctx, fmt.Errorf("removing %s: %w", dir, err)
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
 // aLocalDirectoryContainingTheseFiles creates a local tempdir populated with
@@ -1622,6 +2112,234 @@ func theOneRunLog(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("no scenario state home; the Before hook did not run?")
 	}
 	return singleLogUnder(root)
+}
+
+// runLogNameRE matches the names csync gives its run logs. The pruning steps count
+// and compare through it rather than through logsUnder, which returns every regular
+// file: a scenario that plants a foreign file in the log directory would otherwise
+// see it counted as a log, and the scenario asserting that foreign files survive
+// would pass for the wrong reason.
+var runLogNameRE = regexp.MustCompile(`^run-\d{8}T\d{6}Z-\d+\.log$`)
+
+// runLogsUnder returns the names of the run logs directly beneath the log directory
+// in root, sorted oldest first. Sorting by name is sorting by start time: the
+// timestamp is fixed-width and leads the name, so lexical order is chronological.
+func runLogsUnder(root string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(root, "cherry-sync"))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading the log directory under %s: %w", root, err)
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && runLogNameRE.MatchString(e.Name()) {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// scenarioRunLogs returns the run logs presently under the scenario's state home,
+// oldest first.
+func scenarioRunLogs(ctx context.Context) ([]string, error) {
+	root := stateHome(ctx)
+	if root == "" {
+		return nil, fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	return runLogsUnder(root)
+}
+
+// nRunLogsAlreadyExist plants n run logs in the log directory, named as csync names
+// its own so that pruning treats them as candidates. Their timestamps run from a
+// fixed date well in the past, one minute apart and ascending, so the set has an
+// unambiguous oldest-to-newest order and every one of them is older than the log the
+// run about to happen will write.
+func nRunLogsAlreadyExist(ctx context.Context, n int) (context.Context, error) {
+	root := stateHome(ctx)
+	if root == "" {
+		return ctx, fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	dir := filepath.Join(root, "cherry-sync")
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
+		return ctx, fmt.Errorf("creating the log directory %s: %w", dir, err)
+	}
+	base := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	var planted []string
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("run-%s-%d.log", base.Add(time.Duration(i)*time.Minute).Format("20060102T150405Z"), 1000+i)
+		err = os.WriteFile(filepath.Join(dir, name), []byte("seeded by the test harness\n"), 0o600)
+		if err != nil {
+			return ctx, fmt.Errorf("planting run log %s: %w", name, err)
+		}
+		planted = append(planted, name)
+	}
+	sort.Strings(planted)
+	return context.WithValue(ctx, seededLogsKey{}, planted), nil
+}
+
+// aFileThatIsNotARunLogInTheLogDirectory plants a file csync did not write beside
+// the run logs. The name deliberately sits close to the real thing — it begins
+// "run-", ends ".log", and lacks only the process-id field — so a prune matching on
+// either affix rather than the whole name treats it as a candidate.
+//
+// Its timestamp predates every planted log, which is what gives the scenario teeth:
+// a loosely-matching prune sorts this file oldest and deletes it first, where a name
+// sorting among the newest would survive such a prune by luck and leave the scenario
+// passing for the wrong reason.
+func aFileThatIsNotARunLogInTheLogDirectory(ctx context.Context) (context.Context, error) {
+	root := stateHome(ctx)
+	if root == "" {
+		return ctx, fmt.Errorf("no scenario state home; the Before hook did not run?")
+	}
+	dir := filepath.Join(root, "cherry-sync")
+	err := os.MkdirAll(dir, 0o700)
+	if err != nil {
+		return ctx, fmt.Errorf("creating the log directory %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "run-19990101T000000Z.log")
+	err = os.WriteFile(path, []byte("not a run log\n"), 0o600)
+	if err != nil {
+		return ctx, fmt.Errorf("planting %s: %w", path, err)
+	}
+	return context.WithValue(ctx, plantedFileKey{}, path), nil
+}
+
+// theLogDirectoryShouldHoldNRunLogs asserts the directory holds exactly n run logs
+// once the run is over — the ceiling, counted rather than reasoned about.
+func theLogDirectoryShouldHoldNRunLogs(ctx context.Context, n int) error {
+	names, err := scenarioRunLogs(ctx)
+	if err != nil {
+		return err
+	}
+	if len(names) != n {
+		return fmt.Errorf("log directory holds %d run log(s), want %d: %v", len(names), n, names)
+	}
+	return nil
+}
+
+// theSurvivingRunLogsShouldBeTheNewestOnes asserts pruning kept the right logs, not
+// merely the right number of them. Every planted log that survived must be newer
+// than every planted log that did not, which is the property "keep the newest"
+// means and which a prune in filesystem order would break while still counting out.
+func theSurvivingRunLogsShouldBeTheNewestOnes(ctx context.Context) error {
+	planted, _ := ctx.Value(seededLogsKey{}).([]string)
+	if len(planted) == 0 {
+		return fmt.Errorf("no run logs were planted, so there is no ordering to check")
+	}
+	names, err := scenarioRunLogs(ctx)
+	if err != nil {
+		return err
+	}
+	survived := make(map[string]bool, len(names))
+	for _, n := range names {
+		survived[n] = true
+	}
+	var kept, gone []string
+	for _, n := range planted {
+		if survived[n] {
+			kept = append(kept, n)
+		} else {
+			gone = append(gone, n)
+		}
+	}
+	if len(gone) == 0 {
+		return fmt.Errorf("no planted run log was pruned, so nothing distinguishes newest from oldest; %d planted, %d present", len(planted), len(names))
+	}
+	if len(kept) == 0 {
+		return fmt.Errorf("every planted run log was pruned; %d planted", len(planted))
+	}
+	// planted is sorted oldest first, so the survivors must be exactly its tail.
+	if kept[0] < gone[len(gone)-1] {
+		return fmt.Errorf("pruning kept %q but discarded the newer %q; kept %v, discarded %v", kept[0], gone[len(gone)-1], kept, gone)
+	}
+	return nil
+}
+
+// thatFileShouldStillBeThere asserts the planted not-a-run-log survived the prune.
+func thatFileShouldStillBeThere(ctx context.Context) error {
+	path, _ := ctx.Value(plantedFileKey{}).(string)
+	if path == "" {
+		return fmt.Errorf("no file was planted, so there is nothing to look for")
+	}
+	_, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("the planted file did not survive pruning: %w", err)
+	}
+	return nil
+}
+
+// thisRunsLog returns the log the run under test wrote: the one run log present that
+// the scenario did not plant. Identifying it by difference rather than by age keeps
+// the assertion off the ordering the pruning scenarios exist to test.
+func thisRunsLog(ctx context.Context) (ParsedLog, string, error) {
+	planted, _ := ctx.Value(seededLogsKey{}).([]string)
+	seeded := make(map[string]bool, len(planted))
+	for _, n := range planted {
+		seeded[n] = true
+	}
+	names, err := scenarioRunLogs(ctx)
+	if err != nil {
+		return ParsedLog{}, "", err
+	}
+	var fresh []string
+	for _, n := range names {
+		if !seeded[n] {
+			fresh = append(fresh, n)
+		}
+	}
+	if len(fresh) != 1 {
+		return ParsedLog{}, "", fmt.Errorf("want exactly one run log this run wrote, found %d: %v", len(fresh), fresh)
+	}
+	return parseLogAt(filepath.Join(stateHome(ctx), "cherry-sync", fresh[0]))
+}
+
+// theLogShouldNameTheRunLogsItPruned asserts the run accounted for the logs it
+// deleted by name, and that the names it claims are really gone. Reconciling the
+// two is what makes the record trustworthy: a run that listed a file it left behind
+// would read as an explanation for an absence that never happened.
+func theLogShouldNameTheRunLogsItPruned(ctx context.Context) error {
+	log, content, err := thisRunsLog(ctx)
+	if err != nil {
+		return err
+	}
+	if len(log.Pruned) == 0 {
+		return fmt.Errorf("run log names no pruned logs; contents:\n%s", content)
+	}
+	present, err := scenarioRunLogs(ctx)
+	if err != nil {
+		return err
+	}
+	still := make(map[string]bool, len(present))
+	for _, n := range present {
+		still[n] = true
+	}
+	for _, n := range log.Pruned {
+		if still[n] {
+			return fmt.Errorf("run log claims to have pruned %q, but it is still there; contents:\n%s", n, content)
+		}
+	}
+	return nil
+}
+
+// theLogShouldRecordThatNothingWasPruned asserts the record is present and says so,
+// rather than being absent. An absent line cannot distinguish a run that pruned
+// nothing from one whose pruning never ran.
+func theLogShouldRecordThatNothingWasPruned(ctx context.Context) error {
+	log, content, err := thisRunsLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasPruned {
+		return fmt.Errorf("run log records no pruned line at all; contents:\n%s", content)
+	}
+	if len(log.Pruned) != 0 {
+		return fmt.Errorf("run log names %d pruned log(s), want none; contents:\n%s", len(log.Pruned), content)
+	}
+	return nil
 }
 
 // assertPerm checks that path carries exactly the permission bits want, so a

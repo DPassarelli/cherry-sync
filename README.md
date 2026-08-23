@@ -101,7 +101,7 @@ Every run that gets as far as comparing directories writes a log of itself, with
 
 Logs are written to `$XDG_STATE_HOME/cherry-sync/`, or `~/.local/state/cherry-sync/` when that variable is unset, one file per run, each named for the moment the run began. csync closes every run by naming the file it wrote, so you never have to go looking for it.
 
-The directory is created `0700` and each log `0600`: a log names every path a run touched, which says more about your work tree than you may want readable by others on the machine. The logs are plain text, they accumulate, and nothing here deletes them for you — remove them whenever you like, csync neither notices nor minds.
+The directory is created `0700` and each log `0600`: a log names every path a run touched, which says more about your work tree than you may want readable by others on the machine. The logs are plain text, and csync keeps the 25 most recent: each run deletes the oldest beyond that and names what it removed in the log it is writing. Removing any of them yourself is fine too, whenever you like — csync neither notices nor minds.
 
 The **location** is a stable interface you can rely on. The **contents** are not: they are meant to be read by a person after something has gone wrong, and what they record will change between releases. Don't parse them.
 

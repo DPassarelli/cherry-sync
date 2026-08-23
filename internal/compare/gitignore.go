@@ -12,7 +12,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
 // exclusions holds what csync withholds from the comparison for the local side of
@@ -23,7 +26,7 @@ import (
 // hidden — no patterns, no config file, not a work tree.
 type exclusions struct {
 	patterns   []string
-	gitignored int
+	gitignored []string
 	inWorkTree bool
 	csyncToml  bool
 }
@@ -56,7 +59,7 @@ type exclusions struct {
 // and never re-derives them. That's safe because the comparison is the single gate:
 // an excluded file never appears, so it can't be selected, so --files-from never
 // lists one.
-func localExclusions(source, destination string) (exclusions, error) {
+func localExclusions(r *command.Runner, source, destination string) (exclusions, error) {
 	dir, ok := localSyncDir(source, destination)
 	if !ok {
 		return exclusions{}, nil
@@ -67,13 +70,23 @@ func localExclusions(source, destination string) (exclusions, error) {
 		exc.csyncToml = true
 	}
 	if isGitWorkTree(dir) {
-		gitignored, err := gitignoreExcludes(dir)
+		gitignored, err := gitignoreExcludes(r, dir)
 		if err != nil {
 			return exclusions{}, err
 		}
+		// csync withholds its own .csync.toml above, unconditionally — and a project
+		// with a saved target commonly gitignores it too, so git reports it as ignored
+		// as well. Drop it here so it stays one exclusion: left in, it would inflate the
+		// gitignored count the CLI discloses (announcing the file twice) and reach rsync
+		// as a second, redundant --exclude for the same path.
+		if exc.csyncToml {
+			gitignored = slices.DeleteFunc(gitignored, func(p string) bool {
+				return p == "/.csync.toml"
+			})
+		}
 		exc.patterns = append(exc.patterns, ".git")
 		exc.patterns = append(exc.patterns, gitignored...)
-		exc.gitignored = len(gitignored)
+		exc.gitignored = excludedNames(gitignored)
 		exc.inWorkTree = true
 	}
 	return exc, nil
@@ -129,17 +142,21 @@ func isRemote(path string) bool {
 // path in its own output, so splitting that output on newlines yields one pattern
 // per ignored path; each then reaches rsync as its own --exclude arg, so a newline
 // in a filename can neither split a pattern here nor smuggle a second one there.
-func gitignoreExcludes(dir string) ([]string, error) {
+//
+// It runs through r so the query lands in the run log. `-C dir` stands in for the
+// working directory the direct call set — equivalent for git's repo discovery and
+// relative-path output (verified by experiment), and it keeps the logged invocation
+// self-describing. The work-tree probe above stays a direct, unlogged capability check.
+func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
 	if !isGitWorkTree(dir) {
 		return nil, nil
 	}
-	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+	args := []string{"-C", dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"}
+	out, err := r.Run("git", args, nil)
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files: %w", err)
 	}
-	trimmed := strings.Trim(string(out), "\n")
+	trimmed := strings.Trim(string(out.Stdout), "\n")
 	if trimmed == "" {
 		return nil, nil
 	}
@@ -154,7 +171,7 @@ func gitignoreExcludes(dir string) ([]string, error) {
 }
 
 // dropIgnoredActions removes from actions any whose path the git repository at dir
-// ignores, returning the surviving actions and how many were dropped. It closes a
+// ignores, returning the surviving actions and the names of those dropped. It closes a
 // gap the --exclude pre-filter cannot: that filter is built from `git
 // ls-files`, which lists only files present in the LOCAL tree, so on a pull a file
 // that exists only on the remote yet matches a local ignore rule slips past it and
@@ -162,33 +179,45 @@ func gitignoreExcludes(dir string) ([]string, error) {
 // repo's ignore rules — file existence not required — catching exactly those
 // remote-only cases. The two filters are disjoint: the pre-filter removes ignored
 // LOCAL files before rsync ever walks them, so they never reach this list, and this
-// pass only ever removes paths that survived to the comparison. The dropped count
-// is added to the disclosed total, since these are gitignored paths held back too.
-func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
+// pass only ever removes paths that survived to the comparison. The dropped names
+// join the disclosed set, since these are gitignored paths held back too.
+func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Action, []string, error) {
 	if len(actions) == 0 {
-		return actions, 0, nil
+		return actions, nil, nil
 	}
 	paths := make([]string, len(actions))
 	for i, a := range actions {
 		paths[i] = a.Path
 	}
-	ignored, err := checkIgnored(dir, paths)
+	ignored, err := checkIgnored(r, dir, paths)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 	if len(ignored) == 0 {
-		return actions, 0, nil
+		return actions, nil, nil
 	}
 	kept := make([]Action, 0, len(actions))
-	dropped := 0
+	var dropped []string
 	for _, a := range actions {
 		if ignored[a.Path] {
-			dropped++
+			dropped = append(dropped, a.Path)
 			continue
 		}
 		kept = append(kept, a)
 	}
 	return kept, dropped, nil
+}
+
+// excludedNames turns the rsync exclude patterns from gitignoreExcludes into the plain
+// names the CLI and run log show: each pattern is root-anchored with a leading slash
+// (rsync syntax), which is stripped so "/build/" reads as "build/" — the form that
+// matches the .gitignore rule a user wrote and would search the log for.
+func excludedNames(patterns []string) []string {
+	names := make([]string, len(patterns))
+	for i, p := range patterns {
+		names[i] = strings.TrimPrefix(p, "/")
+	}
+	return names
 }
 
 // checkIgnored returns the set of paths (from the given list) that the git
@@ -205,11 +234,14 @@ func dropIgnoredActions(dir string, actions []Action) ([]Action, int, error) {
 // for --files-from. check-ignore exits 0 when at least one path is ignored, 1 when
 // none are (NOT an error: returned as an empty set), and anything else is a real
 // failure (e.g. dir not a work tree) surfaced to the caller.
-func checkIgnored(dir string, paths []string) (map[string]bool, error) {
-	cmd := exec.Command("git", "check-ignore", "-z", "--stdin")
-	cmd.Dir = dir
-	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := cmd.Output()
+//
+// It runs through r so the query lands in the run log; `-C dir` replaces the working
+// directory the direct call set (see gitignoreExcludes). The runner returns cmd.Run's
+// error unwrapped, so the exit-code-1 test below still sees the *exec.ExitError.
+func checkIgnored(r *command.Runner, dir string, paths []string) (map[string]bool, error) {
+	args := []string{"-C", dir, "check-ignore", "-z", "--stdin"}
+	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
+	out, err := r.Run("git", args, stdin)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
@@ -218,7 +250,7 @@ func checkIgnored(dir string, paths []string) (map[string]bool, error) {
 		return nil, fmt.Errorf("git check-ignore: %w", err)
 	}
 	ignored := map[string]bool{}
-	for p := range strings.SplitSeq(strings.Trim(string(out), "\x00"), "\x00") {
+	for p := range strings.SplitSeq(strings.Trim(string(out.Stdout), "\x00"), "\x00") {
 		if p != "" {
 			ignored[p] = true
 		}

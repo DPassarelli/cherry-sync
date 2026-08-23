@@ -7,11 +7,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/term"
 
 	"github.com/dpassarelli/cherry-sync/internal/cli"
+	"github.com/dpassarelli/cherry-sync/internal/command"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/config"
 	"github.com/dpassarelli/cherry-sync/internal/license"
@@ -128,7 +130,7 @@ func run() (code int) {
 	// warns rather than declining silently, because a user hunting the record of a
 	// destructive run must not be left wondering whether csync skipped it or they
 	// misremembered where it goes.
-	runLog, err := runlog.Create()
+	runLog, err := runlog.Create(version)
 	notLogged := ""
 	if err != nil {
 		notLogged = err.Error()
@@ -166,6 +168,26 @@ func run() (code int) {
 	// all that is being given back here.
 	defer func() { _ = runLog.Close() }()
 
+	// Record the literal invocation, up front, so the log opens with the command as
+	// run — what the user actually typed, the raw args before any resolution.
+	// filepath.Base trims the arg0 path down to "csync". A failed record write can't
+	// fail the sync — the log is a diagnostic, never a precondition — so the error is
+	// deliberately dropped; the unwritable-log case is already surfaced when Create
+	// fell back to Discard above.
+	_ = runLog.Invocation(filepath.Base(os.Args[0]), os.Args[1:])
+
+	// Then the operands: what csync compared and which way the sync went, the frame
+	// the rest of the log hangs on. These are the normalized paths the header echoes
+	// and the comparison uses, so the log agrees with what the user saw — and under a
+	// saved-target push/pull they are the resolved paths the invocation above does not
+	// show. (The version heads the log already — Create wrote it.)
+	_ = runLog.Operands(source, destination)
+
+	// Every external command csync runs goes through this runner, which reports each
+	// invocation to the run log. A discarding log is a valid recorder that keeps
+	// nothing, so there is no separate unlogged path to maintain here.
+	runner := command.New(runLog)
+
 	// Detect the terminal once: it both selects the selection front-end (picker vs.
 	// typed prompt) and gates the decorative banner, which only an interactive run
 	// shows — piped output stays clean.
@@ -194,11 +216,22 @@ func run() (code int) {
 		view.Endpoint{Path: destination, From: dstN.From},
 	))
 
-	result, err := compare.Run(source, destination)
+	result, err := compare.Run(runner, source, destination)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+
+	// Record the change list csync classified, before it asks what to sync — so a run
+	// abandoned at the prompt still shows what was on offer. The selection is recorded
+	// separately once it is made; the two are kept apart because they can differ.
+	_ = runLog.Classified(logActions(result.Actions))
+
+	// Record what was held out of the comparison too — the gitignored paths by name, the
+	// .git directory, the .csync.toml — so a file that never appears in the change list
+	// can still be accounted for. This is the same set the header discloses, named
+	// rather than counted.
+	_ = runLog.Excluded(result.Excluded, result.GitDirExcluded, result.CsyncTomlExcluded)
 
 	// Disclose what was held out of the comparison — with no opt-out flag, this
 	// line is the user's only signal. Up to three independent things can be
@@ -213,12 +246,12 @@ func run() (code int) {
 	if result.GitDirExcluded {
 		excluded = append(excluded, "the .git directory")
 	}
-	if result.Excluded > 0 {
+	if n := len(result.Excluded); n > 0 {
 		noun := "paths"
-		if result.Excluded == 1 {
+		if n == 1 {
 			noun = "path"
 		}
-		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", result.Excluded, noun))
+		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", n, noun))
 	}
 	printAbove(view.Excluded(excluded))
 
@@ -245,6 +278,10 @@ func run() (code int) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		// Record what the user chose, distinct from what was classified above, before
+		// the empty-selection stop below — so even a cancelled run records that nothing
+		// was taken.
+		_ = runLog.Selected(logActions(picked))
 		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
 		// transfer that would print "Sync complete! (0 files)".
@@ -262,6 +299,8 @@ func run() (code int) {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		// The selection, recorded as its counterpart to the classification above.
+		_ = runLog.Selected(logActions(selected))
 	}
 
 	// Split the selection into transfers (create/update) and removals (delete):
@@ -277,12 +316,12 @@ func run() (code int) {
 	}
 	// Transfers first, removals last: the additive pass is recoverable, so if it
 	// fails we exit before deleting anything on the destination.
-	err = transfer.Run(source, destination, transferPaths)
+	err = transfer.Run(runner, source, destination, transferPaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = transfer.Remove(source, destination, removePaths)
+	err = transfer.Remove(runner, source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -294,6 +333,17 @@ func run() (code int) {
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
 	return 0
+}
+
+// logActions adapts the compare package's actions to the run log's own Action type,
+// bridging the two so runlog need not depend on compare. It is the one place the shape
+// is translated for the classified and selected records.
+func logActions(actions []compare.Action) []runlog.Action {
+	out := make([]runlog.Action, len(actions))
+	for i, a := range actions {
+		out[i] = runlog.Action{Verb: a.Verb, Path: a.Path}
+	}
+	return out
 }
 
 // interactiveTerminal reports whether csync is attached to a real terminal on both

@@ -66,6 +66,285 @@ Feature: Log each run
     Then  csync should exit normally
     And   the reported log path should be the one I found earlier
 
+  Scenario: By the time it prompts, the log names the version that ran
+    # Which build produced this run is the first thing a troubleshooter needs and
+    # the thing a bug report most often omits. csync records it up front, before it
+    # asks what to sync, so a run abandoned at the prompt still says which binary
+    # made it. The prompt is the observation point for the same reason as the
+    # write-as-you-go scenario: csync is suspended there, so the log can be read
+    # without racing the run.
+    #
+    # The version is the known one the harness injects (see report-version); tying
+    # the record to that literal is what proves csync logged its own version and
+    # not a constant.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record that the version was "0.0.0-test"
+
+  Scenario: The log records the comparison csync ran
+    # The comparison is the one external command every run makes, so it is where the
+    # record of "what csync actually invoked" begins. A troubleshooter reading the log
+    # can see the exact rsync that produced the change list — the dry-run that a
+    # destructive run can no longer be repeated to reproduce.
+    #
+    # Read at the prompt, before any transfer, the comparison is the only command
+    # that has run — so finding it there needs no other command to be filtered out.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record running "rsync" for the comparison
+
+  Scenario: A completed sync records the transfer that moved the files
+    # The comparison is a dry run and moves nothing; the transfer is the command that
+    # actually changed the destination — and so the one a troubleshooter most needs,
+    # since a sync that removed files cannot be re-run to reproduce it. Read after the
+    # run completes, the log holds the transfer alongside the comparison, where at the
+    # prompt (the scenario above) it held the comparison alone. That second rsync
+    # record is the whole of what this pins: the pass that did the work, not just the
+    # one that planned it.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the log should record the transfer that ran
+
+  Scenario: A completed sync records the removal that pruned the destination
+    # Removals ride a second rsync pass, separate from the transfer — a --delete run
+    # that prunes the stale file. It is the most destructive thing csync does and the
+    # reason the log exists: once a file is gone the run cannot be repeated to show
+    # what happened. A deletion-only run reaches rsync twice, the comparison and the
+    # removal, with no transfer in between (nothing was created or updated), so the
+    # removal is the second record — recorded here just as the transfer is above.
+    Given that all of the files are identical between local and remote
+    And   that the file "README.md" has been deleted locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the log should record the removal that ran
+
+  @git
+  Scenario: In a git work tree, the log records the query for ignore rules
+    # When the local side is a git repository, csync asks git which files it ignores
+    # so they stay out of the comparison — and records that query like every other
+    # command it runs. A troubleshooter puzzling over a file that never synced can see
+    # csync consulted git. The work-tree probe that gates this is a silent capability
+    # check and is not logged; the ignore-rule query is the command that shaped the
+    # file list, so it is.
+    #
+    # The identical-pair setup reaches rsync and returns without prompting, so the
+    # whole run — including the git query that runs before the comparison — is on hand
+    # to read once csync exits. A plain, non-repo directory logs no git at all, which
+    # is what ties this record to the work tree.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should record running "git" for the ignore rules
+
+  Scenario: A path containing a space is logged as a single argument
+    # The log quotes each argument on its own so a reader can tell where one operand
+    # ends and the next begins. A source path with a space is the case that proves it:
+    # joined with spaces instead, the boundary would vanish and the log could no longer
+    # be trusted to show what csync actually invoked — the same reasoning as the
+    # no-shell rule, where a space is exactly where naive joining corrupts meaning.
+    #
+    # The identical pair is plumbing, not the subject: it stands up the remote csync
+    # compares against and lets the run finish without stopping at a prompt, so the log
+    # is on hand to read. It has no bearing on the argument the log records — the source
+    # operand reaches rsync's argv whatever the two sides hold.
+    Given a local directory whose path contains a space
+    And   that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  the log should record that source path as one argument
+
+  Scenario: A path containing a double quote is logged without forging a boundary
+    # The log delimits arguments with double quotes, so a path that contains one is the
+    # adversarial case: recorded naively — wrapped in quotes but not escaped — the
+    # embedded quote would close the token early and forge a boundary that was never
+    # there, making the log claim csync ran a command it did not. The format escapes it
+    # instead, so the operand round-trips whole. Companion to the space scenario above:
+    # that one proves real boundaries survive, this proves false ones cannot be minted.
+    Given a local directory whose path contains a double quote
+    And   that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  the log should record that source path as one argument
+
+  Scenario: A comparison that fails records the exit code it failed with
+    # The runs worth reading are the ones that went wrong, so the log's exit codes have
+    # to be real — a log that recorded exit=0 for a command that failed would be a diary
+    # that omits the accident. A missing source makes rsync fail at the comparison;
+    # csync exits non-zero, and the log carries rsync's true exit code, written as the
+    # run proceeds, before the failure ends it. The code is reconciled against the one
+    # csync reports rather than hardcoded, since rsync flavors return different codes.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   the log should record the comparison's failing exit code
+
+  Scenario: A run that fails at the comparison still says where it logged
+    # The runs worth reading are the ones that went wrong, so the disclosure has to
+    # survive the failure — a log the user cannot find is no better than one never
+    # written. A missing source makes rsync fail at the comparison; csync exits
+    # non-zero and the log path goes to stderr beside the error, rather than to
+    # stdout with a report that never came.
+    #
+    # The non-zero exit is a guard, not a second behavior: it holds the setup to
+    # actually producing that failure. Should a missing source ever stop failing,
+    # this scenario would otherwise stay green while quietly testing the clean path
+    # the opening scenario already covers.
+    #
+    # That the disclosed path is real is not re-checked here — it is a property of
+    # the single deferred closure every exit shares, already pinned above. What
+    # varies on this path is only whether that closure speaks at all.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   csync should report where it logged the run
+
+  Scenario: A run that fails during the transfer still says where it logged
+    # The twin of the scenario above, on the far side of the prompt. By the time the
+    # transfer runs csync has already written most of the log, so a failure here is
+    # the case where the record is most nearly complete and most worth finding — and
+    # the one where an exit that skipped the disclosure would be easiest to miss.
+    #
+    # The file is removed while csync waits at the prompt, after the comparison has
+    # already seen it and offered it. rsync cannot then open what it was told to
+    # send, and stops with a partial-transfer error. Removing a file rather than
+    # making one unreadable is deliberate: permission bits mean nothing to root, so a
+    # chmod-based setup would quietly stop testing anything the day this suite runs
+    # as root.
+    Given that a file has been changed locally
+    And   I have started csync but not yet answered the prompt
+    And   the changed file is deleted before I answer
+    When  I answer the prompt
+    Then  csync should return a non-zero exit code
+    And   csync should report where it logged the run
+
+  Scenario: A command's duration is logged as whole milliseconds
+    # How long a command took is recorded so a troubleshooter can see where a slow run
+    # spent its time. The value is rounded up to a whole millisecond — no decimal tail,
+    # which is noise at this granularity, and rounding up rather than to nearest keeps a
+    # sub-millisecond call from reading as having taken no time at all. So every recorded
+    # command shows a positive, decimal-free duration like "44ms".
+    #
+    # The identical-pair setup reaches rsync and returns without prompting, so the
+    # comparison's duration is on hand to read once csync exits.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the logged duration should be a positive whole number of milliseconds
+
+  Scenario: By the time it prompts, the log lists the changes csync classified
+    # csync records the change list it built before it asks what to sync, so a run
+    # abandoned at the prompt still shows what was on offer. Read here, before any
+    # selection, the classification names every detected change; the matching selection
+    # record comes only once the user answers.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    And   I have started csync but not yet answered the prompt
+    When  I look for the log file
+    Then  the log should record 2 classified changes
+    And   the classified changes should include "update" of "README.md"
+    And   the classified changes should include "delete" of "src/main.go"
+
+  Scenario: The log records the selection apart from the classification
+    # What csync found and what the user chose are two different facts, so the log keeps
+    # them apart. Declining every change is the sharpest case: the classification still
+    # lists both changes, while the selection records that none were taken — a run that
+    # conflated the two would show the same list twice.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    When  I run "csync ./project user@host:/project" and respond with "n"
+    Then  csync should return exit code 0
+    And   the log should record 2 classified changes
+    And   the log should record 0 selected changes
+
+  Scenario: An applied removal is on record in what the user selected
+    # The reason the log exists: once a file is gone the run cannot be repeated to show
+    # it happened, so the record of a selected — and applied — removal is the only
+    # evidence left. Syncing everything takes the deletion, and the selection records it.
+    Given that a file has been changed locally
+    And   that the file "src/main.go" has been deleted locally
+    And   I have started csync but not yet answered the prompt
+    When  I answer the prompt
+    Then  csync should exit normally
+    And   the log should record 2 selected changes
+    And   the selected changes should include "delete" of "src/main.go"
+
+  @git
+  Scenario: The log names the files csync held out of the comparison
+    # What was withheld is as much a part of the record as what was synced: a
+    # troubleshooter asking "why didn't debug.log move?" needs to see it was held out,
+    # not merely that some count of files was. csync records the gitignored paths by
+    # name — the .git directory too, the singleton it always withholds in a work tree.
+    # The added-but-ignored file leaves nothing to sync, so the run reports no changes
+    # and returns, its exclusion record on hand once it exits.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      *.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "debug.log" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should record "debug.log" among the excluded paths
+    And   the log should record that the .git directory was excluded
+
+  Scenario: The log records the command line as it was invoked
+    # The literal invocation — what the user actually typed — heads the log, distinct
+    # from the resolved source and destination below it. For an explicit run the two
+    # look alike; the distinction earns its keep for a saved-target push or pull,
+    # where the operands are derived and only this line still shows the verb.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should record the command line that was run
+
+  Scenario: The log names both operands of the run
+    # A run's operands — what it compared, and in which direction — are the frame the
+    # rest of the log hangs on. csync records both, and they are the same source and
+    # destination it echoed in its header: the log agrees with what the user saw, so a
+    # reader is never left guessing which way the sync went.
+    #
+    # The identical-pair setup is the simplest run that reaches rsync and returns
+    # without prompting, so the whole run — header, log, disclosed path — is on hand
+    # to reconcile once it exits. No path is named here; csync is the source of truth
+    # for what the operands resolved to.
+    Given that all of the files are identical between local and remote
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return exit code 0
+    And   the log should name the source and destination csync reported
+
+  @remote
+  Scenario: Under a saved-target push, the log keeps the verb and the resolved operands apart
+    # This is where the invocation line earns its place. On an explicit run it and the
+    # source/destination lines look alike; under `csync push` they diverge — the
+    # invocation stays the verb the user typed, while source and destination are what
+    # csync resolved that verb to from .csync.toml (here, "." and the saved remote).
+    # A troubleshooter reading a "push went the wrong way" report needs both halves:
+    # what was asked for, and what it became.
+    Given that all of the files are identical between local and remote
+    And   a ".csync.toml" in the project directory containing:
+      """
+      remote = "user@host:/project"
+      """
+    When  I run "csync push" from the project directory
+    Then  csync should return exit code 0
+    And   the log should record the command line that was run
+    And   the log should name the source and destination csync reported
+
   Scenario: A log that cannot be written does not stop the sync
     # The record is a diagnostic, never a precondition. A state directory that has
     # gone read-only, or an XDG_STATE_HOME pointing at something that is not a
@@ -175,31 +454,3 @@ Feature: Log each run
     When  I run "csync ./project user@host:/project"
     Then  the run log directory should be accessible only by its owner
     And   the run log file should be accessible only by its owner
-
-  # ---------------------------------------------------------------------------
-  # TODO: Additional scenarios for this feature, agreed but not yet drafted.
-  # Each becomes a real Scenario block as we drill into it, one at a time.
-  # ---------------------------------------------------------------------------
-  #
-  # - csync discloses the log path on every run that writes one: the no-changes
-  #   run, the completed sync, and the runs that fail at the comparison or mid
-  #   transfer. A record nobody can find is not a record.
-  #
-  # - One log per run, so a second run does not overwrite the first, and old
-  #   logs are pruned rather than accumulating without bound.
-  #
-  # - By the time csync blocks at the selection prompt, the log names the run's
-  #   start, csync's version, both operands, and the comparison rsync invoked.
-  #   One scenario per fact; the scenario above already holds csync to writing
-  #   them before it asks, rather than at the end.
-  #
-  # - Each external command csync runs — rsync for the comparison, the transfer,
-  #   and the removal pass; git for the ignore rules — is recorded with its
-  #   argument vector, its exit code, and how long it took.
-  #
-  # - A path containing a space comes back out of the log as a single argument,
-  #   so a reader can tell where one operand ends and the next begins.
-  #
-  # - The actions csync classified, and which of them the user selected, are
-  #   recorded — the two can differ, and a removal that was applied is the fact
-  #   the log exists to preserve.
