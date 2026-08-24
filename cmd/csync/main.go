@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -216,7 +217,48 @@ func run() (code int) {
 		view.Endpoint{Path: destination, From: dstN.From},
 	))
 
-	result, err := compare.Run(runner, source, destination)
+	// The comparison is the long wait: rsync content-hashes every candidate on both
+	// ends (--checksum), and until now it ran with nothing on screen, which reads as
+	// a hang rather than as work (#62). On a terminal it runs behind a spinner that
+	// names the stage it is in; piped, there is nobody to show it to, so it runs
+	// plain and reports nothing.
+	//
+	// The context is what stops it. While the spinner holds the terminal in raw
+	// mode a Ctrl-C never becomes a SIGINT, so cancelling here is what passes the
+	// user's interruption on to the rsync that is still running.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var result compare.Result
+	if interactive {
+		phases := make(chan string, 4)
+		report := func(stage string) {
+			// Never let a caption block the comparison: if the spinner isn't reading,
+			// the work continuing matters more than the label arriving.
+			select {
+			case phases <- stage:
+			default:
+			}
+		}
+		var comparison view.Comparison
+		comparison, err = view.RunSpinner(cancel, phases, func() (compare.Result, error) {
+			defer close(phases)
+			return compare.Run(ctx, runner, source, destination, report)
+		})
+		result = comparison.Result
+		if comparison.Cancelled {
+			// Drain until the comparison closes the channel, which it does only once
+			// rsync has actually exited. Without this csync would return while the
+			// signalled process was still winding down, and the escalation that
+			// guarantees it dies would go with it.
+			for range phases {
+			}
+			fmt.Print(view.Canceled())
+			return 0
+		}
+	} else {
+		result, err = compare.Run(ctx, runner, source, destination, nil)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -316,12 +358,12 @@ func run() (code int) {
 	}
 	// Transfers first, removals last: the additive pass is recoverable, so if it
 	// fails we exit before deleting anything on the destination.
-	err = transfer.Run(runner, source, destination, transferPaths)
+	err = transfer.Run(ctx, runner, source, destination, transferPaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = transfer.Remove(runner, source, destination, removePaths)
+	err = transfer.Remove(ctx, runner, source, destination, removePaths)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

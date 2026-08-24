@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- While csync works out what is different, it now shows a spinner captioned with what it is currently doing (`querying remote`, `building the list`), instead of sitting with a blank screen. The spinner only appears once the comparison has run long enough to notice, so a quick comparison still goes straight to the file list. Pressing ctrl-c during the wait cancels the run. (#62)
+
+### Fixed
+
+- A cancelled run now stops the `rsync` it started, rather than leaving it to finish in the background. (#62)
+
 ## [1.0.0] - 2026-08-23
 
 ### Added
