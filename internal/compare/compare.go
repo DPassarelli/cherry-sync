@@ -3,6 +3,7 @@
 package compare
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
@@ -35,14 +36,39 @@ type Result struct {
 	CsyncTomlExcluded bool
 }
 
+// Progress receives the name of each stage of the comparison as that stage
+// begins, so a caller can caption a spinner with what csync is currently waiting
+// on rather than leaving the wait unexplained (#62). A nil Progress is valid and
+// reports nothing; compare never depends on anyone listening.
+type Progress func(stage string)
+
+// report calls p when there is one, so the stages below need no nil check apiece.
+func (p Progress) report(stage string) {
+	if p != nil {
+		p(stage)
+	}
+}
+
 // Run invokes rsync to compute the diff between source and destination, running it
 // through r so the invocation lands in the run log. Both paths get a trailing slash
 // so rsync compares directory contents rather than nesting source under destination.
-func Run(r *command.Runner, source, destination string) (Result, error) {
-	exc, err := localExclusions(r, source, destination)
+// Each stage is announced through progress as it starts; the rsync call is the slow
+// one, and the only reason the other two are announced at all is that a caption
+// that never changes reads as a hung spinner.
+func Run(ctx context.Context, r *command.Runner, source, destination string, progress Progress) (Result, error) {
+	progress.report("reading ignore rules")
+	exc, err := localExclusions(ctx, r, source, destination)
 	if err != nil {
 		return Result{}, err
 	}
+
+	// A remote operand means the wait is network-bound, which is worth naming: it
+	// tells the user the delay is the far end, not csync spinning locally.
+	stage := "comparing files"
+	if isRemote(source) || isRemote(destination) {
+		stage = "querying remote"
+	}
+	progress.report(stage)
 
 	args := rsyncArgs(source, destination, exc.patterns)
 	// The variable args are safe by construction — see SECURITY.md: no shell (the
@@ -50,7 +76,7 @@ func Run(r *command.Runner, source, destination string) (Result, error) {
 	// path operands validated in cli.Parse. The guard is proven behaviorally by the
 	// "treated as a path" scenario in compare-directories.feature, which fails if the
 	// `--` is removed.
-	out, err := r.Run("rsync", args, nil)
+	out, err := r.Run(ctx, "rsync", args, nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("rsync: %w", err)
 	}
@@ -63,8 +89,9 @@ func Run(r *command.Runner, source, destination string) (Result, error) {
 	// drop any it ignores, folding their names into the disclosed set. Skipped when the
 	// local side isn't a work tree (inWorkTree false) — nothing to ask git about.
 	if exc.inWorkTree {
+		progress.report("building the list")
 		dir, _ := localSyncDir(source, destination)
-		kept, dropped, err := dropIgnoredActions(r, dir, actions)
+		kept, dropped, err := dropIgnoredActions(ctx, r, dir, actions)
 		if err != nil {
 			return Result{}, err
 		}

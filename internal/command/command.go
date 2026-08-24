@@ -1,17 +1,28 @@
 // Package command runs external programs (rsync, git) for the rest of csync and
 // reports each invocation to a Recorder. It is the single place csync shells out:
-// centralizing it means the no-shell rule and the run-log's record of "what csync
-// actually invoked" are enforced once, not at every call site. It never learns who
-// the Recorder is — runlog satisfies the interface, tests pass a no-op — so the
-// packages that run commands stay ignorant of the log.
+// centralizing it means the no-shell rule, the run-log's record of "what csync
+// actually invoked", and the cancellation policy are enforced once, not at every
+// call site. It never learns who the Recorder is — runlog satisfies the interface,
+// tests pass a no-op — so the packages that run commands stay ignorant of the log.
 package command
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"os/exec"
+	"syscall"
 	"time"
 )
+
+// termGrace is how long a cancelled command is given to wind up on its own before
+// csync stops waiting on it. rsync answers SIGTERM by unwinding and reporting exit
+// code 20, so a cancelled run lands in the log as a deliberate stop rather than as
+// a command that simply vanished. The grace is short because it is paid on every
+// cancellation, and a command still ignoring SIGTERM two seconds later is not going
+// to honor it at all.
+const termGrace = 2 * time.Second
 
 // Execution is the record of one external command that ran: what it was, how it
 // was invoked, and how it turned out. The argument vector is kept as a slice, not
@@ -56,15 +67,33 @@ func New(rec Recorder) *Runner {
 // program's error unwrapped so the caller can frame it. The Execution is reported
 // whether the command succeeded or failed: a run worth troubleshooting is usually
 // one that failed, so its record must not be the one that goes missing.
-func (r *Runner) Run(name string, args []string, stdin io.Reader) (Output, error) {
+//
+// Cancelling ctx stops the command with SIGTERM rather than Go's default SIGKILL,
+// escalating only if it is ignored. Only the command itself is signalled, not any
+// process it spawned: rsync's ssh child exits on its own when rsync goes away
+// (verified against rsync 3.4.1 for both SIGTERM and SIGKILL), and signalling the
+// process group instead would take rsync out of the terminal's foreground group,
+// where a Ctrl-C on a non-interactive run would no longer reach it.
+func (r *Runner) Run(ctx context.Context, name string, args []string, stdin io.Reader) (Output, error) {
 	// #nosec G204 -- callers pass a fixed program name and an argument vector built
 	// without a shell; every variable path operand is guarded by a `--` separator
 	// (see compare/transfer) and validated upstream. See SECURITY.md.
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(ctx, name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdin = stdin
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+
+	cmd.Cancel = func() error {
+		return cmd.Process.Signal(syscall.SIGTERM)
+	}
+
+	// WaitDelay is what makes the SIGTERM above safe to prefer. It bounds two ways
+	// a cancelled command can otherwise hang csync indefinitely: a process that
+	// ignores the signal (which it then kills outright), and a process that exits
+	// leaving a child of its own holding the inherited output pipes, which Wait
+	// would otherwise read until an EOF that never comes.
+	cmd.WaitDelay = termGrace
 
 	start := time.Now()
 	err := cmd.Run()
@@ -77,6 +106,14 @@ func (r *Runner) Run(name string, args []string, stdin io.Reader) (Output, error
 		code = cmd.ProcessState.ExitCode()
 	}
 	_ = r.rec.Record(Execution{Name: name, Args: args, ExitCode: code, Duration: dur, Err: err})
+
+	// A cancelled command fails with whatever the signal produced ("signal:
+	// terminated"), which says nothing about why csync stopped it. Report the
+	// context's reason instead, so a caller can tell a genuine rsync failure from a
+	// deadline or a user's Ctrl-C.
+	if err != nil && ctx.Err() != nil {
+		return Output{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, fmt.Errorf("%s: %w", name, ctx.Err())
+	}
 
 	return Output{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, err
 }

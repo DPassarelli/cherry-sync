@@ -3,6 +3,7 @@
 package transfer
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -18,7 +19,7 @@ import (
 // with --from0, so a newline embedded in a filename cannot smuggle additional
 // entries into the transfer set — a SECURITY.md invariant. Passing an empty
 // list is a no-op.
-func Run(r *command.Runner, source, destination string, paths []string) error {
+func Run(ctx context.Context, r *command.Runner, source, destination string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
@@ -26,7 +27,7 @@ func Run(r *command.Runner, source, destination string, paths []string) error {
 	// Each path terminated by a NUL (not separated) so --from0 reads them all,
 	// including a trailing one, without a spurious empty final entry.
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := r.Run("rsync", args, stdin)
+	out, err := r.Run(ctx, "rsync", args, stdin)
 	if err != nil {
 		// The runner captures stdout and stderr apart; rejoin them so the error
 		// still carries rsync's full diagnostic, as CombinedOutput did before.
@@ -49,12 +50,12 @@ func Run(r *command.Runner, source, destination string, paths []string) error {
 // rsync filter metacharacter (`*`, `?`, `[`) or a leading space would be read as a
 // pattern rather than a literal; such names are dropped upstream at detection and
 // never reach here, so the patterns built below match literally.
-func Remove(r *command.Runner, source, destination string, paths []string) error {
+func Remove(ctx context.Context, r *command.Runner, source, destination string, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
 	args := removeArgs(source, destination, paths)
-	out, err := r.Run("rsync", args, nil)
+	out, err := r.Run(ctx, "rsync", args, nil)
 	if err != nil {
 		// Rejoin the runner's separate stdout/stderr so the error carries rsync's
 		// full diagnostic, as CombinedOutput did before — see Run.

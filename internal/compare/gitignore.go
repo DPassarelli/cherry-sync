@@ -7,6 +7,7 @@
 package compare
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -59,7 +60,7 @@ type exclusions struct {
 // and never re-derives them. That's safe because the comparison is the single gate:
 // an excluded file never appears, so it can't be selected, so --files-from never
 // lists one.
-func localExclusions(r *command.Runner, source, destination string) (exclusions, error) {
+func localExclusions(ctx context.Context, r *command.Runner, source, destination string) (exclusions, error) {
 	dir, ok := localSyncDir(source, destination)
 	if !ok {
 		return exclusions{}, nil
@@ -70,7 +71,7 @@ func localExclusions(r *command.Runner, source, destination string) (exclusions,
 		exc.csyncToml = true
 	}
 	if isGitWorkTree(dir) {
-		gitignored, err := gitignoreExcludes(r, dir)
+		gitignored, err := gitignoreExcludes(ctx, r, dir)
 		if err != nil {
 			return exclusions{}, err
 		}
@@ -147,12 +148,12 @@ func isRemote(path string) bool {
 // working directory the direct call set — equivalent for git's repo discovery and
 // relative-path output (verified by experiment), and it keeps the logged invocation
 // self-describing. The work-tree probe above stays a direct, unlogged capability check.
-func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
+func gitignoreExcludes(ctx context.Context, r *command.Runner, dir string) ([]string, error) {
 	if !isGitWorkTree(dir) {
 		return nil, nil
 	}
 	args := []string{"-C", dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"}
-	out, err := r.Run("git", args, nil)
+	out, err := r.Run(ctx, "git", args, nil)
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files: %w", err)
 	}
@@ -181,7 +182,7 @@ func gitignoreExcludes(r *command.Runner, dir string) ([]string, error) {
 // LOCAL files before rsync ever walks them, so they never reach this list, and this
 // pass only ever removes paths that survived to the comparison. The dropped names
 // join the disclosed set, since these are gitignored paths held back too.
-func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Action, []string, error) {
+func dropIgnoredActions(ctx context.Context, r *command.Runner, dir string, actions []Action) ([]Action, []string, error) {
 	if len(actions) == 0 {
 		return actions, nil, nil
 	}
@@ -189,7 +190,7 @@ func dropIgnoredActions(r *command.Runner, dir string, actions []Action) ([]Acti
 	for i, a := range actions {
 		paths[i] = a.Path
 	}
-	ignored, err := checkIgnored(r, dir, paths)
+	ignored, err := checkIgnored(ctx, r, dir, paths)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -238,10 +239,10 @@ func excludedNames(patterns []string) []string {
 // It runs through r so the query lands in the run log; `-C dir` replaces the working
 // directory the direct call set (see gitignoreExcludes). The runner returns cmd.Run's
 // error unwrapped, so the exit-code-1 test below still sees the *exec.ExitError.
-func checkIgnored(r *command.Runner, dir string, paths []string) (map[string]bool, error) {
+func checkIgnored(ctx context.Context, r *command.Runner, dir string, paths []string) (map[string]bool, error) {
 	args := []string{"-C", dir, "check-ignore", "-z", "--stdin"}
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := r.Run("git", args, stdin)
+	out, err := r.Run(ctx, "git", args, stdin)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
