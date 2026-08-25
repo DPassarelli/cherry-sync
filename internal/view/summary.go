@@ -1,5 +1,6 @@
 // summary.go renders csync's final run-status lines: the post-sync "Sync
-// complete!" summary and the "Canceled" notice. Each leads with a glyph echoing
+// complete!" summary, the "Canceled" notice, and the timeout that gives up on a
+// comparison. Each leads with a glyph echoing
 // the prompt's "?" — a green ✓ for success, a red ✗ for a cancel — and a blank
 // line to set it off from the output above. lipgloss drops the color when stdout
 // is not a terminal; the glyph itself stays.
@@ -8,6 +9,7 @@ package view
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
@@ -55,4 +57,15 @@ func pluralFiles(n int) string {
 func Canceled() string {
 	cross := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗")
 	return "\n" + cross + " Canceled\n"
+}
+
+// TimedOut returns the notice shown when a comparison runs past the limit and is
+// stopped. It wears the same red ✗ as a cancel because the outcome is the same —
+// nothing was synced — but says the limit out loud, since unlike a cancel this is
+// not something the user did and would otherwise look like an unexplained abort.
+// It also names the way out, because csync has no flag to raise the limit and a
+// tree this slow to compare is not what it is for.
+func TimedOut(limit time.Duration) string {
+	cross := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗")
+	return fmt.Sprintf("\n%s Gave up comparing after %d seconds.\n  csync is built for quick, interactive syncs; a comparison this slow is better run with rsync directly.\n", cross, int(limit.Seconds()))
 }
