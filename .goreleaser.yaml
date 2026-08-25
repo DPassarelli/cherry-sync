@@ -1,9 +1,7 @@
-# GoReleaser configuration — https://goreleaser.com
+# GoReleaser configuration: https://goreleaser.com
 #
-# Triggered by a pushed `v*` tag via .github/workflows/release.yml. Builds the
-# cross-platform binaries and publishes a GitHub Release with those binaries and
-# checksums. Run `goreleaser check` to validate this file and
-# `goreleaser release --snapshot --clean` to dry-run a build locally.
+# Validate this file with `goreleaser check`; dry-run a build locally with
+# `goreleaser release --snapshot --clean`.
 version: 2
 
 project_name: cherry-sync
@@ -35,23 +33,17 @@ builds:
       - -s -w
       - -X main.version={{ .Version }}
 
-# Sign and notarize the macOS binaries with Apple's notary service, so Gatekeeper
-# lets a downloaded csync run without the user clearing a quarantine flag by hand.
-# GoReleaser embeds anchore/quill for this, so it needs no Xcode, no `codesign`,
-# and no macOS runner — the linux job that builds the release also signs it.
-#
+# Sign and notarize the macOS binaries so Gatekeeper lets a downloaded csync run
+# without the user clearing a quarantine flag by hand. GoReleaser embeds
+# anchore/quill, so this needs no Xcode, no `codesign`, and no macOS runner.
 # Runs between build and archive, so the uploaded asset and its checksums.txt
 # entry both describe the signed binary.
 #
-# `enabled` is keyed off a secret rather than hardcoded true: a local
-# `goreleaser release --snapshot --clean` has none of these set, and skipping is
-# the right behavior there. In CI, release.yml supplies all five from repository
-# secrets. The two file-shaped inputs (certificate, key) are base64 of the .p12
-# and .p8 respectively; the other three are plain identifiers.
-#
-# A bare Mach-O executable cannot be stapled (`xcrun stapler` handles only
-# .app/.dmg/.pkg), so Gatekeeper verifies the notarization online on first run.
-# That is the accepted cost of shipping a bare binary rather than an installer.
+# `enabled` is keyed off a secret rather than hardcoded true, so a run without
+# these set (a local snapshot, a fork) builds unsigned instead of failing. The
+# two file-shaped inputs are base64 of the .p12 and .p8; the rest are plain
+# identifiers. RELEASE-GATE.md covers why notarization is gated here, at build
+# time, rather than asserted after publish.
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
@@ -71,22 +63,20 @@ notarize:
 
 archives:
   - id: csync
-    # Publish the bare executable rather than a tar.gz. csync carries its own MIT
-    # notice (`csync --license`) and its docs live on GitHub, so an archive would
-    # wrap a single file in a step the user has to undo. Downloading a raw binary
-    # is one `chmod +x` from a working tool.
+    # Publish the bare executable rather than a tar.gz: csync is a single file
+    # carrying its own MIT notice (`csync --license`), so an archive would only
+    # add a step the user has to undo.
     formats: [binary]
-    # With `binary` this names the uploaded release asset, not a file in dist/
-    # (the binary on disk stays `csync`). The name embeds the version and target
-    # so a download is self-identifying: cherry-sync_1.2.3_darwin_arm64.
+    # With `binary` this names the uploaded release asset, not the file in dist/
+    # (which stays `csync`), so a download is self-identifying:
+    # cherry-sync_1.2.3_darwin_arm64.
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
 
 # CHANGELOG.md is maintained by hand (Keep a Changelog), so suppress
-# GoReleaser's git-log-based changelog. Release notes are supplied from the
-# extracted CHANGELOG section via --release-notes in the workflow.
+# GoReleaser's git-log-based changelog.
 changelog:
   disable: true
 
@@ -94,8 +84,7 @@ release:
   github:
     owner: dpassarelli
     name: cherry-sync
-  # Publish as a draft so the release is invisible to users until the
-  # pre-publish smoketests pass. .github/workflows/release.yml flips it live
-  # with `gh release edit --draft=false` only after every smoketest leg is green; a
-  # failed smoketest run leaves the draft unpublished for inspection.
+  # Publish as a draft so the release is invisible to users until the release
+  # gate passes. A failed gate leaves the draft unpublished for inspection.
+  # See RELEASE-GATE.md.
   draft: true
