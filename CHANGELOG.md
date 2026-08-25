@@ -8,7 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- While csync works out what is different, it now shows a spinner captioned with what it is currently doing (`querying remote`, `building the list`), instead of sitting with a blank screen. The spinner only appears once the comparison has run long enough to notice, so a quick comparison still goes straight to the file list. Pressing ctrl-c during the wait cancels the run. (#62)
+- While csync works out what is different, it now shows a spinner with elapsed time, instead of sitting with nothing to show for it. The spinner only appears once the comparison has run long enough to notice, so a quick comparison still goes straight to the file list. Pressing ctrl-c during the wait cancels the run. (#62)
+- Comparisons are now bounded: if one has not finished within 59 seconds, then csync stops waiting and exits non-zero. There is no flag to raise the limit — csync is for quick, interactive syncs, and a tree that slow to compare is better handled by rsync directly. (#53)
+- When a comparison turns up more than 200 changes, csync now says so and offers to sync the whole set or nothing, instead of drawing a file list that is too long to scroll through. Working with large file sets is outside what csync is designed for. (#61)
 
 ### Fixed
 

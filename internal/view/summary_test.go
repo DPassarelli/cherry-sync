@@ -1,8 +1,10 @@
 package view
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
@@ -33,5 +35,25 @@ func TestRenderSummary(t *testing.T) {
 				t.Errorf("RenderSummary(%s):\n got %q\n want to contain %q", tc.name, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestTimedOut covers the notice that ends a comparison csync gave up on. It has
+// to name the limit it hit — an abort that states no number is indistinguishable
+// from a crash — and it has to point somewhere, since csync has no flag to raise
+// the limit and would otherwise leave the user with no next step.
+func TestTimedOut(t *testing.T) {
+	for _, limit := range []time.Duration{59 * time.Second, 5 * time.Second, 90 * time.Second} {
+		got := TimedOut(limit)
+		want := fmt.Sprintf("%d seconds", int(limit.Seconds()))
+		if !strings.Contains(got, want) {
+			t.Errorf("TimedOut(%s) = %q, want it to name %q", limit, got, want)
+		}
+		if !strings.Contains(got, "✗") {
+			t.Errorf("TimedOut(%s) = %q, want the cancel glyph", limit, got)
+		}
+		if !strings.Contains(got, "rsync") {
+			t.Errorf("TimedOut(%s) = %q, want it to name the way out", limit, got)
+		}
 	}
 }

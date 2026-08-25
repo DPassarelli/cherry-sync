@@ -6,10 +6,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -30,6 +32,14 @@ import (
 // for un-injected builds — `go build ./cmd/csync`, `go run`, the test harness —
 // which the version line renders as "cherry-sync (dev build)".
 var version = "dev"
+
+// compareTimeout is how long a comparison may run before csync stops waiting on
+// it (#53). Sixty seconds is the interaction budget: past it the tool is no
+// longer doing anything a person is present for, and an unresponsive remote or a
+// hung SSH connection would otherwise hang csync indefinitely with no recourse
+// short of killing it. It is 59 rather than 60 so the spinner's own count never
+// reaches three digits.
+const compareTimeout = 59 * time.Second
 
 // main runs csync and exits with the status it reports. It holds no logic of its
 // own: os.Exit skips deferred functions, so confining it to this one line is what
@@ -229,6 +239,15 @@ func run() (code int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// The comparison is bounded as well as cancellable (#53). csync is an
+	// interactive tool: a comparison still running after a minute has stopped being
+	// something anyone waits through, and there is deliberately no flag to raise the
+	// ceiling — a tree that slow to compare belongs to rsync, not to csync. The bound
+	// covers the piped path too, where there is no spinner to show the wait and no
+	// Ctrl-C to fall back on.
+	compareCtx, compareDone := context.WithTimeout(ctx, compareTimeout)
+	defer compareDone()
+
 	var result compare.Result
 	if interactive {
 		phases := make(chan string, 4)
@@ -243,7 +262,7 @@ func run() (code int) {
 		var comparison view.Comparison
 		comparison, err = view.RunSpinner(cancel, phases, func() (compare.Result, error) {
 			defer close(phases)
-			return compare.Run(ctx, runner, source, destination, report)
+			return compare.Run(compareCtx, runner, source, destination, report)
 		})
 		result = comparison.Result
 		if comparison.Cancelled {
@@ -257,9 +276,15 @@ func run() (code int) {
 			return 0
 		}
 	} else {
-		result, err = compare.Run(ctx, runner, source, destination, nil)
+		result, err = compare.Run(compareCtx, runner, source, destination, nil)
 	}
 	if err != nil {
+		// An expired deadline outranks whatever error rsync's death produced: killed
+		// mid-run it reports the signal that killed it, which explains nothing.
+		if errors.Is(compareCtx.Err(), context.DeadlineExceeded) {
+			fmt.Fprint(os.Stderr, view.TimedOut(compareTimeout))
+			return 1
+		}
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -315,14 +340,32 @@ func run() (code int) {
 	// "Changes:" report is non-interactive-only.
 	var selected []compare.Action
 	if interactive {
-		picked, err := view.RunPicker(result.Actions, preamble.String())
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
+		var picked []compare.Action
+		if len(result.Actions) > view.LargeSetLimit {
+			// Past this many changes csync stops offering a choice (#61). A list this
+			// long is not something anyone reviews a row at a time, so rather than
+			// render one, it states its design limit and offers the whole set or
+			// nothing. Enter here means every change, which is why the gate accepts
+			// nothing else.
+			proceed, gateErr := view.RunLargeSetGate()
+			if gateErr != nil {
+				fmt.Fprintln(os.Stderr, gateErr)
+				return 1
+			}
+			if proceed {
+				picked = result.Actions
+			}
+		} else {
+			chosen, pickErr := view.RunPicker(result.Actions, preamble.String())
+			if pickErr != nil {
+				fmt.Fprintln(os.Stderr, pickErr)
+				return 1
+			}
+			picked = chosen
 		}
 		// Record what the user chose, distinct from what was classified above, before
 		// the empty-selection stop below — so even a cancelled run records that nothing
-		// was taken.
+		// was taken. Declining the large-set gate lands here too, as an empty selection.
 		_ = runLog.Selected(logActions(picked))
 		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
