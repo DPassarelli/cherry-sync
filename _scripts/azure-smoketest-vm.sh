@@ -6,7 +6,7 @@
 # GitHub offers no native Linux/arm64 runner, so this leg stands up a throwaway
 # Azure arm64 VM, runs the binary on it, and deletes it. This script handles
 # ONLY the per-run (ephemeral) resources — it assumes the stable resource group
-# and vnet/subnet already exist (created once by hand; see SMOKE-TEST.md §7.3.2)
+# and vnet/subnet already exist (created once by hand; see RELEASE-GATE.md)
 # and never touches them. It also assumes `az` is already authenticated (the
 # workflow runs azure/login first; a human runs `az login`).
 #
@@ -14,10 +14,11 @@
 #   azure-smoketest-vm.sh up      # create the VM, wait for SSH, print host/user
 #   azure-smoketest-vm.sh down    # delete this run's ephemeral resources
 #
-# All inputs come from environment variables with defaults (the table in
-# SMOKE-TEST.md §7.3.3). Resource names are CAF-pattern and fully determined by
-# AZ_REGION_ABBR + AZ_INSTANCE, so `up` and `down` agree on names with no shared
-# state. Self-contained so it can be run by hand for debugging.
+# All inputs come from environment variables with defaults (see the Configuration
+# block below). Resource names follow the CAF pattern described in
+# RELEASE-GATE.md and are fully determined by AZ_REGION_ABBR + AZ_INSTANCE,
+# so `up` and `down` agree on names with no shared state. Self-contained so it
+# can be run by hand for debugging.
 set -euo pipefail
 
 # ---- Configuration (environment with defaults) -----------------------------

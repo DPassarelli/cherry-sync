@@ -2,11 +2,8 @@ name: azure-smoketest-sweep
 
 # Independent backstop for the linux/arm64 smoketest leg: reclaim any ephemeral
 # Azure resource the inline teardown missed (a cancelled or crashed release
-# run). Runs twice a day, and on demand for manual checks — so a resource the
-# inline teardown missed lives at most about half a day (plus the sweeper's age
-# threshold) before this reclaims it. The release pipeline does NOT depend on
-# this; it only bounds cost/leakage when a teardown is skipped, and orphans only
-# arise when a release run dies mid-provision, which is rare.
+# run). The release pipeline does not depend on this; it only bounds cost when a
+# teardown is skipped.
 on:
   schedule:
     - cron: '27 3,15 * * *'   # twice daily, 03:27 & 15:27 UTC (off the top of the hour, which GitHub schedules less reliably)
@@ -22,17 +19,11 @@ permissions:
   id-token: write         # azure/login via OIDC
 
 jobs:
-  # Deliberately NOT tied to a GitHub Environment. A job that references an
-  # `environment:` opens a Deployment record on every run, so a scheduled
-  # maintenance job would steadily inflate the repo's deployment count with
-  # noise (see issue #78). Instead this job authenticates to Azure with a
-  # federated credential scoped to the branch subject
-  # (repo:DPassarelli/cherry-sync:ref:refs/heads/main) — scheduled runs execute
-  # on the default branch — so no Environment, and thus no Deployment, is
-  # involved. The AZURE_* identifiers are repo-level secrets for the same reason
-  # (environment secrets would require re-entering the Environment). The release
-  # workflow keeps `environment: release`: its runs are genuine, infrequent
-  # deployments, unlike this scheduled backstop.
+  # Deliberately NOT tied to a GitHub Environment: referencing `environment:`
+  # opens a Deployment record on every run, which a scheduled job would inflate
+  # (#78). This job authenticates instead with a federated credential scoped to
+  # the branch subject, which is also why the AZURE_* identifiers are repo-level
+  # rather than environment secrets. See RELEASE-GATE.md.
   sweep:
     runs-on: ubuntu-latest
     timeout-minutes: 30   # bound a hung `az delete`; nothing here is time-critical
