@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,39 @@ var version = "dev"
 // short of killing it. It is 59 rather than 60 so the spinner's own count never
 // reaches three digits.
 const compareTimeout = 59 * time.Second
+
+// defaultStallTimeout is how long a transfer may go without a byte from the
+// remote before csync stops waiting on it (#53). Unlike compareTimeout this is a
+// silence budget, not an elapsed one: a legitimately large transfer runs as long
+// as it needs, and only one that has gone quiet is cut off. Thirty seconds leaves
+// room for the receiver to read a very large file while generating its block
+// checksums, which is the longest a healthy transfer goes without saying
+// anything.
+const defaultStallTimeout = 30 * time.Second
+
+// stallTimeoutVar is the environment variable that overrides defaultStallTimeout,
+// in whole seconds. It is deliberately undocumented: it exists so the acceptance
+// suite can prove the bound without waiting out the real one on every run, not as
+// a knob for tuning csync, which has no more business being configurable here
+// than the comparison's limit does.
+const stallTimeoutVar = "CSYNC_STALL_TIMEOUT"
+
+// stallTimeout returns the silence budget for this run: defaultStallTimeout,
+// unless stallTimeoutVar names a positive whole number of seconds. Anything else
+// — unset, unparseable, zero, negative — falls back to the default rather than
+// failing the run, because a malformed test hook must never be able to leave a
+// transfer unbounded, which is the very thing the bound exists to prevent.
+func stallTimeout() time.Duration {
+	raw := os.Getenv(stallTimeoutVar)
+	if raw == "" {
+		return defaultStallTimeout
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return defaultStallTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
 
 // main runs csync and exits with the status it reports. It holds no logic of its
 // own: os.Exit skips deferred functions, so confining it to this one line is what
@@ -401,15 +435,14 @@ func run() (code int) {
 	}
 	// Transfers first, removals last: the additive pass is recoverable, so if it
 	// fails we exit before deleting anything on the destination.
-	err = transfer.Run(ctx, runner, source, destination, transferPaths)
+	stall := stallTimeout()
+	err = transfer.Run(ctx, runner, source, destination, transferPaths, stall)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return reportTransferFailure(err, stall)
 	}
-	err = transfer.Remove(ctx, runner, source, destination, removePaths)
+	err = transfer.Remove(ctx, runner, source, destination, removePaths, stall)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+		return reportTransferFailure(err, stall)
 	}
 
 	// Report what moved with the post-sync summary: the past-tense list of changes.
@@ -418,6 +451,20 @@ func run() (code int) {
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
 	return 0
+}
+
+// reportTransferFailure prints the right account of a failed transfer and returns
+// the exit status for it. A stall gets csync's own notice: rsync's version of it
+// is an io-timeout line and a numeric code, which names the symptom and not the
+// problem. Every other failure is still reported as rsync described it, since
+// rsync is the one that knows what went wrong.
+func reportTransferFailure(err error, stall time.Duration) int {
+	if errors.Is(err, transfer.ErrStalled) {
+		fmt.Fprint(os.Stderr, view.Stalled(stall))
+		return 1
+	}
+	fmt.Fprintln(os.Stderr, err)
+	return 1
 }
 
 // logActions adapts the compare package's actions to the run log's own Action type,
