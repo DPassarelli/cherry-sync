@@ -131,3 +131,91 @@ func TestSuccessfulCommandIsUnaffected(t *testing.T) {
 		t.Errorf("stderr = %q, want %q", gotErr, "err")
 	}
 }
+
+// stallGuard bounds how long these tests wait for RunUntil to return. It is
+// generous against the SIGTERM grace a stop has to pay, and short against the
+// `sleep 300` the scripts would run for if the phrase were never noticed, so a
+// command that is not stopped fails the test rather than the whole suite.
+const stallGuard = termGrace + 10*time.Second
+
+// completion is what one RunUntil call produced.
+type completion struct {
+	out Output
+	err error
+}
+
+// finish runs body as a script through RunUntil and returns its completion,
+// failing the test if RunUntil has not returned within stallGuard — the hang the
+// phrase watching exists to prevent.
+func finish(t *testing.T, stderrSays []string, body string) completion {
+	t.Helper()
+	prog := script(t, body)
+
+	done := make(chan completion, 1)
+	go func() {
+		out, err := New(silent{}).RunUntil(context.Background(), prog, nil, nil, stderrSays)
+		done <- completion{out: out, err: err}
+	}()
+
+	select {
+	case got := <-done:
+		return got
+	case <-time.After(stallGuard):
+		t.Fatalf("RunUntil did not return within %v", stallGuard)
+		return completion{}
+	}
+}
+
+// TestStderrPhraseStopsTheCommand pins the bound csync's stalled-transfer
+// guarantee rests on. openrsync reports "poll: timeout" the moment its --timeout
+// elapses and then blocks in waitpid on the silent remote shell, so waiting for it
+// to exit hangs the run; csync must stop a command that has already said it is
+// giving up. The stderr it wrote has to survive the stop, because that text is
+// what the caller classifies the failure from.
+func TestStderrPhraseStopsTheCommand(t *testing.T) {
+	got := finish(t, []string{"poll: timeout"}, "echo 'rsync: error: poll: timeout' >&2\nsleep 300\n")
+
+	if got.err == nil {
+		t.Error("RunUntil succeeded, want the stopped command to report a failure")
+	}
+	// The caller's own context never ended, so blaming it would tell a user their
+	// run was cancelled when in fact the remote went quiet.
+	if errors.Is(got.err, context.Canceled) {
+		t.Errorf("got %v, want an error that does not blame the caller's context", got.err)
+	}
+	if !strings.Contains(string(got.out.Stderr), "poll: timeout") {
+		t.Errorf("stderr = %q, want it to still carry the phrase that stopped the command", got.out.Stderr)
+	}
+}
+
+// TestPhraseSplitAcrossWritesStopsTheCommand covers the phrase arriving in pieces.
+// Nothing guarantees a command writes a whole line in one write, or that a pipe
+// delivers it in one read, so matching only what each write carries would miss a
+// phrase straddling two of them — and miss it precisely when the transfer is
+// already in trouble.
+func TestPhraseSplitAcrossWritesStopsTheCommand(t *testing.T) {
+	body := "printf 'rsync: error: poll: ' >&2\nsleep 0.5\nprintf 'timeout\\n' >&2\nsleep 300\n"
+
+	got := finish(t, []string{"poll: timeout"}, body)
+
+	if got.err == nil {
+		t.Error("RunUntil succeeded, want the stopped command to report a failure")
+	}
+}
+
+// TestUnmatchedOutputRunsToCompletion guards the common path: a command that
+// never says it is giving up must run to its own end. A watcher that stopped
+// commands early would cut off healthy transfers, which is a worse failure than
+// the hang it was added to prevent.
+func TestUnmatchedOutputRunsToCompletion(t *testing.T) {
+	body := "echo 'rsync: some other trouble' >&2\nsleep 0.5\necho DONE\n"
+
+	got := finish(t, []string{"poll: timeout"}, body)
+
+	if got.err != nil {
+		t.Errorf("RunUntil: %v, want the command to run to completion", got.err)
+	}
+	if !strings.Contains(string(got.out.Stdout), "DONE") {
+		t.Errorf("stdout = %q, want the command to have reached its end", got.out.Stdout)
+	}
+}

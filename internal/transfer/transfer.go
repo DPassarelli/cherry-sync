@@ -20,7 +20,9 @@ var ErrStalled = errors.New("the remote stopped responding")
 
 // stallMarkers are the phrases rsync writes to stderr when it gives up on a peer
 // that has gone quiet, taken verbatim from both implementations csync runs
-// against. They are matched instead of the exit code because the code does not
+// against. They do two jobs: they classify a failed run as a stall, and they are
+// handed to RunUntil so a run that announces the stall without ever exiting is
+// stopped rather than waited on (openrsync does exactly that). They are matched instead of the exit code because the code does not
 // port: GNU rsync exits 30, while openrsync (the Mac's rsync) was observed
 // exiting 1 for a peer that never answered and 20 when it timed out against
 // itself. The phrases are matched rather than the bare word "timeout" so that an
@@ -66,7 +68,9 @@ func rsyncError(out command.Output, err error) error {
 // list is a no-op.
 //
 // stall bounds how long rsync will wait on a silent remote before giving up
-// (#53); a failure it causes is reported as ErrStalled.
+// (#53); a failure it causes is reported as ErrStalled. rsync is run through
+// RunUntil rather than Run because announcing the stall and exiting are not the
+// same event for every implementation: csync stops waiting at the announcement.
 func Run(ctx context.Context, r *command.Runner, source, destination string, paths []string, stall time.Duration) error {
 	if len(paths) == 0 {
 		return nil
@@ -75,7 +79,7 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pat
 	// Each path terminated by a NUL (not separated) so --from0 reads them all,
 	// including a trailing one, without a spurious empty final entry.
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := r.Run(ctx, "rsync", args, stdin)
+	out, err := r.RunUntil(ctx, "rsync", args, stdin, stallMarkers)
 	if err != nil {
 		return rsyncError(out, err)
 	}
@@ -103,7 +107,7 @@ func Remove(ctx context.Context, r *command.Runner, source, destination string, 
 		return nil
 	}
 	args := removeArgs(source, destination, paths, stall)
-	out, err := r.Run(ctx, "rsync", args, nil)
+	out, err := r.RunUntil(ctx, "rsync", args, nil, stallMarkers)
 	if err != nil {
 		return rsyncError(out, err)
 	}
