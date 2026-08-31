@@ -1,6 +1,6 @@
 // summary.go renders csync's final run-status lines: the post-sync "Sync
-// complete!" summary, the "Canceled" notice, and the timeout that gives up on a
-// comparison. Each leads with a glyph echoing
+// complete!" summary, the "Canceled" notice, the timeout that gives up on a
+// comparison, and the notice for a transfer whose remote went silent. Each leads with a glyph echoing
 // the prompt's "?" — a green ✓ for success, a red ✗ for a cancel — and a blank
 // line to set it off from the output above. lipgloss drops the color when stdout
 // is not a terminal; the glyph itself stays.
@@ -68,4 +68,18 @@ func Canceled() string {
 func TimedOut(limit time.Duration) string {
 	cross := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗")
 	return fmt.Sprintf("\n%s Gave up comparing after %d seconds.\n  csync is built for quick, interactive syncs; a comparison this slow is better run with rsync directly.\n", cross, int(limit.Seconds()))
+}
+
+// Stalled returns the notice shown when a transfer is abandoned because the
+// remote stopped sending. It wears the same red ✗ as a cancel and names the limit
+// for the same reason TimedOut does — an abort that states no number reads as a
+// crash — but says what failed rather than what took too long, because unlike a
+// slow comparison this is the remote's doing and not the tree's.
+//
+// It also says the sync was left half done. A transfer killed partway has already
+// moved some of the selection, so a notice implying nothing happened would send
+// the user back to a destination in a state neither side agrees on.
+func Stalled(limit time.Duration) string {
+	cross := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗")
+	return fmt.Sprintf("\n%s The remote stopped responding; gave up after %d seconds.\n  Some files may already have been transferred; run csync again to see what is left.\n", cross, int(limit.Seconds()))
 }

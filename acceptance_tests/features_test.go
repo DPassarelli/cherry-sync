@@ -53,6 +53,44 @@ shift
 exec "$@"
 `
 
+// stallRsh is the path to a test-only remote shell that answers the first rsync
+// that runs and goes silent for every one after it. Scenarios that need a stalled
+// transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
+var stallRsh string
+
+// stallRshScript is the body of the stalling remote shell. csync runs one rsync
+// to compare and another to transfer, each spawning its own remote shell, so a
+// counter kept in the file named by CSYNC_TEST_RSH_STATE is what tells the two
+// apart: invocation 1 (the comparison) execs normally, and every later one sleeps
+// instead of answering. Sleeping rather than exiting is the point — a peer that
+// closes the connection is an error rsync reports immediately, while one that
+// holds it open and says nothing is the stall being tested. It holds the pipe
+// open by not exec-ing anything, and outlives any timeout the suite sets while
+// still reaping itself long before the run ends.
+const stallRshScript = `#!/bin/sh
+n=$(cat "$CSYNC_TEST_RSH_STATE" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "$CSYNC_TEST_RSH_STATE"
+if [ "$n" -gt 1 ]; then
+	sleep 60
+	exit 0
+fi
+shift
+exec "$@"
+`
+
+// stallTestTimeout is the value of CSYNC_STALL_TIMEOUT given to a csync child in
+// a stall scenario, in seconds. It exists so the scenario does not wait out the
+// real 30-second bound on every PR; rsync overshoots a small timeout by a few
+// seconds, so the scenario costs well under ten.
+const stallTestTimeout = "3"
+
+// runWait bounds how long runCsync will wait for the csync child to exit. It is a
+// deadlock guard rather than a timing assumption — a run that ends on its own
+// costs nothing — and it is what keeps a stall scenario from hanging the whole
+// suite while csync is still missing the bound the scenario is there to prove.
+const runWait = 45 * time.Second
+
 // outputKey is the context key used to stash the captured runResult from
 // `When I run "..."` so the following Then steps can assert on it.
 type outputKey struct{}
@@ -72,6 +110,11 @@ type remotePathKey struct{}
 // and sets RSYNC_RSH to fakeRsh, so rsync runs in sender/receiver mode rather
 // than local-to-local — the only way the suite exercises the `<` push direction.
 type remoteModeKey struct{}
+
+// stallModeKey flags a scenario (via the `goes silent once the comparison is
+// done` step) as needing the stalling remote shell rather than the plain one, so
+// csyncEnv points RSYNC_RSH at stallRsh and gives the child its counter file.
+type stallModeKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and
@@ -209,6 +252,13 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 
+	stallRsh = filepath.Join(tmpDir, "stallrsh")
+	err = os.WriteFile(stallRsh, []byte(stallRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "stallrsh:", err)
+		os.Exit(2)
+	}
+
 	os.Exit(m.Run())
 }
 
@@ -261,6 +311,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should report where it logged the run$`, csyncShouldReportWhereItLoggedTheRun)
 	ctx.Step(`^a run log should exist at the reported path$`, aRunLogShouldExistAtTheReportedPath)
 	ctx.Step(`^that a file has been changed locally$`, thatAFileHasBeenChangedLocally)
+	ctx.Step(`^a remote that goes silent once the comparison is done$`, aRemoteThatGoesSilentOnceTheComparisonIsDone)
 	ctx.Step(`^I have started csync but not yet answered the prompt$`, iHaveStartedCsyncButNotYetAnsweredThePrompt)
 	// Two phrasings of the same act, kept apart because Gherkin reads better when a
 	// Given narrates in the past and a When in the present. Both locate the log.
@@ -491,7 +542,16 @@ func csyncEnv(ctx context.Context) []string {
 		// rsync reads RSYNC_RSH as its remote shell; fakeRsh execs locally so the
 		// `fakehost:` operand transfers on this machine over the real remote code
 		// path. csync's own rsync child inherits this environment.
-		env = append(env, "RSYNC_RSH="+fakeRsh)
+		rsh := fakeRsh
+		stallMode, _ := ctx.Value(stallModeKey{}).(bool)
+		if stallMode {
+			// Swap in the shell that stops answering after the comparison, and shorten
+			// csync's own bound so the scenario doesn't wait out the shipped default.
+			rsh = stallRsh
+			env = append(env, "CSYNC_TEST_RSH_STATE="+filepath.Join(home, "rsh-invocations"))
+			env = append(env, "CSYNC_STALL_TIMEOUT="+stallTestTimeout)
+		}
+		env = append(env, "RSYNC_RSH="+rsh)
 	}
 	return env
 }
@@ -547,7 +607,9 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		}
 	}
 
-	cmd := exec.Command(csyncBinary, args...)
+	runCtx, cancelRun := context.WithTimeout(ctx, runWait)
+	defer cancelRun()
+	cmd := exec.CommandContext(runCtx, csyncBinary, args...)
 	cmd.Stdin = stdin
 	if dir != "" {
 		cmd.Dir = dir
@@ -557,6 +619,13 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 	err := cmd.Run()
+
+	// A csync that never exits is a failure of the thing under test, not a slow
+	// machine: report it as one rather than letting the killed child's signal be
+	// read as an ordinary non-zero exit.
+	if runCtx.Err() != nil {
+		return ctx, fmt.Errorf("csync did not exit within %s; stderr so far:\n%s", runWait, stderrBuf.String())
+	}
 
 	exitCode := 0
 	if err != nil {
@@ -629,6 +698,15 @@ func theHelpTextShouldContain(ctx context.Context, want string) error {
 		return fmt.Errorf("help output missing %q in stdout:\n%s", want, r.Stdout)
 	}
 	return nil
+}
+
+// aRemoteThatGoesSilentOnceTheComparisonIsDone points the scenario at the remote
+// shell that answers the comparison and then stops answering, so the stall lands
+// on the transfer rather than on the comparison. The comparison must be allowed
+// to succeed: it is what produces the change list the scenario then chooses from,
+// and csync never reaches a transfer without it.
+func aRemoteThatGoesSilentOnceTheComparisonIsDone(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, stallModeKey{}, true), nil
 }
 
 // theReportedErrorShouldMention asserts csync's stderr contains want — the error

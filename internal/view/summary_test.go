@@ -57,3 +57,31 @@ func TestTimedOut(t *testing.T) {
 		}
 	}
 }
+
+// TestStalled covers the notice that ends a transfer csync abandoned because the
+// remote went quiet. It has to say the remote stopped responding — the one thing
+// that distinguishes this from a comparison csync gave up on, which is the other
+// notice that ends a run with a limit in it — and it has to name the limit, so an
+// abort is legible as a decision rather than a crash.
+//
+// It also has to warn that the sync was left half done. A transfer killed partway
+// leaves the destination in a state neither side agrees on, and a notice that
+// implies nothing moved would be a lie the user acts on.
+func TestStalled(t *testing.T) {
+	for _, limit := range []time.Duration{30 * time.Second, 3 * time.Second} {
+		got := Stalled(limit)
+		want := fmt.Sprintf("%d seconds", int(limit.Seconds()))
+		if !strings.Contains(got, want) {
+			t.Errorf("Stalled(%s) = %q, want it to name %q", limit, got, want)
+		}
+		if !strings.Contains(got, "stopped responding") {
+			t.Errorf("Stalled(%s) = %q, want it to say the remote stopped responding", limit, got)
+		}
+		if !strings.Contains(got, "✗") {
+			t.Errorf("Stalled(%s) = %q, want the cancel glyph", limit, got)
+		}
+		if !strings.Contains(got, "may already have") {
+			t.Errorf("Stalled(%s) = %q, want it to warn the sync was left half done", limit, got)
+		}
+	}
+}

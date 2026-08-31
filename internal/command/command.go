@@ -51,6 +51,37 @@ type Output struct {
 	Stderr []byte
 }
 
+// watcher is the stderr sink for a RunUntil call. It captures the stream as an
+// ordinary buffer would and, the first time the text captured so far contains one
+// of its phrases, stops the command. Matching against everything accumulated
+// rather than against the write in hand is what lets a phrase that straddles two
+// writes still count: nothing guarantees a program writes a whole line at once, or
+// that a pipe delivers it in one piece.
+type watcher struct {
+	buf     bytes.Buffer
+	says    []string
+	stop    context.CancelFunc
+	stopped bool
+}
+
+// Write captures p and stops the command if the stream now says one of the
+// phrases. It is called only from the goroutine os/exec copies the pipe with, so
+// the buffer has a single writer; the Runner reads it after Wait has returned.
+func (w *watcher) Write(p []byte) (int, error) {
+	n, err := w.buf.Write(p)
+	if w.stopped || len(w.says) == 0 {
+		return n, err
+	}
+	for _, phrase := range w.says {
+		if bytes.Contains(w.buf.Bytes(), []byte(phrase)) {
+			w.stopped = true
+			w.stop()
+			break
+		}
+	}
+	return n, err
+}
+
 // Runner runs external commands and reports each to its Recorder.
 type Runner struct {
 	rec Recorder
@@ -75,14 +106,35 @@ func New(rec Recorder) *Runner {
 // process group instead would take rsync out of the terminal's foreground group,
 // where a Ctrl-C on a non-interactive run would no longer reach it.
 func (r *Runner) Run(ctx context.Context, name string, args []string, stdin io.Reader) (Output, error) {
+	return r.RunUntil(ctx, name, args, stdin, nil)
+}
+
+// RunUntil runs a command as Run does, but stops waiting on it as soon as its
+// stderr says one of stderrSays. It exists because a command can announce that it
+// has given up and then fail to exit: openrsync reports "poll: timeout" the moment
+// its --timeout elapses, then blocks in waitpid on a remote shell that is never
+// coming back (verified on macOS 15), so a stalled transfer would hang csync for
+// as long as the remote stayed silent. Stopping the command follows the same
+// SIGTERM-then-kill path a cancellation does.
+//
+// The stderr that triggered the stop is returned with the rest, so the caller can
+// still say what went wrong, and the caller's own context is left untouched — a
+// command stopped this way must not be reported as the user's cancellation.
+func (r *Runner) RunUntil(ctx context.Context, name string, args []string, stdin io.Reader, stderrSays []string) (Output, error) {
+	// A context of csync's own, so stopping the command on a phrase cannot be
+	// mistaken for the caller cancelling the run.
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+
 	// #nosec G204 -- callers pass a fixed program name and an argument vector built
 	// without a shell; every variable path operand is guarded by a `--` separator
 	// (see compare/transfer) and validated upstream. See SECURITY.md.
-	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(runCtx, name, args...)
+	var stdout bytes.Buffer
+	stderr := &watcher{says: stderrSays, stop: stop}
 	cmd.Stdin = stdin
 	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stderr = stderr
 
 	cmd.Cancel = func() error {
 		return cmd.Process.Signal(syscall.SIGTERM)
@@ -112,8 +164,8 @@ func (r *Runner) Run(ctx context.Context, name string, args []string, stdin io.R
 	// context's reason instead, so a caller can tell a genuine rsync failure from a
 	// deadline or a user's Ctrl-C.
 	if err != nil && ctx.Err() != nil {
-		return Output{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, fmt.Errorf("%s: %w", name, ctx.Err())
+		return Output{Stdout: stdout.Bytes(), Stderr: stderr.buf.Bytes()}, fmt.Errorf("%s: %w", name, ctx.Err())
 	}
 
-	return Output{Stdout: stdout.Bytes(), Stderr: stderr.Bytes()}, err
+	return Output{Stdout: stdout.Bytes(), Stderr: stderr.buf.Bytes()}, err
 }

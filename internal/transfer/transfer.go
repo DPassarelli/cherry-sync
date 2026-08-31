@@ -4,11 +4,58 @@ package transfer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
 )
+
+// ErrStalled marks a transfer that rsync abandoned because the remote stopped
+// sending. It exists so the caller can say what happened in csync's own words:
+// rsync's own account of a stall is a line about io timeouts and a numeric code,
+// which tells a user nothing they can act on.
+var ErrStalled = errors.New("the remote stopped responding")
+
+// stallMarkers are the phrases rsync writes to stderr when it gives up on a peer
+// that has gone quiet, taken verbatim from both implementations csync runs
+// against. They do two jobs: they classify a failed run as a stall, and they are
+// handed to RunUntil so a run that announces the stall without ever exiting is
+// stopped rather than waited on (openrsync does exactly that). They are matched instead of the exit code because the code does not
+// port: GNU rsync exits 30, while openrsync (the Mac's rsync) was observed
+// exiting 1 for a peer that never answered and 20 when it timed out against
+// itself. The phrases are matched rather than the bare word "timeout" so that an
+// unrelated failure naming a file called timeout.log is not read as a dead
+// remote.
+var stallMarkers = []string{
+	"io timeout after",             // GNU rsync, on the sender giving up
+	"timeout in data send/receive", // GNU rsync, its own summary of the same
+	"poll: timeout",                // openrsync
+}
+
+// stalled reports whether rsync's stderr says it gave up waiting on a silent
+// remote, as opposed to failing in any of the ordinary ways.
+func stalled(stderr []byte) bool {
+	text := string(stderr)
+	for _, marker := range stallMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// rsyncError frames a failed rsync invocation. It rejoins the runner's separately
+// captured streams so the error still carries rsync's full diagnostic, as
+// CombinedOutput did before, and marks a stall with ErrStalled so the caller can
+// tell the one failure csync has something better to say about from the rest.
+func rsyncError(out command.Output, err error) error {
+	if stalled(out.Stderr) {
+		return fmt.Errorf("rsync: %w: %w: %s", ErrStalled, err, out.Stderr)
+	}
+	return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
+}
 
 // Run transfers exactly the given relative paths from source to destination,
 // running rsync through r so the invocation lands in the run log. Both paths get a
@@ -19,19 +66,22 @@ import (
 // with --from0, so a newline embedded in a filename cannot smuggle additional
 // entries into the transfer set — a SECURITY.md invariant. Passing an empty
 // list is a no-op.
-func Run(ctx context.Context, r *command.Runner, source, destination string, paths []string) error {
+//
+// stall bounds how long rsync will wait on a silent remote before giving up
+// (#53); a failure it causes is reported as ErrStalled. rsync is run through
+// RunUntil rather than Run because announcing the stall and exiting are not the
+// same event for every implementation: csync stops waiting at the announcement.
+func Run(ctx context.Context, r *command.Runner, source, destination string, paths []string, stall time.Duration) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	args := rsyncArgs(source, destination)
+	args := rsyncArgs(source, destination, stall)
 	// Each path terminated by a NUL (not separated) so --from0 reads them all,
 	// including a trailing one, without a spurious empty final entry.
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := r.Run(ctx, "rsync", args, stdin)
+	out, err := r.RunUntil(ctx, "rsync", args, stdin, stallMarkers)
 	if err != nil {
-		// The runner captures stdout and stderr apart; rejoin them so the error
-		// still carries rsync's full diagnostic, as CombinedOutput did before.
-		return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
+		return rsyncError(out, err)
 	}
 	return nil
 }
@@ -50,16 +100,16 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pat
 // rsync filter metacharacter (`*`, `?`, `[`) or a leading space would be read as a
 // pattern rather than a literal; such names are dropped upstream at detection and
 // never reach here, so the patterns built below match literally.
-func Remove(ctx context.Context, r *command.Runner, source, destination string, paths []string) error {
+//
+// stall bounds the wait on a silent remote exactly as it does in Run.
+func Remove(ctx context.Context, r *command.Runner, source, destination string, paths []string, stall time.Duration) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	args := removeArgs(source, destination, paths)
-	out, err := r.Run(ctx, "rsync", args, nil)
+	args := removeArgs(source, destination, paths, stall)
+	out, err := r.RunUntil(ctx, "rsync", args, nil, stallMarkers)
 	if err != nil {
-		// Rejoin the runner's separate stdout/stderr so the error carries rsync's
-		// full diagnostic, as CombinedOutput did before — see Run.
-		return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
+		return rsyncError(out, err)
 	}
 	return nil
 }
@@ -70,10 +120,11 @@ func Remove(ctx context.Context, r *command.Runner, source, destination string, 
 // target's ancestor directories are included ahead of the trailing --exclude='*'
 // that protects everything else from deletion. As in rsyncArgs, `--` before the
 // paths closes off rsync argument injection.
-func removeArgs(source, destination string, paths []string) []string {
+func removeArgs(source, destination string, paths []string, stall time.Duration) []string {
 	args := []string{
 		"--recursive",
 		"--delete",
+		stallArg(stall),
 	}
 	seen := map[string]bool{}
 	for _, p := range paths {
@@ -92,6 +143,13 @@ func removeArgs(source, destination string, paths []string) []string {
 		destination+"/",
 	)
 	return args
+}
+
+// stallArg renders the --timeout option carrying rsync's I/O idle limit, rounded
+// down to whole seconds because that is rsync's unit. Both argument vectors build
+// it here so the two passes cannot drift apart.
+func stallArg(stall time.Duration) string {
+	return fmt.Sprintf("--timeout=%d", int(stall.Seconds()))
 }
 
 // includePatterns returns the anchored rsync filter includes that let --delete
@@ -119,9 +177,17 @@ func includePatterns(p string) []string {
 // the `--` end-of-options separator immediately before the paths ensures a
 // source or destination beginning with `-` reaches rsync as a path, never an
 // option — closing off rsync argument injection (e.g. `--rsh=…`).
-func rsyncArgs(source, destination string) []string {
+func rsyncArgs(source, destination string, stall time.Duration) []string {
 	return []string{
 		"--recursive",
+		// --timeout is rsync's own I/O idle timer: it exits rather than waiting
+		// forever on a remote that has stopped sending (#53). It bounds silence
+		// rather than total elapsed time, so a legitimately long transfer runs as
+		// long as it needs to and only a stalled one is cut off. The comparison
+		// deliberately does not carry it: --checksum hashes both sides with nothing
+		// on the wire, and openrsync sends no keepalive during that, so a large file
+		// would trip the timer on a perfectly healthy remote.
+		stallArg(stall),
 		// --times preserves each transferred file's modification time. Without
 		// it, every synced file lands with "now" as its mtime and rsync's
 		// quick-check (size + mtime) re-flags it as changed on the next compare —
