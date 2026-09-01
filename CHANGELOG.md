@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - A cancelled run now stops the `rsync` it started, rather than leaving it to finish in the background. (#62)
+- Pulling from a git repository into a directory that isn't one no longer offers the remote's entire `.git` for transfer. `.git` is now excluded on whichever side is being read, not just when the local side happens to be a repository, and csync reports it as excluded wherever it was found. (#103)
 
 ## [1.0.0] - 2026-08-23
 

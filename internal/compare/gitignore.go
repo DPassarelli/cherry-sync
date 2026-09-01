@@ -23,8 +23,9 @@ import (
 // a sync: the rsync --exclude patterns to apply, how many of them are gitignored
 // paths (the count the CLI discloses), whether the local side is a git work tree
 // at all, and whether csync's own .csync.toml was among the withheld (csyncToml),
-// which the CLI discloses separately like .git/. Its zero value means nothing was
-// hidden — no patterns, no config file, not a work tree.
+// which the CLI discloses separately like .git/. inWorkTree gates the gitignore
+// work alone; the .git pattern is unconditional, so a populated patterns list says
+// nothing about whether either side holds a repository.
 type exclusions struct {
 	patterns   []string
 	gitignored []string
@@ -32,9 +33,11 @@ type exclusions struct {
 	csyncToml  bool
 }
 
-// localExclusions gathers the exclusions for the local side of a sync. Two
-// independent sources contribute, so the zero value (nothing hidden) is returned
-// only when neither applies.
+// localExclusions gathers the exclusions csync applies to a sync. The name marks
+// where they are DERIVED, not where they apply: the .csync.toml and gitignore
+// parts are read off the local side, while rsync applies every pattern to
+// whichever side it reads. Only a sync with no local operand at all (both ends
+// remote) returns the zero value.
 //
 // csync's own .csync.toml is excluded whenever it is present — unconditional on
 // git — because its saved remote is meaningless on the other machine and offering
@@ -42,10 +45,16 @@ type exclusions struct {
 // only there, cwd-only discovery), and csyncToml records it so the CLI can
 // disclose it like .git/.
 //
-// When the local side is a git work tree, patterns also gains ".git": git never
-// reports its own metadata directory as ignored (it special-cases .git/), so
-// without an explicit exclude a push/pull from a repo would offer every .git/
-// object for transfer — noise that would also clobber the other side's git state.
+// ".git" is excluded on every run, gated on nothing: git never reports its own
+// metadata directory as ignored (it special-cases .git/), so without an explicit
+// exclude a sync involving a repo would offer every .git/ object for transfer —
+// noise that would also clobber the other side's git state. It cannot be gated on
+// the local side being a work tree, because on a pull the repository being read is
+// the remote one and no local check can see it (#103). Passing it where no .git
+// exists costs nothing: the pattern matches nothing, and the disclosure reads
+// rsync's report of what it actually withheld rather than this list, so a sync of
+// two plain directories still says nothing about git.
+//
 // The pattern is floating (no leading '/', matching at any depth) and slash-free
 // (matching a .git that is either a directory or a file), so it also holds out the
 // nested git metadata a submodule carries: a checked-out submodule's .git is a
@@ -54,7 +63,7 @@ type exclusions struct {
 // because a .git is git metadata regardless of depth, unlike the gitignore paths
 // (which are anchored to keep a top-level rule off a same-named nested path). The
 // gitignored count covers only the gitignored paths, not this .git entry, which the
-// CLI discloses separately.
+// CLI discloses separately (see gitDirHidden for where that disclosure comes from).
 //
 // The patterns are applied to the comparison ONLY; the transfer uses --files-from
 // and never re-derives them. That's safe because the comparison is the single gate:
@@ -66,6 +75,7 @@ func localExclusions(ctx context.Context, r *command.Runner, source, destination
 		return exclusions{}, nil
 	}
 	var exc exclusions
+	exc.patterns = append(exc.patterns, ".git")
 	if hasCsyncToml(dir) {
 		exc.patterns = append(exc.patterns, "/.csync.toml")
 		exc.csyncToml = true
@@ -85,7 +95,6 @@ func localExclusions(ctx context.Context, r *command.Runner, source, destination
 				return p == "/.csync.toml"
 			})
 		}
-		exc.patterns = append(exc.patterns, ".git")
 		exc.patterns = append(exc.patterns, gitignored...)
 		exc.gitignored = excludedNames(gitignored)
 		exc.inWorkTree = true

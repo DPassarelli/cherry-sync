@@ -371,6 +371,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the directory's "([^"]*)" contains:$`, theLocalFileContains)
 	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
+	ctx.Step(`^a remote git repository containing these files:$`, aRemoteGitRepositoryContainingTheseFiles)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)
 	ctx.Step(`^that the file "([^"]*)" has a different modification time but identical content$`, theFileHasADifferentMtimeButIdenticalContent)
 	ctx.Step(`^that the file "([^"]*)" has been added locally$`, theFileHasBeenAddedLocally)
@@ -1718,6 +1719,31 @@ func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
 	remote, err := os.MkdirTemp("", "csync-remote-*")
 	if err != nil {
 		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	return context.WithValue(ctx, remotePathKey{}, remote), nil
+}
+
+// aRemoteGitRepositoryContainingTheseFiles creates a remote tempdir, initializes
+// a git work tree in it, and populates it with the (empty) files named in the
+// DocString. It is the mirror of the local-repository step, for the scenarios
+// where the repository is the side csync reads rather than the side it runs on —
+// the local operand is then a plain directory, so any .git handling that consults
+// the local side alone has nothing to find. The path is stashed under
+// remotePathKey, like the other remote-setup steps.
+func aRemoteGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	remote, err := os.MkdirTemp("", "csync-remote-*")
+	if err != nil {
+		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	cmd := exec.Command("git", "init", "-q")
+	cmd.Dir = remote
+	err = cmd.Run()
+	if err != nil {
+		return ctx, fmt.Errorf("git init: %w", err)
+	}
+	err = writeFiles(remote, ds.Content)
+	if err != nil {
+		return ctx, err
 	}
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
