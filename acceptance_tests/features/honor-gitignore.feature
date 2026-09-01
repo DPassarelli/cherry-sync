@@ -311,6 +311,56 @@ Feature: Honor .gitignore when comparing
     And   the reported change count should be 1
     And   the reported excluded count should be 1
 
+  @remote
+  Scenario: Pull direction — a remote repository's .git is never offered for sync
+    # The mirror of "The local .git directory is never offered for sync", and the
+    # case #103 reports. The .git exclusion is gated on the LOCAL side being a work
+    # tree, but on a pull the local side is the destination — so pulling from a repo
+    # into a plain directory passes no exclude at all and rsync offers the remote's
+    # entire .git/ tree (config, HEAD, the sample hooks, every object) as creates.
+    # The exclusion belongs to whichever side is being read, not to whichever side
+    # happens to be local. Teeth: gate the ".git" exclude on isGitWorkTree again and
+    # dozens of .git/ creates flood the list (red). Verified by experiment (GNU
+    # rsync 3.4.1, and openrsync on macOS) that a floating ".git" --exclude drops
+    # the sender's metadata whichever end of the connection the sender is on.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a remote git repository containing these files:
+      """
+      README.md
+      src/main.go
+      """
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path        |
+      | create | src/main.go |
+    And   the reported change count should be 1
+
+  @remote
+  Scenario: Pull direction — the remote repository's .git exclusion is disclosed
+    # Sibling to the scenario above, which asserts the .git/ tree is gone from the
+    # change list; this one asserts csync says so. The disclosure must follow the
+    # evidence rather than the work-tree check: the local side here is a plain
+    # directory, so a disclosure gated on isGitWorkTree stays silent and withholds
+    # the remote's .git/ without a word — the one thing csync promises never to do.
+    # No .gitignore exists on either side, so the .git directory must be the only
+    # thing reported. Teeth: report GitDirExcluded from the local work-tree check
+    # and this goes red while the scenario above still passes.
+    Given a local directory containing these files:
+      """
+      README.md
+      """
+    And   a remote git repository containing these files:
+      """
+      README.md
+      src/main.go
+      """
+    When  I run "csync user@host:/project ./project"
+    Then  the .git directory should be reported as excluded
+    And   no gitignored paths should be reported as excluded
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------

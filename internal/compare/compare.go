@@ -24,10 +24,13 @@ type Result struct {
 	// Empty when the local side isn't a git work tree or ignores nothing. There's no
 	// opt-out. Each name is root-relative with no rsync anchor, e.g. "build/".
 	Excluded []string
-	// GitDirExcluded reports whether the local side's .git directory was held out
-	// of the comparison — true whenever the local side is a git work tree. git
-	// never lists .git/ as ignored, so it's excluded explicitly; the CLI discloses
-	// it separately from the gitignored names (it can be true with Excluded empty).
+	// GitDirExcluded reports whether a .git was held out of the comparison, on
+	// EITHER side — git never lists .git/ as ignored, so it is excluded explicitly,
+	// and the exclude applies to whichever side rsync reads. It is read back from
+	// rsync's own report of what it withheld rather than from a check of the local
+	// side, so a pull from a remote repository into a plain directory discloses the
+	// remote .git it held back (#103). The CLI discloses it separately from the
+	// gitignored names (it can be true with Excluded empty).
 	GitDirExcluded bool
 	// CsyncTomlExcluded reports whether the local side's own .csync.toml was held
 	// out of the comparison — true whenever that file is present, independent of
@@ -80,7 +83,8 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 	if err != nil {
 		return Result{}, fmt.Errorf("rsync: %w", err)
 	}
-	actions := parseActions(string(out.Stdout))
+	stdout := string(out.Stdout)
+	actions := parseActions(stdout)
 	sortActions(actions)
 	excluded := exc.gitignored
 	// The --exclude pre-filter is built from `git ls-files`, which sees only the
@@ -98,7 +102,7 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 		actions = kept
 		excluded = append(excluded, dropped...)
 	}
-	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: exc.inWorkTree, CsyncTomlExcluded: exc.csyncToml}, nil
+	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitDirHidden(stdout), CsyncTomlExcluded: exc.csyncToml}, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`
@@ -151,10 +155,24 @@ func rsyncArgs(source, destination string, excludes []string) []string {
 		// chars (newline/tab) regardless, which keeps the space/line parser safe but
 		// is why an embedded-newline name is a separate, harder problem.
 		"-8",
+		// -vv makes rsync name each path an --exclude held back, on stdout: GNU
+		// emits `[sender] hiding directory X because of pattern P` (and
+		// `[generator] protecting directory X ...` for the receiving side),
+		// openrsync `rsync(PID): : hiding file X because of pattern` and
+		// `rsync(PID): : skip excluded file X`. That output is what lets csync
+		// disclose a .git it withheld from EITHER side — including a remote one,
+		// which no local check can see (#103). Verified that a remote GNU sender's
+		// message is relayed intact to an openrsync client, so the evidence
+		// survives the wire in both directions. The cost is a handful of extra
+		// lines per run, not per file: rsync names a hidden directory once and
+		// doesn't enumerate its contents. None of the added lines can be mistaken
+		// for an itemize line — actionFromLine requires a first token of
+		// `*deleting` or `[<>]f...` — so parseActions is unaffected.
+		"-vv",
 	}
 	// Each gitignored path (and ".git") drops out of the comparison via its own
-	// --exclude; the patterns are options, so they precede the `--`. Empty when the
-	// local side isn't a git work tree. Passing them as args rather than an
+	// --exclude; the patterns are options, so they precede the `--`. Never empty —
+	// ".git" is always among them. Passing them as args rather than an
 	// --exclude-from file keeps the patterns inert literals (a newline inside one
 	// can't split it into two entries) and means no temp file to write or clean up.
 	// Compare-only — see localExclusions for why the transfer omits them.

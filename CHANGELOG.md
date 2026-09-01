@@ -6,16 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-01
+
 ### Added
 
-- While csync works out what is different, it now shows a spinner with elapsed time, instead of sitting with nothing to show for it. The spinner only appears once the comparison has run long enough to notice, so a quick comparison still goes straight to the file list. Pressing ctrl-c during the wait cancels the run. (#62)
-- Comparisons are now bounded: if one has not finished within 59 seconds, then csync stops waiting and exits non-zero. There is no flag to raise the limit — csync is for quick, interactive syncs, and a tree that slow to compare is better handled by rsync directly. (#53)
-- Transfers are now bounded as well: if the remote stops sending for about half a minute, csync gives up, says the remote stopped responding, and exits non-zero (the exact delay depends on which rsync is installed). This one is a silence budget rather than an elapsed-time one, so a large but healthy transfer still runs as long as it needs to. (#53)
-- When a comparison turns up more than 200 changes, csync now says so and offers to sync the whole set or nothing, instead of drawing a file list that is too long to scroll through. Working with large file sets is outside what csync is designed for. (#61)
+- Whenever the directory comparison takes longer than a second or two, then csync will display a spinner with elapsed time. This prevents it from appearing frozen. (#62)
+- Comparisons are now time-bound: if one has not finished within 59 seconds, then csync stops waiting and exits non-zero. There is no flag to raise the limit — csync is for quick, interactive syncs, and a tree that slow to compare is better handled by rsync directly. (#53)
+- If the remote stops sending any data for about half a minute, then csync will abort and exit non-zero (the exact delay depends on which rsync is installed). This is dependent on lack of data, so a large but healthy transfer will still run for as long as it needs to. (#53)
+- When a comparison turns up more than 200 changes, csync no longer displays the entire file list, but instead offers to sync the whole set or nothing. Working with large file sets is outside what csync is designed for. (#61)
 
 ### Fixed
 
 - A cancelled run now stops the `rsync` it started, rather than leaving it to finish in the background. (#62)
+- Pulling from a git repository into a directory that isn't one no longer offers the remote's entire `.git` for transfer. `.git` is now excluded on whichever side is being read, not just when the local side happens to be a repository, and csync reports it as excluded wherever it was found. (#103)
 
 ## [1.0.0] - 2026-08-23
 
@@ -133,7 +136,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.10.0...v1.0.0
 [0.10.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.8.0...v0.9.0
