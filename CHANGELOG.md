@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A comparison that fails now repeats what `rsync` said about it, instead of reporting the bare exit code. The run log keeps the explanation as well. (#110)
+
 ## [1.1.0] - 2026-09-01
 
 ### Added

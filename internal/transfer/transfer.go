@@ -46,15 +46,16 @@ func stalled(stderr []byte) bool {
 	return false
 }
 
-// rsyncError frames a failed rsync invocation. It rejoins the runner's separately
-// captured streams so the error still carries rsync's full diagnostic, as
-// CombinedOutput did before, and marks a stall with ErrStalled so the caller can
-// tell the one failure csync has something better to say about from the rest.
-func rsyncError(out command.Output, err error) error {
-	if stalled(out.Stderr) {
-		return fmt.Errorf("rsync: %w: %w: %s", ErrStalled, err, out.Stderr)
+// rsyncError marks a failed rsync invocation that was a stall with ErrStalled, so
+// the caller can tell the one failure csync has something better to say about from
+// the rest. Every other failure is passed through as the Runner framed it, which
+// already carries rsync's own diagnostic.
+func rsyncError(err error) error {
+	var cerr *command.Error
+	if errors.As(err, &cerr) && stalled(cerr.Stderr) {
+		return fmt.Errorf("%w: %w", ErrStalled, err)
 	}
-	return fmt.Errorf("rsync: %w: %s", err, append(out.Stdout, out.Stderr...))
+	return err
 }
 
 // Run transfers exactly the given relative paths from source to destination,
@@ -79,9 +80,9 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pat
 	// Each path terminated by a NUL (not separated) so --from0 reads them all,
 	// including a trailing one, without a spurious empty final entry.
 	stdin := strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	out, err := r.RunUntil(ctx, "rsync", args, stdin, stallMarkers)
+	_, err := r.RunUntil(ctx, "rsync", args, stdin, stallMarkers)
 	if err != nil {
-		return rsyncError(out, err)
+		return rsyncError(err)
 	}
 	return nil
 }
@@ -107,9 +108,9 @@ func Remove(ctx context.Context, r *command.Runner, source, destination string, 
 		return nil
 	}
 	args := removeArgs(source, destination, paths, stall)
-	out, err := r.RunUntil(ctx, "rsync", args, nil, stallMarkers)
+	_, err := r.RunUntil(ctx, "rsync", args, nil, stallMarkers)
 	if err != nil {
-		return rsyncError(out, err)
+		return rsyncError(err)
 	}
 	return nil
 }

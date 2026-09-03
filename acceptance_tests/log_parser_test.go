@@ -66,12 +66,14 @@ func (p ParsedLog) has(actions []LoggedAction, verb, path string) bool {
 // LoggedCommand is one external command csync recorded running: the program, the
 // argument vector as the log preserved it (each element a distinct string, so a
 // space inside one survives), its exit code, and how long it took as the raw
-// duration text.
+// duration text, and what it wrote to stderr when it failed (empty when it did not,
+// or when it failed silently).
 type LoggedCommand struct {
 	Name     string
 	Args     []string
 	ExitCode int
 	Duration string
+	Stderr   string
 }
 
 // command returns the first recorded command with the given name, and whether one
@@ -108,7 +110,7 @@ var (
 	logInvocationRE = regexp.MustCompile(`(?m)^\S+ invocation: (.+?)\s*$`)
 	logSourceRE     = regexp.MustCompile(`(?m)^\S+ source: (.+?)\s*$`)
 	logDestRE       = regexp.MustCompile(`(?m)^\S+ destination: (.+?)\s*$`)
-	logExecRE       = regexp.MustCompile(`(?m)^\S+ exec: (\S+) \[(.*)\] exit=(-?\d+) dur=(\S+)\s*$`)
+	logExecRE       = regexp.MustCompile(`(?m)^\S+ exec: (\S+) \[(.*)\] exit=(-?\d+) dur=(\S+)(?: stderr=("(?:[^"\\]|\\.)*"))?\s*$`)
 	logArgRE        = regexp.MustCompile(`"(?:[^"\\]|\\.)*"`)
 	logClassifiedRE = regexp.MustCompile(`(?m)^\S+ classified: (\d+) \[(.*)\]\s*$`)
 	logSelectedRE   = regexp.MustCompile(`(?m)^\S+ selected: (\d+) \[(.*)\]\s*$`)
@@ -141,11 +143,16 @@ func parseLog(content string) ParsedLog {
 	}
 	for _, m := range logExecRE.FindAllStringSubmatch(content, -1) {
 		code, _ := strconv.Atoi(m[3])
+		stderr := ""
+		if m[5] != "" {
+			stderr, _ = strconv.Unquote(m[5])
+		}
 		log.Commands = append(log.Commands, LoggedCommand{
 			Name:     m[1],
 			Args:     parseLogArgs(m[2]),
 			ExitCode: code,
 			Duration: m[4],
+			Stderr:   stderr,
 		})
 	}
 	if m := logClassifiedRE.FindStringSubmatch(content); m != nil {

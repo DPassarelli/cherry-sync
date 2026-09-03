@@ -27,14 +27,55 @@ const termGrace = 2 * time.Second
 // Execution is the record of one external command that ran: what it was, how it
 // was invoked, and how it turned out. The argument vector is kept as a slice, not
 // a joined string, so a reader (and the run log) can tell where one operand ends
-// and the next begins even when a path contains a space.
+// and the next begins even when a path contains a space. Stderr rides along
+// because an exit code alone cannot be diagnosed after the fact — 255 is ssh's
+// code passed through rsync, worn identically by a refused key, a changed host key
+// and an unreachable host — and the run that most needs explaining is over by the
+// time anyone reads about it.
 type Execution struct {
 	Name     string
 	Args     []string
 	ExitCode int
 	Duration time.Duration
+	Stderr   []byte
 	Err      error
 }
+
+// Error is what a Runner returns for a command that ran and failed: the program's
+// own account of the failure, carried with the exit error rather than left in the
+// Output for each caller to re-attach. Centralizing it here is what keeps a caller
+// from reporting a bare exit code by omission — the failure and its explanation
+// are one value, and dropping the explanation now takes deliberate effort.
+//
+// Both streams are kept because rsync divides its diagnostics between them: the
+// itemized listing goes to stdout while errors go to stderr, and a failure part way
+// through leaves the reason for it on the far side of that split.
+type Error struct {
+	Name   string
+	Stdout []byte
+	Stderr []byte
+	Err    error
+}
+
+// Error renders the failure as the program described it, behind the program's name
+// and the exit status: "rsync: exit status 23: rsync: [sender] change_dir …".
+//
+// Stderr is what gets shown, because that is where a program explains itself and
+// stdout is the work it was doing — the comparison runs rsync at -vv, whose trace
+// would otherwise push the one actionable line out of sight. Stdout stands in only
+// when stderr is empty, so a program that fails talking solely to stdout is still
+// quoted rather than reduced to a bare exit code.
+func (e *Error) Error() string {
+	said := e.Stderr
+	if len(said) == 0 {
+		said = e.Stdout
+	}
+	return fmt.Sprintf("%s: %v: %s", e.Name, e.Err, said)
+}
+
+// Unwrap returns the underlying failure, so errors.Is and errors.As still reach the
+// *exec.ExitError a caller may want to inspect.
+func (e *Error) Unwrap() error { return e.Err }
 
 // Recorder receives each Execution a Runner runs. runlog.Log satisfies it; a test
 // passes a no-op. Recording is best-effort — a Runner drops the returned error, so
@@ -157,15 +198,19 @@ func (r *Runner) RunUntil(ctx context.Context, name string, args []string, stdin
 	if cmd.ProcessState != nil {
 		code = cmd.ProcessState.ExitCode()
 	}
-	_ = r.rec.Record(Execution{Name: name, Args: args, ExitCode: code, Duration: dur, Err: err})
+	out := Output{Stdout: stdout.Bytes(), Stderr: stderr.buf.Bytes()}
+	_ = r.rec.Record(Execution{Name: name, Args: args, ExitCode: code, Duration: dur, Stderr: out.Stderr, Err: err})
 
 	// A cancelled command fails with whatever the signal produced ("signal:
 	// terminated"), which says nothing about why csync stopped it. Report the
 	// context's reason instead, so a caller can tell a genuine rsync failure from a
 	// deadline or a user's Ctrl-C.
 	if err != nil && ctx.Err() != nil {
-		return Output{Stdout: stdout.Bytes(), Stderr: stderr.buf.Bytes()}, fmt.Errorf("%s: %w", name, ctx.Err())
+		return out, fmt.Errorf("%s: %w", name, ctx.Err())
+	}
+	if err != nil {
+		return out, &Error{Name: name, Stdout: out.Stdout, Stderr: out.Stderr, Err: err}
 	}
 
-	return Output{Stdout: stdout.Bytes(), Stderr: stderr.buf.Bytes()}, err
+	return out, nil
 }

@@ -219,3 +219,41 @@ func TestUnmatchedOutputRunsToCompletion(t *testing.T) {
 		t.Errorf("stdout = %q, want the command to have reached its end", got.out.Stdout)
 	}
 }
+
+// TestFailureReportsStderrNotStdout pins which stream explains a failure. A program
+// that fails says why on stderr; its stdout is the work it was doing, which on the
+// comparison pass is rsync's -vv trace and would bury the one line a user can act on.
+func TestFailureReportsStderrNotStdout(t *testing.T) {
+	prog := script(t, "echo trace-noise\necho the-real-reason >&2\nexit 1\n")
+	r := New(silent{})
+
+	_, err := r.Run(context.Background(), prog, nil, nil)
+
+	if err == nil {
+		t.Fatal("want an error from a command that exited 1, got nil")
+	}
+	if !strings.Contains(err.Error(), "the-real-reason") {
+		t.Errorf("error omits what the command said on stderr: %v", err)
+	}
+	if strings.Contains(err.Error(), "trace-noise") {
+		t.Errorf("error carries stdout ahead of the reason: %v", err)
+	}
+}
+
+// TestFailureFallsBackToStdout covers the program that fails while saying nothing on
+// stderr. Reporting stderr alone would leave such a failure as a bare exit code, which
+// is the reporting gap this framing exists to close, so stdout stands in when it is
+// all the program said.
+func TestFailureFallsBackToStdout(t *testing.T) {
+	prog := script(t, "echo only-on-stdout\nexit 1\n")
+	r := New(silent{})
+
+	_, err := r.Run(context.Background(), prog, nil, nil)
+
+	if err == nil {
+		t.Fatal("want an error from a command that exited 1, got nil")
+	}
+	if !strings.Contains(err.Error(), "only-on-stdout") {
+		t.Errorf("error omits the only account the command gave: %v", err)
+	}
+}
