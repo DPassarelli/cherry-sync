@@ -304,6 +304,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported destination should be "([^"]*)"$`, theReportedDestinationShouldBe)
 	ctx.Step(`^csync should return exit code (\d+)$`, csyncShouldReturnExitCode)
 	ctx.Step(`^csync should return a non-zero exit code$`, csyncShouldReturnANonZeroExitCode)
+	ctx.Step(`^csync should report the diagnostic rsync wrote$`, csyncShouldReportTheDiagnosticRsyncWrote)
 	ctx.Step(`^the help text should contain "([^"]*)"$`, theHelpTextShouldContain)
 	ctx.Step(`^the reported message should begin with "([^"]*)"$`, theReportedMessageShouldBeginWith)
 	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
@@ -327,6 +328,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a local directory whose path contains a double quote$`, aLocalDirectoryWhosePathContainsADoubleQuote)
 	ctx.Step(`^a local source path that does not exist$`, aLocalSourcePathThatDoesNotExist)
 	ctx.Step(`^the log should record the comparison's failing exit code$`, theLogShouldRecordTheComparisonsFailingExitCode)
+	ctx.Step(`^the log should record what rsync said about the failure$`, theLogShouldRecordWhatRsyncSaidAboutTheFailure)
 	ctx.Step(`^the logged duration should be a positive whole number of milliseconds$`, theLoggedDurationShouldBeAPositiveWholeNumberOfMilliseconds)
 	ctx.Step(`^the log should record (\d+) classified changes?$`, theLogShouldRecordNClassifiedChanges)
 	ctx.Step(`^the log should record (\d+) selected changes?$`, theLogShouldRecordNSelectedChanges)
@@ -1111,6 +1113,52 @@ func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error 
 	}
 	if cmd.ExitCode != want {
 		return fmt.Errorf("run log records rsync exit=%d, want %d (what csync reported); contents:\n%s", cmd.ExitCode, want, content)
+	}
+	return nil
+}
+
+// diagnosticRE splits the error csync surfaces for a failed command into the exit
+// status and whatever the command itself said about the failure. The remainder is
+// matched rather than any particular wording because the two rsync implementations
+// csync runs against word the same failure differently; what the scenarios pin is
+// that rsync's account reaches the user at all, not what rsync chose to say.
+var diagnosticRE = regexp.MustCompile(`exit status \d+: (.+)`)
+
+// csyncShouldReportTheDiagnosticRsyncWrote asserts a failed comparison told the user
+// what rsync said, not merely the code it exited with. A csync that reported the code
+// alone leaves every ssh-layer failure looking identical — 255 is ssh's code, worn by a
+// refused key, a changed host key and an unreachable host alike — so the sentence rsync
+// wrote is the only part of the report anyone can act on.
+func csyncShouldReportTheDiagnosticRsyncWrote(ctx context.Context) error {
+	r := captured(ctx)
+	m := diagnosticRE.FindStringSubmatch(r.Stderr)
+	if m == nil || strings.TrimSpace(m[1]) == "" {
+		return fmt.Errorf("csync reported an exit status with no account of the failure; stderr:\n%s", r.Stderr)
+	}
+	return nil
+}
+
+// theLogShouldRecordWhatRsyncSaidAboutTheFailure asserts the run log kept rsync's own
+// account of a failed comparison, so the failure can still be diagnosed once the run is
+// over and the terminal is gone. It reconciles against what csync printed rather than
+// against any wording of its own: whatever the log kept must be text the user was also
+// shown, which holds whichever rsync flavor produced it and however much of a long
+// diagnostic the log chose to keep.
+func theLogShouldRecordWhatRsyncSaidAboutTheFailure(ctx context.Context) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	cmd, ok := log.command("rsync")
+	if !ok {
+		return fmt.Errorf("run log records no rsync command; contents:\n%s", content)
+	}
+	if cmd.Stderr == "" {
+		return fmt.Errorf("run log records no stderr for the rsync that failed; contents:\n%s", content)
+	}
+	r := captured(ctx)
+	if !strings.Contains(r.Stderr, cmd.Stderr) {
+		return fmt.Errorf("run log recorded stderr csync never reported:\nlogged: %q\nreported:\n%s", cmd.Stderr, r.Stderr)
 	}
 	return nil
 }

@@ -187,6 +187,18 @@ Feature: Log each run
     Then  csync should return a non-zero exit code
     And   the log should record the comparison's failing exit code
 
+  Scenario: A comparison that fails records what rsync said
+    # Companion to the exit code above. A code alone cannot be diagnosed once the run
+    # is over, which is the moment the log exists for: nobody knows during a run what
+    # they will later need, so the record keeps rsync's own account beside the code it
+    # failed with. Reconciled against the text csync printed rather than hardcoded,
+    # since rsync flavors word the same failure differently.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   the log should record what rsync said about the failure
+
   Scenario: A run that fails at the comparison still says where it logged
     # The runs worth reading are the ones that went wrong, so the disclosure has to
     # survive the failure — a log the user cannot find is no better than one never

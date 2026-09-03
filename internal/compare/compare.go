@@ -4,7 +4,6 @@ package compare
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
 )
@@ -81,7 +80,9 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 	// `--` is removed.
 	out, err := r.Run(ctx, "rsync", args, nil)
 	if err != nil {
-		return Result{}, fmt.Errorf("rsync: %w", err)
+		// Returned as the Runner framed it, which already names rsync and carries
+		// what rsync said. Re-wrapping here would only repeat the program's name.
+		return Result{}, err
 	}
 	stdout := string(out.Stdout)
 	actions := parseActions(stdout)

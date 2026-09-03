@@ -183,12 +183,22 @@ func (l *Log) Invocation(name string, args []string) error {
 }
 
 // Record writes one external command csync ran — what it was, its argument vector,
-// its exit code, and how long it took. It satisfies command.Recorder, so the
-// packages that shell out report through it without depending on this one. The
-// argument vector is written as space-separated quoted tokens, so a path holding a
-// space stays a single argument a reader can pick out. A discarding log ignores it.
+// its exit code, how long it took, and, when it failed, what it said about the
+// failure. It satisfies command.Recorder, so the packages that shell out report
+// through it without depending on this one. The argument vector is written as
+// space-separated quoted tokens, so a path holding a space stays a single argument
+// a reader can pick out. A discarding log ignores it.
+//
+// The diagnostic is kept only for a command that failed: a successful one has
+// nothing to explain, and rsync writes ordinary warnings to stderr that would
+// otherwise bury the records worth reading. It is written %q-quoted on the same
+// line as the rest, because a multi-line record would break the one-line-per-event
+// shape every other record and every reader of this log depends on.
 func (l *Log) Record(e command.Execution) error {
 	rest := fmt.Sprintf("%s %s exit=%d dur=%s", e.Name, quoteArgs(e.Args), e.ExitCode, roundUpMillis(e.Duration))
+	if e.ExitCode != 0 && len(e.Stderr) > 0 {
+		rest += fmt.Sprintf(" stderr=%q", e.Stderr)
+	}
 	return l.record("exec", rest)
 }
 

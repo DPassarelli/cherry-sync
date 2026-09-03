@@ -71,6 +71,19 @@ Feature: Compare directories
     When  I run "csync -e ./project"
     Then  csync should return a non-zero exit code
 
+  Scenario: A comparison that fails reports what rsync said
+    # An exit code names neither the failing component nor the failure: 255 is ssh's
+    # code passed through rsync, worn identically by a refused key, a changed host
+    # key, and an unreachable host. What a user can act on is the sentence rsync
+    # wrote on stderr, so csync repeats it rather than reducing the failure to a
+    # number. A missing source is the failure this suite can raise without a broken
+    # remote, and the diagnostic it draws names why the path could not be read.
+    Given a local source path that does not exist
+    And   an empty remote directory
+    When  I run "csync ./project user@host:/project"
+    Then  csync should return a non-zero exit code
+    And   csync should report the diagnostic rsync wrote
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
@@ -78,9 +91,6 @@ Feature: Compare directories
   #
   # - Missing rsync: if `rsync` is not on PATH, csync exits with a clear,
   #   actionable error (does not produce a partial diff).
-  #
-  # - SSH connection fails: csync surfaces rsync's error verbatim rather than
-  #   swallowing it; non-zero exit code.
   #
   # - Source path does not exist: csync reports the missing path clearly and
   #   exits non-zero, without attempting any remote connection.
