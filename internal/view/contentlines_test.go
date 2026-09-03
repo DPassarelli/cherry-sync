@@ -3,7 +3,9 @@ package view
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
@@ -41,5 +43,60 @@ func TestContentLinesCursorLine(t *testing.T) {
 				t.Errorf("lines[%d] = %q, want the cursor row %q", cursorLine, row, c.basename)
 			}
 		})
+	}
+}
+
+// Behavior: a row carries its annotation after the verb, so the list says what the
+// file is as well as what would happen to it. This is the wiring test — the wording
+// itself is pinned in detail_test.go — and it fails if contentLines renders the verb
+// and stops.
+func TestContentLines_RowCarriesItsDetail(t *testing.T) {
+	m := newModel([]compare.Action{{
+		Verb: "update", Path: "cmd/main.go", Size: 4300,
+		Diff: compare.Difference{Content: true, Size: true, ModTime: true},
+	}})
+	m.now = time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+
+	lines, _ := m.contentLines()
+
+	row := strings.Join(lines, "\n")
+	for _, want := range []string{"4.2 KB", "size and mtime"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("rendered rows %q, want them to carry %q", row, want)
+		}
+	}
+}
+
+// Behavior: a delete row carries no annotation. Its rsync record holds no usable
+// size or timestamp, so anything rendered there would be invented.
+func TestContentLines_DeleteRowHasNoDetail(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "delete", Path: "stale.txt"}})
+
+	lines, _ := m.contentLines()
+
+	row := strings.Join(lines, "\n")
+	if strings.Contains(row, "·") {
+		t.Errorf("rendered rows %q, want no annotation on a delete", row)
+	}
+}
+
+// Behavior: the annotation is trimmed to what the terminal can show, so a row never
+// wraps onto a second terminal line. A wrapped row would still count as one line to
+// the scroll window, sliding the window out of step with what was actually drawn —
+// the bug class this guards, not merely an untidy display.
+func TestContentLines_NarrowTerminal_KeepsRowsWithinTheWidth(t *testing.T) {
+	m := newModel([]compare.Action{{
+		Verb: "update", Path: "cmd/some-rather-long-name.go", Size: 4300,
+		Diff: compare.Difference{Content: true, Size: true, ModTime: true},
+	}})
+	m.now = time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	m.width = 46
+
+	lines, _ := m.contentLines()
+
+	for _, line := range lines {
+		if w := lipgloss.Width(line); w > m.width {
+			t.Errorf("line %q is %d cells wide, want at most %d", line, w, m.width)
+		}
 	}
 }

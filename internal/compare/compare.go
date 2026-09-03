@@ -1,17 +1,42 @@
 // Package compare runs rsync in dry-run mode against two paths and turns its
-// --itemize-changes output into a structured list of planned actions.
+// per-file output into a structured list of planned actions.
 package compare
 
 import (
 	"context"
+	"time"
 
 	"github.com/dpassarelli/cherry-sync/internal/command"
 )
 
-// Action is a single planned change between source and destination.
+// Difference is which of a file's attributes rsync found to differ between the
+// two sides, decoded from the attribute columns of its itemize code. It explains
+// an update: the verb says a transfer would happen, this says what gave the file
+// away. Only meaningful for the update verb — a create has nothing to compare
+// against and a delete carries no itemize attributes at all, so both leave it
+// zero.
+//
+// Content is set on every update csync reports, because the comparison runs with
+// --checksum and so settles every candidate by content hash. It is decoded for
+// correctness rather than for display, and stays correct if that flag ever
+// changes; the two fields that actually vary today are Size and ModTime.
+type Difference struct {
+	Content bool
+	Size    bool
+	ModTime bool
+}
+
+// Action is a single planned change between source and destination. Size and
+// ModTime describe the file on the SOURCE side, which is the only side a single
+// dry-run pass sees: on a push that is the local file, on a pull the remote one.
+// Both are zero for a delete, whose itemize line carries no usable metadata (rsync
+// reports a length of 0 and an epoch timestamp for it).
 type Action struct {
-	Verb string
-	Path string
+	Verb    string
+	Path    string
+	Size    int64
+	ModTime time.Time
+	Diff    Difference
 }
 
 // Result is the structured outcome of comparing two paths.
@@ -114,7 +139,21 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 func rsyncArgs(source, destination string, excludes []string) []string {
 	args := []string{
 		"--dry-run",
-		"--itemize-changes",
+		// --out-format supersedes --itemize-changes, which is only shorthand for
+		// `--out-format='%i %n'`. The added fields are what let the change list say
+		// how big each file is and when it was last touched (#72): %i is the itemize
+		// code the parser already reads, %l the length in bytes, %M the modification
+		// time as YYYY/MM/DD-HH:MM:SS, and %n the path. Verified present and
+		// identically formatted in both GNU rsync 3.4.1 and the openrsync macOS
+		// ships (its %M uses the same strftime layout). %C, the full-file checksum,
+		// is deliberately absent: openrsync compiles its case out behind `#if 0` and
+		// emits nothing for it, so a hash column could never render on a Mac.
+		//
+		// `|` separates the fields because %n comes last: a filename containing a
+		// pipe lands wholly in the final field under a limited split, so no name can
+		// forge an extra column. The verbose (-vv) lines below carry no `|` at all
+		// and so cannot be mistaken for a record.
+		"--out-format=%i|%l|%M|%n",
 		"--recursive",
 		// --delete surfaces removals: a path present on the destination but gone
 		// from the source itemizes as `*deleting <path>`, which parseActions turns
