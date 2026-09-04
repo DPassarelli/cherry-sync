@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,11 +36,6 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
-	// now is the moment each row's age is measured against, fixed when the picker
-	// is built rather than read per frame: the list does not re-render on a timer,
-	// and a row whose "3 min ago" crept forward between two repaints of the same
-	// unchanged list would read as a change that never happened.
-	now time.Time
 }
 
 // pickerHeaderLines is how many rows View prints above the change list — a leading
@@ -74,7 +68,6 @@ func newModel(actions []compare.Action) pickerModel {
 	return pickerModel{
 		actions: ordered,
 		sel:     selection.New(ordered),
-		now:     time.Now(),
 	}
 }
 
@@ -277,7 +270,7 @@ func (m pickerModel) contentLines() ([]string, int) {
 			if cursorRow {
 				detailStyle = detailStyle.Background(cursorBG)
 			}
-			detail := fitDetail(actionDetail(a, m.now), lipgloss.Width(row), m.width)
+			detail := fitDetail(actionDetail(a), lipgloss.Width(row), m.width)
 			if detail != "" {
 				row += detailStyle.Render(detailGap + detail)
 			}

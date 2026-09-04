@@ -3,7 +3,6 @@ package view
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
@@ -52,18 +51,15 @@ func TestContentLinesCursorLine(t *testing.T) {
 // and stops.
 func TestContentLines_RowCarriesItsDetail(t *testing.T) {
 	m := newModel([]compare.Action{{
-		Verb: "update", Path: "cmd/main.go", Size: 4300,
+		Verb: "update", Path: "cmd/main.go",
 		Diff: compare.Difference{Content: true, Size: true, ModTime: true},
 	}})
-	m.now = time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
 
 	lines, _ := m.contentLines()
 
 	row := strings.Join(lines, "\n")
-	for _, want := range []string{"4.2 KB", "size and mtime"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("rendered rows %q, want them to carry %q", row, want)
-		}
+	if !strings.Contains(row, "size and mtime") {
+		t.Errorf("rendered rows %q, want them to carry %q", row, "size and mtime")
 	}
 }
 
@@ -75,7 +71,7 @@ func TestContentLines_DeleteRowHasNoDetail(t *testing.T) {
 	lines, _ := m.contentLines()
 
 	row := strings.Join(lines, "\n")
-	if strings.Contains(row, "·") {
+	if strings.Contains(row, "only") || strings.Contains(row, "mtime") {
 		t.Errorf("rendered rows %q, want no annotation on a delete", row)
 	}
 }
@@ -86,11 +82,10 @@ func TestContentLines_DeleteRowHasNoDetail(t *testing.T) {
 // the bug class this guards, not merely an untidy display.
 func TestContentLines_NarrowTerminal_KeepsRowsWithinTheWidth(t *testing.T) {
 	m := newModel([]compare.Action{{
-		Verb: "update", Path: "cmd/some-rather-long-name.go", Size: 4300,
+		Verb: "update", Path: "cmd/some-rather-long-name.go",
 		Diff: compare.Difference{Content: true, Size: true, ModTime: true},
 	}})
-	m.now = time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
-	m.width = 46
+	m.width = 40
 
 	lines, _ := m.contentLines()
 
