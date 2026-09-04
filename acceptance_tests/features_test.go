@@ -53,30 +53,41 @@ shift
 exec "$@"
 `
 
-// stallRsh is the path to a test-only remote shell that answers the first rsync
-// that runs and goes silent for every one after it. Scenarios that need a stalled
-// transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
+// stallRsh is the path to a test-only remote shell that answers every rsync the
+// comparison runs and goes silent once the transfer starts. Scenarios that need a
+// stalled transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
 var stallRsh string
 
-// stallRshScript is the body of the stalling remote shell. csync runs one rsync
-// to compare and another to transfer, each spawning its own remote shell, so a
-// counter kept in the file named by CSYNC_TEST_RSH_STATE is what tells the two
-// apart: invocation 1 (the comparison) execs normally, and every later one sleeps
-// instead of answering. Sleeping rather than exiting is the point — a peer that
-// closes the connection is an error rsync reports immediately, while one that
-// holds it open and says nothing is the stall being tested. It holds the pipe
-// open by not exec-ing anything, and outlives any timeout the suite sets while
-// still reaping itself long before the run ends.
+// stallRshScript is the body of the stalling remote shell. It tells the comparison
+// from the transfer by what rsync asks the far side to do: a dry run carries `n` in
+// the condensed flag bundle it sends the server (`-ntrce.iLsfxCIvu`), and a real
+// transfer does not (`-tre.iLsfxCIvu`). Every dry run execs normally; the first
+// invocation that is not one sleeps instead of answering.
+//
+// Keying on the phase rather than on a count of invocations is deliberate. The
+// comparison does not always spend exactly one rsync — a push also measures the
+// destination to report how each file differs — and a counter would silently
+// reclassify that second comparison call as the transfer, stalling the run in the
+// wrong phase and testing something the scenario does not claim.
+//
+// Sleeping rather than exiting is the point — a peer that closes the connection is
+// an error rsync reports immediately, while one that holds it open and says nothing
+// is the stall being tested. It holds the pipe open by not exec-ing anything, and
+// outlives any timeout the suite sets while still reaping itself long before the
+// run ends.
+//
+// Only the short bundles are inspected: a `--` long option is skipped, so an
+// innocent `n` inside `--log-format` or `--sender` cannot be mistaken for the
+// dry-run flag.
 const stallRshScript = `#!/bin/sh
-n=$(cat "$CSYNC_TEST_RSH_STATE" 2>/dev/null || echo 0)
-n=$((n + 1))
-echo "$n" > "$CSYNC_TEST_RSH_STATE"
-if [ "$n" -gt 1 ]; then
-	sleep 60
-	exit 0
-fi
-shift
-exec "$@"
+for a in "$@"; do
+	case "$a" in
+	--*) ;;
+	-*) case "$a" in *n*) shift; exec "$@" ;; esac ;;
+	esac
+done
+sleep 60
+exit 0
 `
 
 // stallTestTimeout is the value of CSYNC_STALL_TIMEOUT given to a csync child in
@@ -551,7 +562,6 @@ func csyncEnv(ctx context.Context) []string {
 			// Swap in the shell that stops answering after the comparison, and shorten
 			// csync's own bound so the scenario doesn't wait out the shipped default.
 			rsh = stallRsh
-			env = append(env, "CSYNC_TEST_RSH_STATE="+filepath.Join(home, "rsh-invocations"))
 			env = append(env, "CSYNC_STALL_TIMEOUT="+stallTestTimeout)
 		}
 		env = append(env, "RSYNC_RSH="+rsh)

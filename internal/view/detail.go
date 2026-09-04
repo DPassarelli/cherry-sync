@@ -1,34 +1,102 @@
 // detail.go renders the trailing annotation the change list carries for a changed
-// file: what differs about it. The values come from compare's Action; the wording
-// is here, so rsync's vocabulary never reaches the screen.
+// file: how its copy compares with the one on the other side. The measurements come
+// from compare's Action; the wording is here, so rsync's vocabulary never reaches
+// the screen.
 
 package view
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
-// detailGap separates a row's annotation from the verb that precedes it.
-const detailGap = "  "
-
-// minDetailWidth is the narrowest an annotation may be squeezed to before it is
-// dropped instead. A couple of surviving characters and an ellipsis tell the reader
-// nothing except that something was cut, and the columns are better spent on the
-// filename.
-const minDetailWidth = 12
+// detailSeparator joins the parts of a row's annotation. A middot rather than a
+// comma keeps the parts visually separable from the commas inside them and from
+// the filename that precedes them.
+const detailSeparator = " · "
 
 // actionDetail returns the annotation for one row of the change list. Only an
 // update carries one: a create has no counterpart on the other side to differ from,
 // and a delete is being removed rather than compared, so for both the column is
 // left empty rather than filled with a claim about a file that has no second copy.
+//
+// A measured delta is preferred over the itemize labels, since it says how much and
+// in which direction where the labels say only which attributes. The labels remain
+// the fallback for an update the destination could not be measured for.
 func actionDetail(a compare.Action) string {
 	if a.Verb != "update" {
 		return ""
 	}
+	if a.Delta.Known {
+		return deltaLabel(a.Delta)
+	}
 	return differenceLabel(a.Diff)
+}
+
+// deltaLabel renders a measured delta as the incoming copy compared with the one it
+// would replace: "4.2 KB larger · 3d newer". Each half is omitted when that
+// attribute matches, so a row states only what actually moved. Both matching means
+// the two copies agree on size and timestamp yet differ in content, which is named
+// outright — it is the state a reader is otherwise most likely to take for a bug.
+func deltaLabel(d compare.Delta) string {
+	var parts []string
+	if d.Size != 0 {
+		parts = append(parts, formatBytes(abs64(d.Size))+" "+comparative(d.Size > 0, "larger", "smaller"))
+	}
+	if d.Time != 0 {
+		parts = append(parts, compactDuration(absDuration(d.Time))+" "+comparative(d.Time > 0, "newer", "older"))
+	}
+	if len(parts) == 0 {
+		return "contents only"
+	}
+	return strings.Join(parts, detailSeparator)
+}
+
+// comparative picks between the two directions of a comparison, so the sign of a
+// delta is turned into a word in one place rather than at each call.
+func comparative(ahead bool, whenAhead, whenBehind string) string {
+	if ahead {
+		return whenAhead
+	}
+	return whenBehind
+}
+
+// abs64 returns the magnitude of n. A delta's sign is carried by its wording, so
+// the number itself is always rendered unsigned.
+func abs64(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// absDuration returns the magnitude of d, for the same reason as abs64.
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// compactDuration renders a span in the largest whole unit it fills. It stays
+// compact because it sits inside a change-list row rather than in prose, and it
+// stops at days: "m" has to mean minutes unambiguously, which rules out a month
+// abbreviation, and a long span in days is still a number a reader can place.
+func compactDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
 }
 
 // differenceLabel names what differs between the two copies of an updated file.
@@ -49,6 +117,41 @@ func differenceLabel(d compare.Difference) string {
 		return "contents only"
 	}
 }
+
+// byteUnits are the size suffixes in ascending order, each 1024 times the last.
+// Binary steps rather than decimal ones, because the sizes being described are
+// file sizes as every other tool on the box reports them.
+var byteUnits = []string{"B", "KB", "MB", "GB", "TB", "PB"}
+
+// formatBytes renders a size in the largest unit that leaves a value of at least
+// one. Below ten it keeps a single decimal, which is what separates 4.2 KB from
+// 4.9 KB; above ten the decimal is noise the leading digits already carry, so it is
+// dropped. Whole bytes are never fractional.
+func formatBytes(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d %s", n, byteUnits[0])
+	}
+	value := float64(n)
+	unit := 0
+	// Step up while there is a larger unit that still leaves a value of at least one.
+	for value >= 1024 && unit < len(byteUnits)-1 {
+		value /= 1024
+		unit++
+	}
+	if value < 10 {
+		return fmt.Sprintf("%.1f %s", value, byteUnits[unit])
+	}
+	return fmt.Sprintf("%.0f %s", value, byteUnits[unit])
+}
+
+// detailGap separates a row's annotation from the verb that precedes it.
+const detailGap = "  "
+
+// minDetailWidth is the narrowest an annotation may be squeezed to before it is
+// dropped instead. A couple of surviving characters and an ellipsis tell the reader
+// nothing except that something was cut, and the columns are better spent on the
+// filename.
+const minDetailWidth = 12
 
 // fitDetail trims a row's annotation to what the terminal can show, given the
 // display width already used by the rest of the row and the total width available.
