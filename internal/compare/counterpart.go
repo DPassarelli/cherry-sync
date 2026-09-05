@@ -1,4 +1,4 @@
-// delta.go measures each changed file against the copy on the other side. rsync's
+// counterpart.go measures the destination's copy of each changed file. rsync's
 // per-file output describes only the source, so the destination's size and
 // modification time are gathered separately — by stat when the destination is on
 // this machine, and by a second, metadata-only rsync pass when it is not.
@@ -27,12 +27,12 @@ type fileMeta struct {
 	modTime time.Time
 }
 
-// withDeltas measures each updated file against the destination's copy and returns
-// the actions with their deltas filled in. Failure is not propagated: a delta is an
-// annotation on a row, so a destination that cannot be measured costs the rows their
-// numbers and leaves the itemize labels standing, rather than failing a comparison
-// that has already succeeded.
-func withDeltas(ctx context.Context, r *command.Runner, source, destination string, actions []Action, progress Progress) []Action {
+// withCounterparts measures the destination's copy of each updated file and returns
+// the actions carrying those measurements. Failure is not propagated: the
+// measurement only annotates a row, so a destination that cannot be reached costs
+// the rows their numbers and leaves the itemize labels standing, rather than failing
+// a comparison that has already succeeded.
+func withCounterparts(ctx context.Context, r *command.Runner, source, destination string, actions []Action, progress Progress) []Action {
 	paths := updatePaths(actions)
 	if len(paths) == 0 {
 		return actions
@@ -42,7 +42,7 @@ func withDeltas(ctx context.Context, r *command.Runner, source, destination stri
 	if err != nil {
 		return actions
 	}
-	return applyDeltas(actions, dest)
+	return attachCounterparts(actions, dest)
 }
 
 // updatePaths lists the paths worth asking the destination about: the updates, and
@@ -159,14 +159,12 @@ func parseMetaLines(out string) map[string]fileMeta {
 	return meta
 }
 
-// applyDeltas measures each updated action against the destination's copy of the
-// same path. The delta is the source minus the destination, so its sign says which
-// side is ahead: positive means the incoming copy is the larger or newer one, which
-// is what the row's "larger"/"newer" wording is read off. An action the destination
-// pass said nothing about keeps an unknown delta and falls back to the itemize
-// labels — a zero delta would otherwise claim both sides were measured and found
-// equal.
-func applyDeltas(actions []Action, dest map[string]fileMeta) []Action {
+// attachCounterparts records, on each updated action, what the destination's copy
+// of that path measures. Only updates get one: a create has no copy on the far side
+// and a delete is being removed rather than compared. An action the destination
+// pass said nothing about is left unmeasured, so the row falls back to the itemize
+// labels rather than comparing against a zero that was never measured.
+func attachCounterparts(actions []Action, dest map[string]fileMeta) []Action {
 	measured := make([]Action, len(actions))
 	copy(measured, actions)
 	for i, a := range measured {
@@ -177,11 +175,7 @@ func applyDeltas(actions []Action, dest map[string]fileMeta) []Action {
 		if !ok {
 			continue
 		}
-		measured[i].Delta = Delta{
-			Known: true,
-			Size:  a.Size - other.size,
-			Time:  a.ModTime.Sub(other.modTime),
-		}
+		measured[i].Dest = Counterpart{Known: true, Size: other.size, ModTime: other.modTime}
 	}
 	return measured
 }

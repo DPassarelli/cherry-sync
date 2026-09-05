@@ -69,7 +69,7 @@ func parseActions(rsyncOut string) []Action {
 func actionFromLine(line string) (Action, bool) {
 	fields := strings.SplitN(line, "|", recordFields)
 	if len(fields) < recordFields {
-		return Action{}, false
+		return bareDeletion(line)
 	}
 	// GNU pads `*deleting` out to its 11-char code column, so the code field can
 	// carry trailing spaces; openrsync's 9-char column holds it flush.
@@ -116,6 +116,36 @@ func actionFromLine(line string) (Action, bool) {
 	action.Verb = "update"
 	action.Diff = differenceFromCode(code)
 	return action, true
+}
+
+// bareDeletion reads a deletion that carries no delimited fields, which is how
+// openrsync reports one: its flist.c and sender.c print `*deleting %s` from a
+// hardcoded format string rather than through --out-format, so the line holds the
+// path and nothing else. GNU rsync does route deletions through the format and so
+// never reaches here — which is exactly why this shape is easy to lose: a parser
+// built and tested against GNU drops every removal on a Mac without a word, leaving
+// renamed and deleted files behind on the destination.
+//
+// The leading asterisk is required. openrsync also announces `deleting in <topdir>`
+// as it scans, without one, and that line names a directory being searched rather
+// than a file being removed; reading it as a deletion would offer to remove a path
+// called "in <topdir>". The asterisk is present whenever the output format contains
+// %i, which csync's always does.
+func bareDeletion(line string) (Action, bool) {
+	path, found := strings.CutPrefix(line, "*deleting ")
+	if !found {
+		return Action{}, false
+	}
+	// GNU pads the code column; openrsync does not. Trimming costs nothing and keeps
+	// the two readers from disagreeing about a leading space.
+	path = strings.TrimLeft(path, " ")
+	// A trailing "\r" would otherwise become part of the name on a stream that has
+	// been through a CRLF translation.
+	path = strings.TrimSuffix(path, "\r")
+	if path == "" || hasFilterMeta(path) {
+		return Action{}, false
+	}
+	return Action{Verb: "delete", Path: path}, true
 }
 
 // differenceFromCode reads the attribute columns that say what gave a file away.

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,6 +37,11 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
+	// now is the moment each row's ages are measured against, fixed when the picker
+	// is built rather than read per frame: the list does not re-render on a timer,
+	// and an age that crept forward between two repaints of the same unchanged list
+	// would read as a change that never happened.
+	now time.Time
 }
 
 // pickerHeaderLines is how many rows View prints above the change list — a leading
@@ -68,6 +74,7 @@ func newModel(actions []compare.Action) pickerModel {
 	return pickerModel{
 		actions: ordered,
 		sel:     selection.New(ordered),
+		now:     time.Now(),
 	}
 }
 
@@ -263,16 +270,16 @@ func (m pickerModel) contentLines() ([]string, int) {
 				marker = caretStyle.Render("❯ ")
 			}
 			row := fmt.Sprintf("%s%s%s", marker, boxStyle.Render(box+" "), textStyle.Render(base+pad+"  "+a.Verb))
-			// The annotation is dimmed whether or not its row is checked: it explains
-			// the change, and letting it compete with the filename for the eye would
-			// cost the list the scannability the alignment above is buying.
-			detailStyle := dim
+			// The annotation is shown for the cursor's row alone. It runs to a sentence
+			// now that it reports both copies, and repeating that on every row would
+			// bury the filenames the list exists to be scanned by — so it reads as a
+			// detail pane attached to the selection rather than as a column.
 			if cursorRow {
-				detailStyle = detailStyle.Background(cursorBG)
-			}
-			detail := fitDetail(actionDetail(a), lipgloss.Width(row), m.width)
-			if detail != "" {
-				row += detailStyle.Render(detailGap + detail)
+				detailStyle := lipgloss.NewStyle().Background(cursorBG)
+				detail := fitDetail(actionDetail(a, m.now), lipgloss.Width(row), m.width)
+				if detail != "" {
+					row += detailStyle.Render(detailGap + detail)
+				}
 			}
 			lines = append(lines, row)
 			if cursorRow {

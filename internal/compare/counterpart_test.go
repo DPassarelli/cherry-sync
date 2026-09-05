@@ -60,68 +60,51 @@ func TestParseMetaLines_Chatter_IsIgnored(t *testing.T) {
 	}
 }
 
-// Behavior: a delta is the source's copy measured against the destination's, so a
-// source that is bigger and newer yields positive values in both. The sign is the
-// whole meaning of the field — it is what the words "larger" and "newer" are read
-// off — so a merge that took the absolute difference would render every row as
-// though the incoming copy were the newer one.
-func TestApplyDeltas_SourceAheadOfDestination_IsPositive(t *testing.T) {
+// Behavior: an updated action carries what the destination's copy measures — its
+// own size and timestamp, not a difference. Keeping the raw measurements is what
+// lets a row state the size gap and each copy's age from the same data; a stored
+// difference could produce the first but never the second.
+func TestAttachCounterparts_RecordsTheDestinationsOwnValues(t *testing.T) {
 	actions := []Action{{
 		Verb: "update", Path: "a.txt", Size: 500, ModTime: at("2026/09/03-12:00:00"),
 	}}
 	dest := map[string]fileMeta{"a.txt": {size: 200, modTime: at("2026/09/01-12:00:00")}}
 
-	got := applyDeltas(actions, dest)
+	got := attachCounterparts(actions, dest)
 
-	if !got[0].Delta.Known {
-		t.Fatalf("got Delta %+v, want it known", got[0].Delta)
+	if !got[0].Dest.Known {
+		t.Fatalf("got Dest %+v, want it known", got[0].Dest)
 	}
-	if got[0].Delta.Size != 300 {
-		t.Errorf("got Size %d, want 300", got[0].Delta.Size)
+	if got[0].Dest.Size != 200 {
+		t.Errorf("got Size %d, want the destination's 200 (not a difference)", got[0].Dest.Size)
 	}
-	if got[0].Delta.Time != 48*time.Hour {
-		t.Errorf("got Time %v, want 48h", got[0].Delta.Time)
+	if !got[0].Dest.ModTime.Equal(at("2026/09/01-12:00:00")) {
+		t.Errorf("got ModTime %v, want the destination's own", got[0].Dest.ModTime)
 	}
-}
-
-// Behavior: a source behind the destination yields negative values. This is the
-// case worth catching — it means syncing would overwrite the newer copy — so it
-// must be representable rather than collapsed to the same reading as its opposite.
-func TestApplyDeltas_SourceBehindDestination_IsNegative(t *testing.T) {
-	actions := []Action{{
-		Verb: "update", Path: "a.txt", Size: 200, ModTime: at("2026/09/01-12:00:00"),
-	}}
-	dest := map[string]fileMeta{"a.txt": {size: 500, modTime: at("2026/09/03-12:00:00")}}
-
-	got := applyDeltas(actions, dest)
-
-	if got[0].Delta.Size != -300 {
-		t.Errorf("got Size %d, want -300", got[0].Delta.Size)
-	}
-	if got[0].Delta.Time != -48*time.Hour {
-		t.Errorf("got Time %v, want -48h", got[0].Delta.Time)
+	if got[0].Size != 500 || !got[0].ModTime.Equal(at("2026/09/03-12:00:00")) {
+		t.Errorf("got source %d/%v, want it left alone", got[0].Size, got[0].ModTime)
 	}
 }
 
-// Behavior: an update the destination pass said nothing about keeps an unknown
-// delta. The reverse pass reports only what its quick check flags, so a file
-// differing solely in content produces no record — and a pass that failed outright
-// produces none at all. Either way the row must fall back to the itemize labels
-// rather than render a delta of zero as though both sides had been measured.
-func TestApplyDeltas_PathAbsentFromDestination_StaysUnknown(t *testing.T) {
+// Behavior: an update the destination pass said nothing about stays unmeasured. The
+// reverse pass reports only what its quick check flags, so a file differing solely
+// in content produces no record — and a pass that failed outright produces none at
+// all. Either way the row must fall back to the itemize labels rather than treat an
+// unmeasured destination as a zero-byte file stamped at the epoch.
+func TestAttachCounterparts_PathAbsentFromDestination_StaysUnknown(t *testing.T) {
 	actions := []Action{{Verb: "update", Path: "a.txt", Size: 500, ModTime: at("2026/09/03-12:00:00")}}
 
-	got := applyDeltas(actions, map[string]fileMeta{})
+	got := attachCounterparts(actions, map[string]fileMeta{})
 
-	if got[0].Delta.Known {
-		t.Errorf("got Delta %+v, want it unknown", got[0].Delta)
+	if got[0].Dest.Known {
+		t.Errorf("got Dest %+v, want it unknown", got[0].Dest)
 	}
 }
 
-// Behavior: only an update carries a delta. A create has no counterpart on the
-// destination and a delete is not being compared, so neither gets one even if the
-// destination pass happened to report that path.
-func TestApplyDeltas_NonUpdates_NeverCarryADelta(t *testing.T) {
+// Behavior: only an update carries a measurement. A create has no counterpart on
+// the destination and a delete is not being compared, so neither gets one even if
+// the destination pass happened to report that path.
+func TestAttachCounterparts_NonUpdates_AreNeverMeasured(t *testing.T) {
 	actions := []Action{
 		{Verb: "create", Path: "a.txt", Size: 500, ModTime: at("2026/09/03-12:00:00")},
 		{Verb: "delete", Path: "b.txt"},
@@ -131,11 +114,11 @@ func TestApplyDeltas_NonUpdates_NeverCarryADelta(t *testing.T) {
 		"b.txt": {size: 1, modTime: at("2026/09/01-12:00:00")},
 	}
 
-	got := applyDeltas(actions, dest)
+	got := attachCounterparts(actions, dest)
 
 	for _, a := range got {
-		if a.Delta.Known {
-			t.Errorf("%s of %s: got Delta %+v, want it unknown", a.Verb, a.Path, a.Delta)
+		if a.Dest.Known {
+			t.Errorf("%s of %s: got Dest %+v, want it unmeasured", a.Verb, a.Path, a.Dest)
 		}
 	}
 }

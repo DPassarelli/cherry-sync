@@ -324,3 +324,54 @@ func TestParseActions_UnparsableMetadata_StillYieldsTheAction(t *testing.T) {
 		t.Errorf("got Size %d / ModTime %v, want both zero", got[0].Size, got[0].ModTime)
 	}
 }
+
+// Behavior: openrsync does not route a deletion through --out-format. Its flist.c
+// and sender.c print one with a hardcoded "*deleting %s\n", so the line carries the
+// path alone and none of the `|`-delimited fields every other record has. GNU rsync
+// does route deletions through the format, which is why a parser that only
+// understands the delimited shape passes every test on Linux and silently drops
+// every removal on a Mac — leaving renamed and deleted files behind on the
+// destination with nothing reported.
+func TestParseActions_OpenrsyncBareDelete_IsStillADeletion(t *testing.T) {
+	got := parseActions("*deleting internal/compare/delta.go\n")
+
+	want := []Action{{Verb: "delete", Path: "internal/compare/delta.go"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: openrsync marks a deleted directory with a trailing slash, which is
+// part of the path it wants removed and is kept verbatim.
+func TestParseActions_OpenrsyncBareDeleteOfDirectory_KeepsTheTrailingSlash(t *testing.T) {
+	got := parseActions("*deleting build/\n")
+
+	want := []Action{{Verb: "delete", Path: "build/"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: openrsync also announces which directory it is about to delete within,
+// as "deleting in <topdir>" — no leading asterisk. That line names a directory
+// being scanned, not a file being removed, so reading it as one would offer to
+// delete a path called "in <topdir>". Requiring the asterisk is what separates them.
+func TestParseActions_OpenrsyncDeletingInHeader_IsNotADeletion(t *testing.T) {
+	got := parseActions("deleting in /home/user/project\n")
+
+	if len(got) != 0 {
+		t.Errorf("got %+v, want no actions for the scanning announcement", got)
+	}
+}
+
+// Behavior: the glob-metacharacter guard applies to the bare form too. A delete
+// candidate reaching the filter rule with a `*`, `?`, or `[` in its name could
+// match and remove the wrong file, and that risk does not depend on which rsync
+// reported it.
+func TestParseActions_OpenrsyncBareDeleteWithGlobMeta_IsDropped(t *testing.T) {
+	got := parseActions("*deleting weird[1].txt\n")
+
+	if len(got) != 0 {
+		t.Errorf("got %+v, want no actions (dropped)", got)
+	}
+}

@@ -26,17 +26,17 @@ type Difference struct {
 	ModTime bool
 }
 
-// Delta is how the source's copy of a changed file measures against the
-// destination's: the difference in size and in modification time, each expressed as
-// source minus destination, so a positive value means the incoming copy is the
-// larger or the newer one. Known separates a measured zero from no measurement at
-// all — the destination is not always reachable, and a file that differs only in
-// content produces no record to measure — so a caller must check it before reading
-// either field.
-type Delta struct {
-	Known bool
-	Size  int64
-	Time  time.Duration
+// Counterpart is what the destination's copy of a changed file measures — the two
+// attributes a row compares the incoming copy against. Known separates a real
+// measurement from none at all: the destination is not always reachable, and a file
+// differing only in content produces no record, so a caller must check it before
+// reading either field. The values are the destination's own, not a difference;
+// deriving the comparison from them is the renderer's job, which is what lets a row
+// say both how the sizes differ and how old each copy is.
+type Counterpart struct {
+	Known   bool
+	Size    int64
+	ModTime time.Time
 }
 
 // Action is a single planned change between source and destination. Size and
@@ -50,7 +50,7 @@ type Action struct {
 	Size    int64
 	ModTime time.Time
 	Diff    Difference
-	Delta   Delta
+	Dest    Counterpart
 }
 
 // Result is the structured outcome of comparing two paths.
@@ -142,7 +142,7 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 		actions = kept
 		excluded = append(excluded, dropped...)
 	}
-	actions = withDeltas(ctx, r, source, destination, actions, progress)
+	actions = withCounterparts(ctx, r, source, destination, actions, progress)
 	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitDirHidden(stdout), CsyncTomlExcluded: exc.csyncToml}, nil
 }
 

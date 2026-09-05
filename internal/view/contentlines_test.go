@@ -53,14 +53,15 @@ func TestContentLinesCursorLine(t *testing.T) {
 func TestContentLines_RowCarriesItsDetail(t *testing.T) {
 	m := newModel([]compare.Action{{
 		Verb: "update", Path: "cmd/main.go",
-		Delta: compare.Delta{Known: true, Size: 4300, Time: 3 * 24 * time.Hour},
+		Size: 6144, ModTime: time.Now().Add(-3 * time.Minute),
+		Dest: compare.Counterpart{Known: true, Size: 4096, ModTime: time.Now().Add(-17 * 24 * time.Hour)},
 	}})
 
 	lines, _ := m.contentLines()
 
 	row := strings.Join(lines, "\n")
-	if !strings.Contains(row, "4.2 KB larger · 3d newer") {
-		t.Errorf("rendered rows %q, want them to carry the measured delta", row)
+	if !strings.Contains(row, "source is 2.0 KB larger") || !strings.Contains(row, "dest last updated 17d ago") {
+		t.Errorf("rendered rows %q, want them to carry the comparison", row)
 	}
 }
 
@@ -72,7 +73,7 @@ func TestContentLines_DeleteRowHasNoDetail(t *testing.T) {
 	lines, _ := m.contentLines()
 
 	row := strings.Join(lines, "\n")
-	if strings.Contains(row, "larger") || strings.Contains(row, "newer") || strings.Contains(row, "only") {
+	if strings.Contains(row, "larger") || strings.Contains(row, "last updated") || strings.Contains(row, "only") {
 		t.Errorf("rendered rows %q, want no annotation on a delete", row)
 	}
 }
@@ -84,7 +85,8 @@ func TestContentLines_DeleteRowHasNoDetail(t *testing.T) {
 func TestContentLines_NarrowTerminal_KeepsRowsWithinTheWidth(t *testing.T) {
 	m := newModel([]compare.Action{{
 		Verb: "update", Path: "cmd/some-rather-long-name.go",
-		Delta: compare.Delta{Known: true, Size: 4300, Time: 3 * 24 * time.Hour},
+		Size: 6144, ModTime: time.Now().Add(-3 * time.Minute),
+		Dest: compare.Counterpart{Known: true, Size: 4096, ModTime: time.Now().Add(-17 * 24 * time.Hour)},
 	}})
 	m.width = 46
 
@@ -93,6 +95,35 @@ func TestContentLines_NarrowTerminal_KeepsRowsWithinTheWidth(t *testing.T) {
 	for _, line := range lines {
 		if w := lipgloss.Width(line); w > m.width {
 			t.Errorf("line %q is %d cells wide, want at most %d", line, w, m.width)
+		}
+	}
+}
+
+// Behavior: the annotation belongs to whichever row the cursor is on, and to that
+// row alone. It runs to a sentence now that it reports both copies, so repeating it
+// down the list would bury the filenames the list exists to be scanned by. Running
+// the cursor along the list is what separates "annotates the selected row" from
+// "annotates the first row", which a single-position case cannot tell apart.
+func TestContentLines_OnlyTheCursorRowIsAnnotated(t *testing.T) {
+	measured := compare.Counterpart{Known: true, Size: 4096, ModTime: time.Now().Add(-17 * 24 * time.Hour)}
+	actions := []compare.Action{
+		{Verb: "update", Path: "cmd/first.go", Size: 6144, ModTime: time.Now(), Dest: measured},
+		{Verb: "update", Path: "cmd/second.go", Size: 6144, ModTime: time.Now(), Dest: measured},
+		{Verb: "update", Path: "cmd/third.go", Size: 6144, ModTime: time.Now(), Dest: measured},
+	}
+	for cursor := range actions {
+		m := newModel(actions)
+		m.cursor = cursor
+
+		lines, cursorLine := m.contentLines()
+
+		if !strings.Contains(lines[cursorLine], "last updated") {
+			t.Errorf("cursor %d: row %q, want it annotated", cursor, lines[cursorLine])
+		}
+		for i, line := range lines {
+			if i != cursorLine && strings.Contains(line, "last updated") {
+				t.Errorf("cursor %d: row %d %q is annotated, want only the cursor row", cursor, i, line)
+			}
 		}
 	}
 }
