@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-05
+
+### Added
+
+- The change list now explains the file you have selected: how much larger or smaller the incoming copy is, and how long ago each copy was last written. A file that differs in content alone, with a matching size and timestamp, is called out as such. (#72)
+
 ### Fixed
 
 - A comparison that fails now repeats what `rsync` said about it, instead of reporting the bare exit code. The run log keeps the explanation as well. (#110)
@@ -140,7 +146,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.10.0...v1.0.0
 [0.10.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.9.0...v0.10.0

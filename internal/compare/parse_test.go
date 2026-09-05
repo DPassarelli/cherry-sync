@@ -2,8 +2,29 @@ package compare
 
 import (
 	"reflect"
+	"strconv"
 	"testing"
+	"time"
 )
+
+// stamp is the modification time every fixture line below carries, as the Time
+// parseActions is expected to produce for it. Held in one place so a test asserts
+// the field it cares about without restating the layout.
+var stamp = time.Date(2026, 9, 3, 17, 32, 53, 0, time.Local)
+
+// stampText is stamp in rsync's %M rendering — the text side of the same moment.
+const stampText = "2026/09/03-17:32:53"
+
+// line assembles one rsync --out-format='%i|%l|%M|%n' record, so a test states
+// only the code, size, and path it is about.
+func line(code string, size int64, path string) string {
+	return code + "|" + itoa(size) + "|" + stampText + "|" + path + "\n"
+}
+
+// itoa renders n in base 10.
+func itoa(n int64) string {
+	return strconv.FormatInt(n, 10)
+}
 
 // Behavior: with no rsync output, parseActions returns no actions. Mirrors
 // the Gherkin scenario "None of the files are different" in
@@ -20,9 +41,12 @@ func TestParseActions_Empty_ReturnsNoActions(t *testing.T) {
 // Mirrors the Gherkin scenario "One of the files is different" in
 // features/compare-directories.feature.
 func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) {
-	got := parseActions(">f.st...... README.md\n")
+	got := parseActions(line(">fcst......", 42, "README.md"))
 
-	want := []Action{{Verb: "update", Path: "README.md"}}
+	want := []Action{{
+		Verb: "update", Path: "README.md", Size: 42, ModTime: stamp,
+		Diff: Difference{Content: true, Size: true, ModTime: true},
+	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -32,9 +56,9 @@ func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) {
 // Action. Mirrors the new-file half of the Gherkin scenario "Two of the files
 // are different" in features/compare-directories.feature.
 func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
-	got := parseActions(">f+++++++++ src/adder.go\n")
+	got := parseActions(line(">f+++++++++", 10, "src/adder.go"))
 
-	want := []Action{{Verb: "create", Path: "src/adder.go"}}
+	want := []Action{{Verb: "create", Path: "src/adder.go", Size: 10, ModTime: stamp}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -42,17 +66,18 @@ func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
 
 // Behavior: the itemize code's width is implementation-specific — GNU rsync
 // emits 11 chars, macOS's openrsync 9 (two fewer attribute columns). The two
-// tests below pin parseActions to openrsync's actual byte layout (captured from
-// `rsync --itemize-changes` under `openrsync: protocol version 29`), so the
-// parser can't regress to assuming GNU's field widths. A fixed-offset parser
-// would slice one byte into the path here, dropping its first character.
+// tests below pin parseActions to openrsync's actual byte layout, so the parser
+// can't regress to assuming GNU's field widths.
 
 // Behavior: an openrsync update line (9-char code) yields an update Action with
 // the path intact — no leading byte eaten.
 func TestParseActions_OpenrsyncUpdate_KeepsFirstPathByte(t *testing.T) {
-	got := parseActions(">f.st.... after-merge.sh\n")
+	got := parseActions(line(">fcst....", 42, "after-merge.sh"))
 
-	want := []Action{{Verb: "update", Path: "after-merge.sh"}}
+	want := []Action{{
+		Verb: "update", Path: "after-merge.sh", Size: 42, ModTime: stamp,
+		Diff: Difference{Content: true, Size: true, ModTime: true},
+	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -62,29 +87,29 @@ func TestParseActions_OpenrsyncUpdate_KeepsFirstPathByte(t *testing.T) {
 // of them, not GNU's nine — and must still be recognized as a create, not an
 // update. A fixed nine-'+' check would misread this as an update.
 func TestParseActions_OpenrsyncCreate_ReturnsCreateAction(t *testing.T) {
-	got := parseActions(">f+++++++ after-merge.sh\n")
+	got := parseActions(line(">f+++++++", 10, "after-merge.sh"))
 
-	want := []Action{{Verb: "create", Path: "after-merge.sh"}}
+	want := []Action{{Verb: "create", Path: "after-merge.sh", Size: 10, ModTime: stamp}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 
-// Behavior: rsync marks the transfer direction in the first byte of the
-// itemize code — `>` for files received into the destination (pull /
-// local-to-local), `<` for files sent to a remote (a real push over SSH). The
-// godog harness only ever runs local-to-local, which always emits `>`, so the
-// `<` direction is invisible to it; a real push (`csync ./local host:/remote`)
-// emits `<f` and a `>`-only parser drops every line — reporting zero changes
-// and syncing nothing. The two tests below pin parseActions to the `<f` bytes,
-// captured from `rsync --itemize-changes` pushing to a remote (GNU rsync 3.4.1).
+// Behavior: rsync marks the transfer direction in the first byte of the itemize
+// code — `>` for files received into the destination (pull / local-to-local),
+// `<` for files sent to a remote (a real push over SSH). The godog harness only
+// ever runs local-to-local, which always emits `>`, so the `<` direction is
+// invisible to it; a real push emits `<f` and a `>`-only parser drops every line.
 
 // Behavior: a push update line (`<f`) yields an update Action, the same as its
 // `>f` pull counterpart — the leading byte is direction, not a different change.
 func TestParseActions_PushUpdate_ReturnsUpdateAction(t *testing.T) {
-	got := parseActions("<f.s....... README.md\n")
+	got := parseActions(line("<fcs.......", 42, "README.md"))
 
-	want := []Action{{Verb: "update", Path: "README.md"}}
+	want := []Action{{
+		Verb: "update", Path: "README.md", Size: 42, ModTime: stamp,
+		Diff: Difference{Content: true, Size: true},
+	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -93,9 +118,9 @@ func TestParseActions_PushUpdate_ReturnsUpdateAction(t *testing.T) {
 // Behavior: a push new-file line (`<f` with an all-`+` attribute run) yields a
 // create Action, just as the `>f+++` pull form does.
 func TestParseActions_PushCreate_ReturnsCreateAction(t *testing.T) {
-	got := parseActions("<f+++++++++ newfile.txt\n")
+	got := parseActions(line("<f+++++++++", 7, "newfile.txt"))
 
-	want := []Action{{Verb: "create", Path: "newfile.txt"}}
+	want := []Action{{Verb: "create", Path: "newfile.txt", Size: 7, ModTime: stamp}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -105,13 +130,10 @@ func TestParseActions_PushCreate_ReturnsCreateAction(t *testing.T) {
 // gone from the source itemizes as `*deleting <path>` — a distinct shape from
 // the `<f`/`>f` transfer codes (a word, not a fixed-width flag run, followed by
 // padding then the path). It must yield a delete Action so the picker can offer
-// the removal as a red row. The two forms below pin both rsync layouts: GNU pads
-// `*deleting` (9 chars) within an 11-char code column, so three spaces precede
-// the path; openrsync's 9-char column leaves `*deleting` flush against a single
-// separator space. Both must land the same path with no leading byte eaten.
-// Captured from `rsync -rn --delete --itemize-changes` (GNU rsync 3.4.1).
+// the removal as a red row. GNU pads `*deleting` within an 11-char code column;
+// openrsync's 9-char column holds it flush. Both must land the same path.
 func TestParseActions_GNUDelete_ReturnsDeleteAction(t *testing.T) {
-	got := parseActions("*deleting   gone.txt\n")
+	got := parseActions(line("*deleting  ", 0, "gone.txt"))
 
 	want := []Action{{Verb: "delete", Path: "gone.txt"}}
 	if !reflect.DeepEqual(got, want) {
@@ -120,10 +142,23 @@ func TestParseActions_GNUDelete_ReturnsDeleteAction(t *testing.T) {
 }
 
 // Behavior: openrsync's `*deleting` line — the 9-char code column holds the word
-// exactly, so a single separator space sits between it and the path. Parses to
-// the same delete Action as the GNU form above.
+// exactly, so no padding follows it. Parses to the same delete Action.
 func TestParseActions_OpenrsyncDelete_ReturnsDeleteAction(t *testing.T) {
-	got := parseActions("*deleting gone.txt\n")
+	got := parseActions(line("*deleting", 0, "gone.txt"))
+
+	want := []Action{{Verb: "delete", Path: "gone.txt"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: rsync reports a length of 0 and an epoch modification time on a
+// `*deleting` line — the fields describe nothing, since the file is absent from
+// the side being read. They must not reach the Action as though they were real
+// measurements, or the change list would offer to remove a "0 B" file last
+// touched in 1969. Size and ModTime stay zero.
+func TestParseActions_Delete_CarriesNoMetadata(t *testing.T) {
+	got := parseActions("*deleting  |0|1969/12/31-19:00:00|gone.txt\n")
 
 	want := []Action{{Verb: "delete", Path: "gone.txt"}}
 	if !reflect.DeepEqual(got, want) {
@@ -134,11 +169,9 @@ func TestParseActions_OpenrsyncDelete_ReturnsDeleteAction(t *testing.T) {
 // Behavior: openrsync's dry-run itemize prints a `*deleting` line for the same
 // path twice (GNU rsync emits it once), so a single stale file would otherwise be
 // reported — and counted — as two removals. parseActions collapses identical
-// (verb, path) actions to one, while leaving distinct deletions intact. Captured
-// from `rsync -rn --delete --itemize-changes` under openrsync (macOS), which the
-// GNU-only local smoke never exercised; a naive parser reports 3 actions here.
+// (verb, path) actions to one, while leaving distinct deletions intact.
 func TestParseActions_DuplicateDelete_IsReportedOnce(t *testing.T) {
-	got := parseActions("*deleting   gone.txt\n*deleting   gone.txt\n*deleting   other.txt\n")
+	got := parseActions(line("*deleting  ", 0, "gone.txt") + line("*deleting  ", 0, "gone.txt") + line("*deleting  ", 0, "other.txt"))
 
 	want := []Action{{Verb: "delete", Path: "gone.txt"}, {Verb: "delete", Path: "other.txt"}}
 	if !reflect.DeepEqual(got, want) {
@@ -146,16 +179,199 @@ func TestParseActions_DuplicateDelete_IsReportedOnce(t *testing.T) {
 	}
 }
 
+// Behavior: the duplicate collapse keys on the verb and path alone. Metadata is
+// not part of the identity of a planned change — the same file cannot be created
+// twice — so two records for one path collapse even where their size or timestamp
+// disagree. Folding the metadata into the key would let a byte of drift between
+// two lines resurrect the duplicate this guards against.
+func TestParseActions_DuplicateWithDifferentMetadata_IsReportedOnce(t *testing.T) {
+	got := parseActions(line(">fcst......", 42, "a.txt") + ">fcst......|99|2020/01/01-00:00:00|a.txt\n")
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1: %+v", len(got), got)
+	}
+	if got[0].Size != 42 {
+		t.Errorf("got Size %d, want 42 (the first record wins)", got[0].Size)
+	}
+}
+
 // Behavior: a delete candidate whose name contains an rsync filter glob
 // metacharacter (`*`, `?`, or `[`) is dropped, not reported — applying it would
 // mean handing that name to the deletion filter, where the metacharacter could
-// match and remove the wrong file. Escaping is deferred, so detection holds these
-// back entirely. Each metacharacter is checked; a plain name is unaffected.
+// match and remove the wrong file.
 func TestParseActions_DeleteWithGlobMeta_IsDropped(t *testing.T) {
 	for _, name := range []string{"a*.txt", "a?.txt", "a[1].txt"} {
-		got := parseActions("*deleting   " + name + "\n")
+		got := parseActions(line("*deleting  ", 0, name))
 		if len(got) != 0 {
 			t.Errorf("delete of %q: got %+v, want no actions (dropped)", name, got)
 		}
+	}
+}
+
+// Behavior: the attribute columns say what differs, and the four combinations
+// below are the only ones csync's flag set can produce for an update (verified
+// against GNU rsync 3.4.1). The `c` column is always set, because the comparison
+// runs with --checksum; `s` and `t` are what vary. A parser that read the columns
+// positionally from the right, or ignored them, would report the same Difference
+// for every one of these.
+func TestParseActions_UpdateCodes_DecodeWhatDiffers(t *testing.T) {
+	cases := []struct {
+		name string
+		code string
+		want Difference
+	}{
+		{"size and mtime differ", ">fcst......", Difference{Content: true, Size: true, ModTime: true}},
+		{"mtime differs, size matches", ">fc.t......", Difference{Content: true, ModTime: true}},
+		{"size differs, mtime matches", ">fcs.......", Difference{Content: true, Size: true}},
+		{"neither differs, contents do", ">fc........", Difference{Content: true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parseActions(line(c.code, 42, "a.txt"))
+			if len(got) != 1 {
+				t.Fatalf("got %d actions, want 1", len(got))
+			}
+			if got[0].Diff != c.want {
+				t.Errorf("code %q: got %+v, want %+v", c.code, got[0].Diff, c.want)
+			}
+		})
+	}
+}
+
+// Behavior: rsync writes an uppercase `T` in the time column when it would set
+// the destination's timestamp to the transfer time rather than the source's
+// (as under --size-only), where a lowercase `t` means it would copy the source's.
+// Both say the timestamps do not currently agree, so both must decode as a
+// modification-time difference. A test for `t` alone would let a `T`-blind parser
+// pass while silently reporting "contents only" for a file whose time differs.
+func TestParseActions_UppercaseTimeColumn_CountsAsModTimeDifference(t *testing.T) {
+	got := parseActions(line(">fcsT......", 42, "a.txt"))
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1", len(got))
+	}
+	if !got[0].Diff.ModTime {
+		t.Errorf("got Diff %+v, want ModTime true for an uppercase T column", got[0].Diff)
+	}
+}
+
+// Behavior: a create marks every attribute column '+', which says the file is
+// new rather than naming an attribute that differs. Decoding those columns as
+// differences would report a brand-new file as differing in size and time
+// against a counterpart that does not exist, so a create's Difference stays zero.
+func TestParseActions_Create_CarriesNoDifference(t *testing.T) {
+	got := parseActions(line(">f+++++++++", 10, "new.txt"))
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1", len(got))
+	}
+	if (got[0].Diff != Difference{}) {
+		t.Errorf("got Diff %+v, want the zero Difference for a create", got[0].Diff)
+	}
+}
+
+// Behavior: `|` separates the record's fields and `%n` is its last, so a filename
+// containing a pipe belongs wholly to the path — it cannot be read as the start of
+// another column. A split that took the last field rather than the remainder would
+// truncate this name to "odd" and then look for a file that does not exist.
+func TestParseActions_PathContainingPipe_IsKeptWhole(t *testing.T) {
+	got := parseActions(line(">fcst......", 42, "weird|name.txt"))
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1: %+v", len(got), got)
+	}
+	if got[0].Path != "weird|name.txt" {
+		t.Errorf("got Path %q, want %q", got[0].Path, "weird|name.txt")
+	}
+}
+
+// Behavior: the -vv verbose output rsync prints alongside the records (the lines
+// naming what an --exclude held back, and its transfer statistics) carries no
+// pipe-delimited record shape and must be skipped. These are real lines captured
+// from a -vv run; one of them mentioning a path must not become an action.
+func TestParseActions_VerboseChatter_IsIgnored(t *testing.T) {
+	out := "sending incremental file list\n" +
+		"[sender] hiding directory .git because of pattern .git\n" +
+		"delta-transmission disabled for local transfer or --whole-file\n" +
+		".d         |5|2026/09/03-17:53:58|./\n" +
+		line(">f+++++++++", 2, "keep.txt") +
+		"total: matches=0  hash_hits=0  false_alarms=0 data=0\n" +
+		"sent 82 bytes  received 85 bytes  334.00 bytes/sec\n"
+
+	got := parseActions(out)
+
+	want := []Action{{Verb: "create", Path: "keep.txt", Size: 2, ModTime: stamp}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: a record whose size or timestamp field is unreadable still yields its
+// action. The verb and path are what a sync acts on; the metadata only annotates
+// the row, so losing it must cost the user the annotation, never the change
+// itself. An rsync that formats either field differently than expected would
+// otherwise make files silently undeletable and unsyncable.
+func TestParseActions_UnparsableMetadata_StillYieldsTheAction(t *testing.T) {
+	got := parseActions(">fcst......|not-a-number|not-a-time|a.txt\n")
+
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1: %+v", len(got), got)
+	}
+	if got[0].Verb != "update" || got[0].Path != "a.txt" {
+		t.Errorf("got %+v, want an update of a.txt", got[0])
+	}
+	if got[0].Size != 0 || !got[0].ModTime.IsZero() {
+		t.Errorf("got Size %d / ModTime %v, want both zero", got[0].Size, got[0].ModTime)
+	}
+}
+
+// Behavior: openrsync does not route a deletion through --out-format. Its flist.c
+// and sender.c print one with a hardcoded "*deleting %s\n", so the line carries the
+// path alone and none of the `|`-delimited fields every other record has. GNU rsync
+// does route deletions through the format, which is why a parser that only
+// understands the delimited shape passes every test on Linux and silently drops
+// every removal on a Mac — leaving renamed and deleted files behind on the
+// destination with nothing reported.
+func TestParseActions_OpenrsyncBareDelete_IsStillADeletion(t *testing.T) {
+	got := parseActions("*deleting internal/compare/delta.go\n")
+
+	want := []Action{{Verb: "delete", Path: "internal/compare/delta.go"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: openrsync marks a deleted directory with a trailing slash, which is
+// part of the path it wants removed and is kept verbatim.
+func TestParseActions_OpenrsyncBareDeleteOfDirectory_KeepsTheTrailingSlash(t *testing.T) {
+	got := parseActions("*deleting build/\n")
+
+	want := []Action{{Verb: "delete", Path: "build/"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: openrsync also announces which directory it is about to delete within,
+// as "deleting in <topdir>" — no leading asterisk. That line names a directory
+// being scanned, not a file being removed, so reading it as one would offer to
+// delete a path called "in <topdir>". Requiring the asterisk is what separates them.
+func TestParseActions_OpenrsyncDeletingInHeader_IsNotADeletion(t *testing.T) {
+	got := parseActions("deleting in /home/user/project\n")
+
+	if len(got) != 0 {
+		t.Errorf("got %+v, want no actions for the scanning announcement", got)
+	}
+}
+
+// Behavior: the glob-metacharacter guard applies to the bare form too. A delete
+// candidate reaching the filter rule with a `*`, `?`, or `[` in its name could
+// match and remove the wrong file, and that risk does not depend on which rsync
+// reported it.
+func TestParseActions_OpenrsyncBareDeleteWithGlobMeta_IsDropped(t *testing.T) {
+	got := parseActions("*deleting weird[1].txt\n")
+
+	if len(got) != 0 {
+		t.Errorf("got %+v, want no actions (dropped)", got)
 	}
 }

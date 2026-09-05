@@ -361,7 +361,7 @@ func run() (code int) {
 		// still leads with the machine-readable "Changes: 0" line it always prints;
 		// the interactive path just states it plainly.
 		if !interactive {
-			fmt.Print(view.ChangeList(nil))
+			fmt.Print(view.ChangeList(nil, time.Now()))
 		}
 		fmt.Println("\nNo changes to sync.")
 		return 0
@@ -410,7 +410,7 @@ func run() (code int) {
 		}
 		selected = picked
 	} else {
-		fmt.Print(view.ChangeList(result.Actions))
+		fmt.Print(view.ChangeList(result.Actions, time.Now()))
 		// Prompt on stderr so stdout stays a clean, parseable report.
 		fmt.Fprint(os.Stderr, "Press Enter to sync all changes: ")
 		selected, err = selection.SelectActions(os.Stdin, result.Actions)

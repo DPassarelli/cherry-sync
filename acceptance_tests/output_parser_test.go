@@ -41,6 +41,10 @@ type Action struct {
 	Index int
 	Verb  string
 	Path  string
+	// Detail is the parenthesized annotation describing how the two copies of the
+	// file compare, empty on a row that carries none (a create, a delete, or a row
+	// whose destination could not be measured).
+	Detail string
 }
 
 // labeledLineRE and actionLineRE match the two line shapes csync prints:
@@ -52,7 +56,13 @@ var (
 	// The leading indent is [^\S\n]+ (horizontal whitespace), not \s+: \s matches
 	// newlines, so a \s+ indent would reach across a blank line and swallow the
 	// following status line ("No changes to sync.") as a bogus action.
-	actionLineRE = regexp.MustCompile(`(?m)^[^\S\n]+(?:(\d+)\.\s+)?(\S+)\s+(.+?)\s*$`)
+	// The trailing group is the annotation csync appends to a changed row, e.g.
+	// "(source is 2.0 KB larger, last updated 3h ago · dest last updated 17d ago)".
+	// It is separated by exactly two spaces and parenthesized, and the path capture
+	// stays lazy so the split happens at that gap rather than at the first space in
+	// a path that contains one. A path that both contains "  (" and ends in ")"
+	// would still fool it, which no fixture does and a real report would not either.
+	actionLineRE = regexp.MustCompile(`(?m)^[^\S\n]+(?:(\d+)\.\s+)?(\S+)\s+(.+?)(?:  \((.*)\))?\s*$`)
 	// excludingRE captures the parenthetical disclosure of what was held out of the
 	// comparison, e.g. "(excluding .csync.toml, the .git directory, and 3 gitignored
 	// paths)". The captured group is the inner clause, parsed for its parts below.
@@ -214,7 +224,7 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if m[1] != "" {
 			actionIdx, _ = strconv.Atoi(m[1])
 		}
-		out.Actions = append(out.Actions, Action{Index: actionIdx, Verb: m[2], Path: m[3]})
+		out.Actions = append(out.Actions, Action{Index: actionIdx, Verb: m[2], Path: m[3], Detail: m[4]})
 	}
 	// Message is the first free-text line: non-empty, and neither a `Label:
 	// value` summary line nor an indented action line. csync emits one for
