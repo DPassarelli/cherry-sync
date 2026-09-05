@@ -8,6 +8,7 @@ package view
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
@@ -73,11 +74,22 @@ func NotLogged(reason string) string {
 // affordance — the digit a user types at the typed-grammar prompt to pick that
 // change — and selection.SelectActions indexes the same actions by that 1-based
 // value. With no actions it reports just "Changes: 0".
-func ChangeList(actions []compare.Action) string {
+//
+// Every annotated row carries its comparison here, where the picker shows only the
+// row under the cursor. There is no cursor in a piped report and nothing to move,
+// so withholding the text would leave it unreachable; a report is read rather than
+// scanned, which is also why the extra width costs nothing. The parentheses close
+// the annotation off from the path, which may itself contain spaces.
+func ChangeList(actions []compare.Action, now time.Time) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Changes: %d\n", len(actions))
 	for i, act := range actions {
-		fmt.Fprintf(&b, "  %d. %s %s\n", i+1, act.Verb, act.Path)
+		detail := actionDetail(act, now)
+		if detail == "" {
+			fmt.Fprintf(&b, "  %d. %s %s\n", i+1, act.Verb, act.Path)
+			continue
+		}
+		fmt.Fprintf(&b, "  %d. %s %s  (%s)\n", i+1, act.Verb, act.Path, detail)
 	}
 	return b.String()
 }

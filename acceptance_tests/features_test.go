@@ -53,6 +53,36 @@ shift
 exec "$@"
 `
 
+// failMeasureRsh is the path to a test-only remote shell that answers the
+// comparison and fails the pass that measures the destination. Scenarios proving
+// the comparison survives an unmeasurable destination point RSYNC_RSH here. See
+// failMeasureRshScript.
+var failMeasureRsh string
+
+// failMeasureRshScript is the body of that shell. On a push the two passes ask
+// opposite things of the far side: the comparison makes it the receiver, while the
+// measuring pass reads it and so runs it as `--server --sender`. That flag is
+// therefore the pass csync uses to read the destination, and failing on it leaves
+// the comparison itself untouched.
+//
+// Keying on the role rather than on a count of invocations matters for the same
+// reason it does in stallRshScript: the number of rsync calls a comparison spends
+// is an implementation detail, and a counter would quietly start failing the wrong
+// pass the moment it changed.
+//
+// Exiting non-zero (rather than going silent) is the point: this is a remote that
+// answers and refuses, which is what rsync reports as a failed pass.
+const failMeasureRshScript = `#!/bin/sh
+for a in "$@"; do
+	if [ "$a" = "--sender" ]; then
+		echo "measurement refused by the test remote" >&2
+		exit 13
+	fi
+done
+shift
+exec "$@"
+`
+
 // stallRsh is the path to a test-only remote shell that answers every rsync the
 // comparison runs and goes silent once the transfer starts. Scenarios that need a
 // stalled transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
@@ -126,6 +156,11 @@ type remoteModeKey struct{}
 // done` step) as needing the stalling remote shell rather than the plain one, so
 // csyncEnv points RSYNC_RSH at stallRsh and gives the child its counter file.
 type stallModeKey struct{}
+
+// failMeasureModeKey flags a scenario (via the `a remote that answers the
+// comparison but fails the measurement` step) as needing the refusing remote shell
+// rather than the plain one.
+type failMeasureModeKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and
@@ -263,6 +298,13 @@ func TestMain(m *testing.M) {
 		os.Exit(2)
 	}
 
+	failMeasureRsh = filepath.Join(tmpDir, "failmeasurersh")
+	err = os.WriteFile(failMeasureRsh, []byte(failMeasureRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "failmeasurersh:", err)
+		os.Exit(2)
+	}
+
 	stallRsh = filepath.Join(tmpDir, "stallrsh")
 	err = os.WriteFile(stallRsh, []byte(stallRshScript), 0o755)
 	if err != nil {
@@ -324,6 +366,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a run log should exist at the reported path$`, aRunLogShouldExistAtTheReportedPath)
 	ctx.Step(`^that a file has been changed locally$`, thatAFileHasBeenChangedLocally)
 	ctx.Step(`^a remote that goes silent once the comparison is done$`, aRemoteThatGoesSilentOnceTheComparisonIsDone)
+	ctx.Step(`^that the local copy of "([^"]*)" is (\d+) KB larger than the remote copy$`, theLocalCopyIsLarger)
+	ctx.Step(`^that the two copies of "([^"]*)" differ in content but not in size$`, theTwoCopiesDifferInContentButNotSize)
+	ctx.Step(`^that the (local|remote) copy of "([^"]*)" was last modified (\d+) (second|minute|hour|day)s? ago$`, theCopyWasLastModified)
+	ctx.Step(`^that both copies of "([^"]*)" carry the same modification time$`, bothCopiesCarryTheSameModificationTime)
+	ctx.Step(`^a remote that answers the comparison but fails the measurement$`, aRemoteThatFailsTheMeasurement)
+	ctx.Step(`^the reported detail for "([^"]*)" should be "([^"]*)"$`, theReportedDetailForShouldBe)
+	ctx.Step(`^no detail should be reported for "([^"]*)"$`, noDetailShouldBeReportedFor)
 	ctx.Step(`^I have started csync but not yet answered the prompt$`, iHaveStartedCsyncButNotYetAnsweredThePrompt)
 	// Two phrasings of the same act, kept apart because Gherkin reads better when a
 	// Given narrates in the past and a When in the present. Both locate the log.
@@ -557,6 +606,10 @@ func csyncEnv(ctx context.Context) []string {
 		// `fakehost:` operand transfers on this machine over the real remote code
 		// path. csync's own rsync child inherits this environment.
 		rsh := fakeRsh
+		failMeasure, _ := ctx.Value(failMeasureModeKey{}).(bool)
+		if failMeasure {
+			rsh = failMeasureRsh
+		}
 		stallMode, _ := ctx.Value(stallModeKey{}).(bool)
 		if stallMode {
 			// Swap in the shell that stops answering after the comparison, and shorten
@@ -2543,4 +2596,167 @@ func copyTree(src, dst string) error {
 		}
 		return os.WriteFile(target, data, 0o644)
 	})
+}
+
+// sideDir resolves the "local" or "remote" side of a scenario to its directory, so
+// the mtime steps can address either without a step apiece.
+func sideDir(ctx context.Context, side string) (string, error) {
+	key := localPathKey{}
+	var dir string
+	if side == "remote" {
+		dir, _ = ctx.Value(remotePathKey{}).(string)
+	} else {
+		dir, _ = ctx.Value(key).(string)
+	}
+	if dir == "" {
+		return "", fmt.Errorf("%s path not set; missing Background step?", side)
+	}
+	return dir, nil
+}
+
+// theLocalCopyIsLarger rewrites the local file so it holds the remote copy's bytes
+// plus the stated number of kibibytes, making the two differ in size by exactly
+// that much. Padding the existing content (rather than writing a fresh file of some
+// absolute size) is what lets the scenario state the gap it cares about without
+// also having to know what the fixture happened to put there.
+func theLocalCopyIsLarger(ctx context.Context, relPath string, kb int) (context.Context, error) {
+	local, err := sideDir(ctx, "local")
+	if err != nil {
+		return ctx, err
+	}
+	remote, err := sideDir(ctx, "remote")
+	if err != nil {
+		return ctx, err
+	}
+	base, err := os.ReadFile(filepath.Join(remote, relPath))
+	if err != nil {
+		return ctx, fmt.Errorf("read remote %s: %w", relPath, err)
+	}
+	padded := append(base, bytes.Repeat([]byte("x"), kb*1024)...)
+	err = os.WriteFile(filepath.Join(local, relPath), padded, 0o644)
+	if err != nil {
+		return ctx, fmt.Errorf("write local %s: %w", relPath, err)
+	}
+	return ctx, nil
+}
+
+// theTwoCopiesDifferInContentButNotSize gives each side its own bytes at the same
+// length, so only a content hash can tell the copies apart. It writes both sides
+// because the state it establishes belongs to the pair: the fixture's files start
+// empty, so changing one alone would change the size along with the content and
+// describe a different case entirely.
+func theTwoCopiesDifferInContentButNotSize(ctx context.Context, relPath string) (context.Context, error) {
+	// Distinct bytes of equal length, long enough that the two cannot collide.
+	content := map[string][]byte{
+		"local":  bytes.Repeat([]byte("L"), 512),
+		"remote": bytes.Repeat([]byte("R"), 512),
+	}
+	for _, side := range []string{"local", "remote"} {
+		dir, err := sideDir(ctx, side)
+		if err != nil {
+			return ctx, err
+		}
+		full := filepath.Join(dir, relPath)
+		err = os.WriteFile(full, content[side], 0o644)
+		if err != nil {
+			return ctx, fmt.Errorf("write %s %s: %w", side, full, err)
+		}
+	}
+	return ctx, nil
+}
+
+// theCopyWasLastModified stamps one side's copy of a file with an age relative to
+// now, so a scenario can state the age it expects the report to render. The ages
+// used are coarse (minutes and up) because csync renders them in whole units, and a
+// scenario that pinned seconds would race the clock it is measured against.
+func theCopyWasLastModified(ctx context.Context, side, relPath string, count int, unit string) (context.Context, error) {
+	dir, err := sideDir(ctx, side)
+	if err != nil {
+		return ctx, err
+	}
+	units := map[string]time.Duration{
+		"second": time.Second,
+		"minute": time.Minute,
+		"hour":   time.Hour,
+		"day":    24 * time.Hour,
+	}
+	span, ok := units[unit]
+	if !ok {
+		return ctx, fmt.Errorf("unknown unit %q", unit)
+	}
+	when := time.Now().Add(-time.Duration(count) * span)
+	full := filepath.Join(dir, relPath)
+	err = os.Chtimes(full, when, when)
+	if err != nil {
+		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
+	}
+	return ctx, nil
+}
+
+// bothCopiesCarryTheSameModificationTime stamps the two copies of a file with one
+// timestamp, so nothing outward separates them and rsync's size+mtime quick check
+// reports nothing about the file. It is what puts a differing file beyond the
+// destination measurement, leaving the row to say the content is the only
+// difference.
+func bothCopiesCarryTheSameModificationTime(ctx context.Context, relPath string) (context.Context, error) {
+	when := time.Now().Add(-time.Hour)
+	for _, side := range []string{"local", "remote"} {
+		dir, err := sideDir(ctx, side)
+		if err != nil {
+			return ctx, err
+		}
+		full := filepath.Join(dir, relPath)
+		err = os.Chtimes(full, when, when)
+		if err != nil {
+			return ctx, fmt.Errorf("chtimes %s %s: %w", side, full, err)
+		}
+	}
+	return ctx, nil
+}
+
+// aRemoteThatFailsTheMeasurement points this scenario's remote shell at the one
+// that answers the comparison and refuses the pass reading the destination. See
+// failMeasureRshScript.
+func aRemoteThatFailsTheMeasurement(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, failMeasureModeKey{}, true), nil
+}
+
+// reportedAction finds the reported action for a path, so the detail assertions can
+// speak about one row.
+func reportedAction(ctx context.Context, relPath string) (Action, error) {
+	out, ok := ctx.Value(outputKey{}).(runResult)
+	if !ok {
+		return Action{}, fmt.Errorf("no run output; missing When step?")
+	}
+	for _, a := range parseOutput(out.Stdout, out.Stderr).Actions {
+		if a.Path == relPath {
+			return a, nil
+		}
+	}
+	return Action{}, fmt.Errorf("no action reported for %q; reported: %s", relPath, out.Stdout)
+}
+
+// theReportedDetailForShouldBe asserts the annotation csync printed for one file.
+func theReportedDetailForShouldBe(ctx context.Context, relPath, want string) error {
+	action, err := reportedAction(ctx, relPath)
+	if err != nil {
+		return err
+	}
+	if action.Detail != want {
+		return fmt.Errorf("detail for %q was %q, want %q", relPath, action.Detail, want)
+	}
+	return nil
+}
+
+// noDetailShouldBeReportedFor asserts a row carries no annotation, which is how a
+// create and a delete are reported: neither has a second copy to be compared with.
+func noDetailShouldBeReportedFor(ctx context.Context, relPath string) error {
+	action, err := reportedAction(ctx, relPath)
+	if err != nil {
+		return err
+	}
+	if action.Detail != "" {
+		return fmt.Errorf("detail for %q was %q, want none", relPath, action.Detail)
+	}
+	return nil
 }
