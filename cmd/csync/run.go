@@ -6,7 +6,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -146,67 +145,31 @@ func run() (code int) {
 		view.Endpoint{Path: destination, From: ops.DestinationFrom},
 	))
 
-	// The comparison is the long wait: rsync content-hashes every candidate on both
-	// ends (--checksum), and until now it ran with nothing on screen, which reads as
-	// a hang rather than as work (#62). On a terminal it runs behind a spinner that
-	// names the stage it is in; piped, there is nobody to show it to, so it runs
-	// plain and reports nothing.
-	//
-	// The context is what stops it. While the spinner holds the terminal in raw
-	// mode a Ctrl-C never becomes a SIGINT, so cancelling here is what passes the
-	// user's interruption on to the rsync that is still running.
+	// This context is what a Ctrl-C travels down. While the spinner holds the
+	// terminal in raw mode a Ctrl-C never becomes a SIGINT, so cancelling here is
+	// what passes the user's interruption on to the rsync that is still running.
+	// The transfer below runs under the same context, so it is interruptible too.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// The comparison is bounded as well as cancellable (#53). csync is an
-	// interactive tool: a comparison still running after a minute has stopped being
-	// something anyone waits through, and there is deliberately no flag to raise the
-	// ceiling — a tree that slow to compare belongs to rsync, not to csync. The bound
-	// covers the piped path too, where there is no spinner to show the wait and no
-	// Ctrl-C to fall back on.
-	compareCtx, compareDone := context.WithTimeout(ctx, compareTimeout)
-	defer compareDone()
-
-	var result compare.Result
-	if interactive {
-		phases := make(chan string, 4)
-		report := func(stage string) {
-			// Never let a caption block the comparison: if the spinner isn't reading,
-			// the work continuing matters more than the label arriving.
-			select {
-			case phases <- stage:
-			default:
-			}
-		}
-		var comparison view.Comparison
-		comparison, err = view.RunSpinner(cancel, phases, func() (compare.Result, error) {
-			defer close(phases)
-			return compare.Run(compareCtx, runner, source, destination, report)
-		})
-		result = comparison.Result
-		if comparison.Cancelled {
-			// Drain until the comparison closes the channel, which it does only once
-			// rsync has actually exited. Without this csync would return while the
-			// signalled process was still winding down, and the escalation that
-			// guarantees it dies would go with it.
-			for range phases {
-			}
-			fmt.Print(view.Canceled())
-			return 0
-		}
-	} else {
-		result, err = compare.Run(compareCtx, runner, source, destination, nil)
+	cmp, err := runComparison(ctx, cancel, runner, source, destination, interactive)
+	// A cancelled comparison outranks any error it ended with: the user asked it to
+	// stop, so stopping is the outcome, not a failure to report.
+	if cmp.Cancelled {
+		fmt.Print(view.Canceled())
+		return 0
 	}
 	if err != nil {
 		// An expired deadline outranks whatever error rsync's death produced: killed
 		// mid-run it reports the signal that killed it, which explains nothing.
-		if errors.Is(compareCtx.Err(), context.DeadlineExceeded) {
+		if cmp.TimedOut {
 			fmt.Fprint(os.Stderr, view.TimedOut(compareTimeout))
 			return 1
 		}
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	result := cmp.Result
 
 	// Record the change list csync classified, before it asks what to sync — so a run
 	// abandoned at the prompt still shows what was on offer. The selection is recorded
@@ -306,29 +269,4 @@ func run() (code int) {
 	// without color (lipgloss drops ANSI when stdout isn't a terminal).
 	fmt.Print(view.RenderSummary(selected))
 	return 0
-}
-
-// reportTransferFailure prints the right account of a failed transfer and returns
-// the exit status for it. A stall gets csync's own notice: rsync's version of it
-// is an io-timeout line and a numeric code, which names the symptom and not the
-// problem. Every other failure is still reported as rsync described it, since
-// rsync is the one that knows what went wrong.
-func reportTransferFailure(err error, stall time.Duration) int {
-	if errors.Is(err, transfer.ErrStalled) {
-		fmt.Fprint(os.Stderr, view.Stalled(stall))
-		return 1
-	}
-	fmt.Fprintln(os.Stderr, err)
-	return 1
-}
-
-// logActions adapts the compare package's actions to the run log's own Action type,
-// bridging the two so runlog need not depend on compare. It is the one place the shape
-// is translated for the classified and selected records.
-func logActions(actions []compare.Action) []runlog.Action {
-	out := make([]runlog.Action, len(actions))
-	for i, a := range actions {
-		out[i] = runlog.Action{Verb: a.Verb, Path: a.Path}
-	}
-	return out
 }

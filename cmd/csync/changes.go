@@ -1,6 +1,6 @@
 // changes.go derives what the rest of the run needs from a finished comparison:
-// the disclosure of what was held back, and the split of a selection into the two
-// passes rsync needs to carry it out.
+// the disclosure of what the comparison held back, and the change list in the
+// shape the run log records it in.
 
 package main
 
@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/runlog"
 )
 
 // excludedNotice names what the comparison held back, for the one line that
@@ -35,16 +36,13 @@ func excludedNotice(result compare.Result) []string {
 	return excluded
 }
 
-// splitByVerb separates a selection into the paths to transfer and the paths to
-// remove. rsync moves files with one mechanism (--files-from) and removes them with
-// another (a --delete filter pass), so each verb has to go to its own call.
-func splitByVerb(selected []compare.Action) (transfers, removals []string) {
-	for _, act := range selected {
-		if act.Verb == "delete" {
-			removals = append(removals, act.Path)
-		} else {
-			transfers = append(transfers, act.Path)
-		}
+// logActions adapts the compare package's actions to the run log's own Action type,
+// bridging the two so runlog need not depend on compare. It is the one place the shape
+// is translated for the classified and selected records.
+func logActions(actions []compare.Action) []runlog.Action {
+	out := make([]runlog.Action, len(actions))
+	for i, a := range actions {
+		out[i] = runlog.Action{Verb: a.Verb, Path: a.Path}
 	}
-	return transfers, removals
+	return out
 }
