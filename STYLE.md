@@ -102,3 +102,29 @@ Go lets a function return any number of values, but a long return list is a desi
 - `(T, error)` — the everyday Go pattern; two values, always fine.
 - comma-ok `(T, bool)` — `v, ok := m[k]`, `v, ok := x.(T)`; idiomatic and clear.
 - A small, well-known positional tuple where order is self-evident — e.g. `strings.Cut`'s `(before, after, found string, bool)`. Three values, but the names are obvious from the operation; a struct would read worse. Reach for this sparingly: when in doubt, the struct is the safer default.
+
+## File length
+
+A file is the unit a reader opens. Past roughly 150 lines of code the eye stops holding the whole thing at once, and navigation shifts from structure to search — you stop knowing where something is and start grepping for it. The CLAUDE.md rule puts the threshold there and asks for a look, not a split.
+
+**It is not a gate.** Nothing in CI counts lines, and no PR is blocked by the number. Crossing it is a prompt to ask "is there a seam here?" — sometimes the honest answer is no, and the file stays long. What the rule forbids is not a long file but an *unexamined* one.
+
+**Test files are exempt**, for the same reason the file-header rule exempts them: length there is not the same signal.
+
+- A table-driven test's cases are one behavior's enumeration. Splitting them across files hides the enumeration, which is the thing a reader most needs to see whole.
+- A step-definition file is a vocabulary. `acceptance_tests` is the worked example: `features_test.go` reached 1,865 SLOC and genuinely needed splitting, but it needed it for *cohesion* — eleven unrelated concerns in one file — not because of a count. Splitting it to fit under 100 would have taken about nineteen files and would have separated step definitions from the helpers only they use. It split into eleven, the largest at 283, and that is the right answer.
+
+The lesson generalizes: the number starts the conversation, the seam ends it. A split that serves the number and not the reader is the failure this rule is trying to prevent.
+
+## Duplicated files
+
+A file should exist once. Two copies mean two things to update and a silent bug the day someone updates one.
+
+**The exemption is a tool constraint, not a convenience.** `go:embed` cannot reach a parent directory, so `internal/license` cannot embed the repository-root `LICENSE` directly. A byte-identical copy therefore lives beside `license.go`. There is no way to express this in Go without the copy.
+
+**A forced copy carries two obligations:**
+
+- **A test that fails on drift.** `license_test.go` compares the embedded text against the root file and fails if they diverge, so the root `LICENSE` stays the single source of truth and the copy cannot quietly rot.
+- **A comment naming the constraint.** The package doc on `internal/license` says why the copy exists and which file is canonical. Without it, the next reader sees redundancy and deletes the wrong one.
+
+**Why not the alternatives.** A symlink breaks on Windows checkouts and confuses GitHub's license detection. Generating the copy at build time adds a step to every build and the copy still has to exist on disk at compile time — the duplication moves, it does not go away. The committed copy plus a drift test is the cheapest arrangement that keeps the invariant provable.
