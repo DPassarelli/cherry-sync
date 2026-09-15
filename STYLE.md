@@ -34,6 +34,7 @@ if err != nil {
 **Scope of the rule:**
 
 - Applies to `if`.
+- The comma-ok form keeps its init — `if _, ok := m[key]; !ok`, `if v, ok := x.(T); ok`, `if v, ok := <-ch; ok`. The second result exists only to be the condition, so there is no assignment to lift away from it; splitting the form leaves a dangling line and leaks a dead boolean into the block. This covers only map index, type assertion, and channel receive — an ordinary call returning `(T, bool)` follows the main rule.
 - `for` loops keep `for i := 0; i < n; i++` — the init is part of the loop's defining shape.
 - Type switches keep `switch v := x.(type)` — the binding is the point.
 - Regular switches with init (`switch x := f(); x { ... }`) follow the same spirit; prefer two lines unless the switch is genuinely tighter that way.

@@ -347,7 +347,8 @@ func run() (code int) {
 	if result.GitDirExcluded {
 		excluded = append(excluded, "the .git directory")
 	}
-	if n := len(result.Excluded); n > 0 {
+	n := len(result.Excluded)
+	if n > 0 {
 		noun := "paths"
 		if n == 1 {
 			noun = "path"

@@ -127,19 +127,22 @@ var (
 func parseLog(content string) ParsedLog {
 	var log ParsedLog
 
-	sm := logStartedRE.FindStringSubmatch(content)
-	if sm != nil {
+	started := logStartedRE.FindStringSubmatch(content)
+	if started != nil {
 		log.Started = true
-		log.Version = sm[1]
+		log.Version = started[1]
 	}
-	if m := logInvocationRE.FindStringSubmatch(content); m != nil {
-		log.Invocation = m[1]
+	invocation := logInvocationRE.FindStringSubmatch(content)
+	if invocation != nil {
+		log.Invocation = invocation[1]
 	}
-	if m := logSourceRE.FindStringSubmatch(content); m != nil {
-		log.Source = m[1]
+	source := logSourceRE.FindStringSubmatch(content)
+	if source != nil {
+		log.Source = source[1]
 	}
-	if m := logDestRE.FindStringSubmatch(content); m != nil {
-		log.Destination = m[1]
+	dest := logDestRE.FindStringSubmatch(content)
+	if dest != nil {
+		log.Destination = dest[1]
 	}
 	for _, m := range logExecRE.FindAllStringSubmatch(content, -1) {
 		code, _ := strconv.Atoi(m[3])
@@ -155,29 +158,35 @@ func parseLog(content string) ParsedLog {
 			Stderr:   stderr,
 		})
 	}
-	if m := logClassifiedRE.FindStringSubmatch(content); m != nil {
+	classified := logClassifiedRE.FindStringSubmatch(content)
+	if classified != nil {
 		log.HasClassified = true
-		log.ClassifiedCount, _ = strconv.Atoi(m[1])
-		log.Classified = parseLogActions(m[2])
+		log.ClassifiedCount, _ = strconv.Atoi(classified[1])
+		log.Classified = parseLogActions(classified[2])
 	}
-	if m := logSelectedRE.FindStringSubmatch(content); m != nil {
+	selected := logSelectedRE.FindStringSubmatch(content)
+	if selected != nil {
 		log.HasSelected = true
-		log.SelectedCount, _ = strconv.Atoi(m[1])
-		log.Selected = parseLogActions(m[2])
+		log.SelectedCount, _ = strconv.Atoi(selected[1])
+		log.Selected = parseLogActions(selected[2])
 	}
-	if m := logExcludedRE.FindStringSubmatch(content); m != nil {
+	excluded := logExcludedRE.FindStringSubmatch(content)
+	if excluded != nil {
 		log.HasExcluded = true
-		body := m[1]
-		if g := logExclGitRE.FindStringSubmatch(body); g != nil {
-			log.ExcludedGitignored = parseLogArgs(g[1])
+		body := excluded[1]
+		gitignored := logExclGitRE.FindStringSubmatch(body)
+		if gitignored != nil {
+			log.ExcludedGitignored = parseLogArgs(gitignored[1])
 		}
 		log.ExcludedGitDir = strings.Contains(body, "the .git directory")
 		log.ExcludedCsyncToml = strings.Contains(body, ".csync.toml")
 	}
-	if m := logPrunedRE.FindStringSubmatch(content); m != nil {
+	pruned := logPrunedRE.FindStringSubmatch(content)
+	if pruned != nil {
 		log.HasPruned = true
-		if g := logPrunedListRE.FindStringSubmatch(m[1]); g != nil {
-			log.Pruned = parseLogArgs(g[1])
+		prunedList := logPrunedListRE.FindStringSubmatch(pruned[1])
+		if prunedList != nil {
+			log.Pruned = parseLogArgs(prunedList[1])
 		}
 	}
 	return log

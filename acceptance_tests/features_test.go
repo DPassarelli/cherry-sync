@@ -1120,7 +1120,8 @@ func theLogShouldRecordRunningForTheComparison(ctx context.Context, name string)
 	if err != nil {
 		return err
 	}
-	if _, ok := log.command(name); !ok {
+	_, ok := log.command(name)
+	if !ok {
 		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
 	}
 	return nil
@@ -1416,7 +1417,8 @@ func theLogShouldRecordRunningForTheIgnoreRules(ctx context.Context, name string
 	if err != nil {
 		return err
 	}
-	if _, ok := log.command(name); !ok {
+	_, ok := log.command(name)
+	if !ok {
 		return fmt.Errorf("run log records no command %q; contents:\n%s", name, content)
 	}
 	return nil

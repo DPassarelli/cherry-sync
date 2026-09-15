@@ -93,7 +93,8 @@ func TestContentLines_NarrowTerminal_KeepsRowsWithinTheWidth(t *testing.T) {
 	lines, _ := m.contentLines()
 
 	for _, line := range lines {
-		if w := lipgloss.Width(line); w > m.width {
+		w := lipgloss.Width(line)
+		if w > m.width {
 			t.Errorf("line %q is %d cells wide, want at most %d", line, w, m.width)
 		}
 	}
