@@ -1,6 +1,6 @@
 # Scenarios are brought into the run one at a time as we implement them. Each
 # not-yet-implemented scenario carries its own @wip tag (excluded via the
-# "~@wip" filter in features_test.go); drop a scenario's tag when we drill in.
+# "~@wip" tag filter the runner applies); drop a scenario's tag when we drill in.
 #
 # @remote runs every scenario over a fake SSH remote, so the push/pull scenarios
 # transfer in real sender/receiver mode (see select-and-sync.feature for why
