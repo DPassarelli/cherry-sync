@@ -1,6 +1,6 @@
 # Scenarios are brought into the run one at a time as we implement them. Each
 # not-yet-implemented scenario carries its own @wip tag (excluded via the
-# "~@wip" filter in features_test.go); drop a scenario's tag when we drill in.
+# "~@wip" tag filter the runner applies); drop a scenario's tag when we drill in.
 #
 # @remote runs every scenario here over a fake SSH remote (RSYNC_RSH + a
 # `fakehost:` operand), so rsync transfers in real sender/receiver mode and emits

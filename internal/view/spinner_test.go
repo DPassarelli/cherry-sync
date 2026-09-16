@@ -81,7 +81,8 @@ func TestSpinnerFinalFrameIsBlank(t *testing.T) {
 	if !isQuit(cmd) {
 		t.Fatal("the finished comparison should end the spinner")
 	}
-	if got := updated.(spinnerModel).View(); got != "" {
+	got := updated.(spinnerModel).View()
+	if got != "" {
 		t.Errorf("final frame should be empty, got %q", got)
 	}
 }

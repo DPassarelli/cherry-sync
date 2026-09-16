@@ -1,6 +1,6 @@
 # Scenarios are brought into the run one at a time as we implement them. Each
 # not-yet-implemented scenario carries its own @wip tag (excluded via the
-# "~@wip" filter in features_test.go); drop a scenario's tag when we drill in.
+# "~@wip" tag filter the runner applies); drop a scenario's tag when we drill in.
 #
 # HEADS UP — conflict to resolve at drill-in: invoke-command.feature currently
 # asserts "No arguments — show usage and exit non-zero". This feature redefines

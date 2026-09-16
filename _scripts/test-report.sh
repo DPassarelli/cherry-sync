@@ -67,8 +67,14 @@ fi
 # Stream live output to stdout (Actions log / terminal) and capture the JSON the
 # panel is built from. Capture gotestsum's exit code instead of letting `set -e`
 # abort on a test failure.
+#
+# -count=1 is load-bearing, not a habit. The godog suite execs a csync binary it
+# builds in TestMain and imports no production package, so Go's test cache has no
+# idea the binary's sources changed: without this, a run whose only change is in
+# cmd/ or internal/ can report a green `ok (cached)` from a stale build and gate
+# nothing. See "Why -count=1 matters" in TESTING.md.
 status=0
-"$gotestsum" --format pkgname --jsonfile "$json" -- ./... "$@" || status=$?
+"$gotestsum" --format pkgname --jsonfile "$json" -- -count=1 ./... "$@" || status=$?
 
 sink="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 go run ./cmd/testreport \

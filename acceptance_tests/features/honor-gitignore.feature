@@ -1,8 +1,8 @@
 # @git scenarios need `git` on the test host (the local operand is set up as a
-# real work tree). The runner skips them when git is absent — see features_test.go.
+# real work tree). The runner skips them when git is absent.
 #
-# Each not-yet-implemented scenario carries @wip (excluded via the "~@wip" filter
-# in features_test.go); drop a scenario's tag when we drill in.
+# Each not-yet-implemented scenario carries @wip (excluded via the "~@wip" tag
+# filter the runner applies); drop a scenario's tag when we drill in.
 @git
 Feature: Honor .gitignore when comparing
 

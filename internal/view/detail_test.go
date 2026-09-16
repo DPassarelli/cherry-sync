@@ -184,7 +184,8 @@ func TestActionDetail_UnmeasuredDestination_FallsBackToTheItemizeLabel(t *testin
 // age. Clock skew between a local machine and a remote dev box is routine, and a
 // file stamped a few seconds ahead is, for the reader's purposes, current.
 func TestAge_Future_ReadsAsJustNow(t *testing.T) {
-	if got := age(now.Add(time.Hour), now); got != "just now" {
+	got := age(now.Add(time.Hour), now)
+	if got != "just now" {
 		t.Errorf("got %q, want %q", got, "just now")
 	}
 }
@@ -193,7 +194,8 @@ func TestAge_Future_ReadsAsJustNow(t *testing.T) {
 // Rendering it would put an age counted from year one into the row, which is worse
 // than admitting the value is missing.
 func TestAge_Zero_ReadsAsUnknown(t *testing.T) {
-	if got := age(time.Time{}, now); got != "unknown" {
+	got := age(time.Time{}, now)
+	if got != "unknown" {
 		t.Errorf("got %q, want %q", got, "unknown")
 	}
 }
