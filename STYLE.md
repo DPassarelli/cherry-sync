@@ -2,7 +2,7 @@
 
 The actionable style rules live in [CLAUDE.md](CLAUDE.md), so they're always in Claude's working context. **This document is the reasoning behind them** — the why, the scope, and worked examples — not a second copy of the rules. Read it to understand or challenge a rule; don't restate the rules here, or the two will drift. When a rule changes, the statement changes in CLAUDE.md; this file only changes when the *reasoning* does.
 
-The rules cover what `gofmt` and `go vet` don't, and apply to all code in the repository, tests included. For *additional* test-specific conventions (Gherkin shape, `got`/`want` naming, the output-parsing facade), see [TESTING.md](TESTING.md).
+The rules cover what `gofmt` and `go vet` don't, and apply to all code in the repository, tests included. For *additional* test-specific conventions (Gherkin shape, `got`/`want` naming, the parsing facades), see [TESTING.md](TESTING.md).
 
 The sections below pair with the CLAUDE.md rules of the same topic.
 
