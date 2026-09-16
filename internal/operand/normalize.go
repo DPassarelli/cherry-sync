@@ -1,12 +1,15 @@
 // Package operand normalizes the source and destination strings csync hands to
 // rsync — whether they came from the command line or a saved .csync.toml — so
 // their meaning is a property of csync rather than an accident of what rsync
-// happens to tolerate. It resolves a remote home shortcut ("~") that modern
-// rsync would otherwise take literally, and collapses trailing slashes.
+// happens to tolerate. It resolves a home shortcut ("~") on either side — rsync
+// has none of its own and would take the character literally — and collapses
+// trailing slashes.
 package operand
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,8 +33,9 @@ type Result struct {
 // against the login home, whereas modern rsync's protected-args default passes a
 // literal "~" through and the transfer fails (#50). A "~user" form has no
 // relative equivalent, so Normalize rejects it with an error rather than let
-// rsync fail confusingly later. Local operands are only slash-collapsed; a local
-// "~" is a separate concern and is left untouched.
+// rsync fail confusingly later. A local operand's "~" is expanded against this
+// user's own home instead, since a local path is resolved here rather than by a
+// login shell on the far side.
 func Normalize(op string) (Result, error) {
 	var res Result
 
@@ -54,6 +58,14 @@ func Normalize(op string) (Result, error) {
 			// "~user" names another user's home, which no relative path can reach.
 			return Result{}, fmt.Errorf("remote path %q uses a ~user home shortcut, which has no relative form; use an absolute path", op)
 		}
+	} else if strings.HasPrefix(path, "~") {
+		expanded, err := expandHome(path)
+		if err != nil {
+			return Result{}, err
+		}
+		res.From = path
+		res.Rewrote = true
+		path = expanded
 	}
 
 	path = collapseTrailingSlash(path)
@@ -66,6 +78,26 @@ func Normalize(op string) (Result, error) {
 
 	res.Path = prefix + path
 	return res, nil
+}
+
+// expandHome resolves a local path's leading "~" against this user's home
+// directory. rsync has no home shortcut of its own, so an unexpanded one is taken
+// as an ordinary directory name: "~/x" in the source position misses and fails,
+// and a "~" destination quietly writes into a directory literally named "~" (#71).
+// A "~user" form names another account's home, which csync does not resolve; it is
+// rejected here as it is on the remote side.
+func expandHome(path string) (string, error) {
+	rest := path[len("~"):]
+	if rest != "" && !strings.HasPrefix(rest, "/") {
+		return "", fmt.Errorf("local path %q uses a ~user home shortcut, which csync does not resolve; use an absolute path", path)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot expand the ~ in local path %q: %w", path, err)
+	}
+	// Join rather than concatenation: it absorbs a home that already ends in a
+	// slash, and keeps a home of "/" from producing a doubled separator.
+	return filepath.Join(home, rest), nil
 }
 
 // splitRemote separates op into an rsync remote prefix ("[user@]host:") and the

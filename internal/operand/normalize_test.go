@@ -1,6 +1,7 @@
 package operand_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dpassarelli/cherry-sync/internal/operand"
@@ -112,20 +113,66 @@ func TestNormalize_TrailingSlash_Collapsed(t *testing.T) {
 	}
 }
 
-// Behavior: a local operand beginning with "~" is left untouched — resolving a
-// local home shortcut is a separate concern (it would expand against our own
-// home, not be stripped) and is out of scope here. The tilde handling keys off
-// the operand being remote.
-func TestNormalize_LocalTilde_Unchanged(t *testing.T) {
-	got, err := operand.Normalize("~/local")
+// Behavior: a bare local "~" (with or without a trailing slash) becomes the home
+// directory itself. rsync has no home shortcut, so an unexpanded "~" destination
+// writes into a directory literally named "~" without failing — the silent case
+// that makes #71 worse than a confusing error. The acceptance suite covers the
+// "~/x" form; this pins the bare one.
+func TestNormalize_LocalBareTilde_BecomesHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, in := range []string{"~", "~/"} {
+		got, err := operand.Normalize(in)
+		if err != nil {
+			t.Fatalf("Normalize(%q): unexpected error: %v", in, err)
+		}
+		if got.Path != home {
+			t.Errorf("Normalize(%q) Path: got %q, want %q", in, got.Path, home)
+		}
+		if !got.Rewrote {
+			t.Errorf("Normalize(%q) Rewrote: got false, want true", in)
+		}
+	}
+}
+
+// Behavior: a "~" anywhere but the start of a local operand is an ordinary
+// character in a directory name and is left alone. Only a leading "~" is a home
+// shortcut, so an over-eager match would rewrite a path the user meant literally.
+func TestNormalize_LocalTildeNotLeading_Unchanged(t *testing.T) {
+	got, err := operand.Normalize("./backup~1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Path != "~/local" {
-		t.Errorf("Path: got %q, want %q", got.Path, "~/local")
+	if got.Path != "./backup~1" {
+		t.Errorf("Path: got %q, want %q", got.Path, "./backup~1")
 	}
 	if got.Rewrote {
-		t.Errorf("Rewrote: got true, want false (local tilde is out of scope)")
+		t.Errorf("Rewrote: got true, want false (the ~ is not leading)")
+	}
+}
+
+// Behavior: a local "~user" shortcut is rejected rather than resolved, matching
+// how the remote side treats it. The message names the tilde so the user can see
+// what to fix. Mirrors the "~user home shortcut is rejected" scenario in
+// invoke-command.feature.
+func TestNormalize_LocalTildeUser_Rejected(t *testing.T) {
+	_, err := operand.Normalize("~deploy/project")
+	if err == nil {
+		t.Fatal("expected error for ~user local path, got nil")
+	}
+	if !strings.Contains(err.Error(), "~") {
+		t.Errorf("error should name the tilde, got %q", err.Error())
+	}
+}
+
+// Behavior: when the home directory cannot be determined there is nothing to
+// expand a "~" into, so Normalize fails rather than hand rsync a path built from
+// an empty home — which would point at the filesystem root.
+func TestNormalize_LocalTildeWithoutHome_Errors(t *testing.T) {
+	t.Setenv("HOME", "")
+	_, err := operand.Normalize("~/project")
+	if err == nil {
+		t.Fatal("expected error when the home directory is unknown, got nil")
 	}
 }
 

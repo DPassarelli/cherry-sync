@@ -95,6 +95,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported error should mention "([^"]*)"$`, theReportedErrorShouldMention)
 	ctx.Step(`^csync should report that it rewrote "([^"]*)"$`, csyncShouldReportThatItRewrote)
 	ctx.Step(`^a local directory containing these files:$`, aLocalDirectoryContainingTheseFiles)
+	ctx.Step(`^a local directory in the home directory containing these files:$`, aLocalDirectoryInTheHomeDirectoryContainingTheseFiles)
 	ctx.Step(`^a "\.csync\.toml" in the project directory containing:$`, aCsyncTomlInTheProjectDirectoryContaining)
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
 	ctx.Step(`^the repository's "([^"]*)" contains:$`, theLocalFileContains)

@@ -81,6 +81,27 @@ func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocStrin
 	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
+// aLocalDirectoryInTheHomeDirectoryContainingTheseFiles builds the project inside
+// the scenario's throwaway home rather than an unrelated tempdir, so a literal
+// "~/project" operand has something to resolve to once csync expands it. The path
+// is stashed under localPathKey like its plain twin.
+func aLocalDirectoryInTheHomeDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	home, _ := ctx.Value(homeKey{}).(string)
+	if home == "" {
+		return ctx, fmt.Errorf("scenario home directory not set")
+	}
+	dir := filepath.Join(home, "project")
+	err := os.MkdirAll(dir, 0o755)
+	if err != nil {
+		return ctx, fmt.Errorf("mkdir: %w", err)
+	}
+	err = writeFiles(dir, ds.Content)
+	if err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
 // aLocalGitRepositoryContainingTheseFiles creates a local tempdir, initializes a
 // git work tree in it, and populates it with the (empty) files named in the
 // DocString — the local-side setup the .gitignore scenarios need so csync can ask

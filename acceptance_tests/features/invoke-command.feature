@@ -35,6 +35,36 @@ Feature: Invoke command
     Then csync should return exit code 2
     And  the reported error should mention "source path is empty"
 
+  Scenario: A local source written with a ~ home shortcut finds the files
+    # Teeth for #71: rsync takes a literal "~" as a directory name, so an
+    # unexpanded ~/project resolves against the CWD and the comparison finds
+    # nothing (exit 23). csync expands it before rsync sees it. Drop the
+    # expansion and no action is reported — red.
+    Given a local directory in the home directory containing these files:
+      """
+      README.md
+      """
+    And   an empty remote directory
+    When  I run "csync ~/project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | create | README.md |
+
+  Scenario: The expansion of a local ~ is disclosed
+    # The expansion changes which directory the run works on, so it is named
+    # beside the operand rather than applied silently.
+    When I run "csync ~/project user@host:/project"
+    Then csync should report that it rewrote "~/project"
+
+  Scenario: A local ~user home shortcut is rejected
+    # ~user names another user's home, which csync does not resolve. It is
+    # rejected up front, as the remote side already rejects it, rather than
+    # reaching rsync as a literal directory name.
+    When I run "csync ~deploy/project user@host:/project"
+    Then csync should return a non-zero exit code
+    And  the reported error should mention "~"
+    And  no run log should have been written
+
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
   # Each will become a real Scenario block as we drill into it.
