@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A gitignored file that differs between the two sides is now named in a "Withheld (gitignored):" block above the change list, with the action csync declined to take. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical was never going to move), and changes inside an ignored directory are still not surfaced. (#59)
+
 ### Fixed
 
 - A local path written with a `~` home shortcut now resolves to your home directory instead of reaching `rsync` as a literal directory name. Previously `~/project` as a source failed to find anything, and as a destination it quietly wrote into a directory named `~`. A `~user` shortcut names another account's home, which csync does not resolve, so it is rejected up front. (#71)

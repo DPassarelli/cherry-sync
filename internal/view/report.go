@@ -44,6 +44,26 @@ func Excluded(parts []string) string {
 	return dim.Render("(excluding "+joinAnd(parts)+")") + "\n"
 }
 
+// Withheld returns the block naming the changes csync found but will not offer,
+// because each path is gitignored — "Withheld (gitignored):" over one dimmed
+// "verb path" row each — or the empty string when there are none, so the caller can
+// print it unconditionally. The rows carry no selection number: there is no opt-out
+// for an ignored path, and a number would read as an offer. It ends with a blank
+// line so the block is visibly its own, separate from the change list that follows.
+func Withheld(actions []compare.Action) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	dim := lipgloss.NewStyle().Faint(true)
+	var b strings.Builder
+	b.WriteString(dim.Render("Withheld (gitignored):") + "\n")
+	for _, act := range actions {
+		fmt.Fprintf(&b, "  %s\n", dim.Render(act.Verb+" "+act.Path))
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
 // LogPath returns the disclosure of where this run's log was written, as a dimmed
 // "Log written to <path>" line. csync always says where it logged, on the runs that fail as
 // much as on the ones that succeed — those are the runs worth reading, and a

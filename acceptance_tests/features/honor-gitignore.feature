@@ -92,6 +92,64 @@ Feature: Honor .gitignore when comparing
     Then  the reported excluded count should be 1
     And   the .csync.toml file should be reported as excluded
 
+  Scenario: An ignored file that changed is reported as withheld
+    # Teeth for #59: an ignored file that WOULD have moved is the only exclusion a
+    # user gets surprised by, and today it vanishes into a count. The row names the
+    # change csync declined to make. Restore the file-level pre-filter and rsync
+    # never compares .env, so no withheld row can be produced — red.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      .env
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      .env
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file ".env" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  the withheld changes should be:
+      | action | path |
+      | update | .env |
+
+  Scenario: An ignored file that matches on both sides is not reported as withheld
+    # The block reports withheld CHANGES, not withheld paths: an ignored file that
+    # is already identical was never going to move, so naming it is noise. Report
+    # every ignored path instead of only the changed ones and .env appears here — red.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      .env
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      .env
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  no withheld changes should be reported
+
+  Scenario: A change inside an ignored directory is not reported as withheld
+    # Ignored directories stay pre-excluded so rsync never walks them — a measured
+    # 5x on a large one — which is the deliberate limit of this disclosure: nobody is
+    # surprised that build/ did not sync. Drop the directory pre-filter to surface
+    # these and the walk cost comes back with them.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      build/output.bin
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "build/output.bin" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  no withheld changes should be reported
+
   Scenario: A non-repository local side excludes nothing
     # Teeth: this local directory is NOT a git work tree, yet it carries a
     # .gitignore naming *.log. Because the trigger is "is a git work tree?" — not

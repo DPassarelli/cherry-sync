@@ -20,16 +20,22 @@ type ReportedOutput struct {
 	ExcludedGitDir    bool
 	ExcludedCsyncToml bool
 	Actions           []Action
-	SyncCount         int
-	HasSyncCount      bool
-	RemovedCount      int
-	HasRemovedCount   bool
-	Message           string
-	Version           string
-	LogPath           string
-	HasLogPath        bool
-	NotLogged         string
-	Warning           string
+	// Withheld holds the rows of the "Withheld (gitignored):" block — changes csync
+	// found but declined to offer because the path is gitignored. They are parsed
+	// apart from Actions because they share the indented row shape but are never
+	// selectable, so folding them together would read as changes on offer.
+	Withheld         []Action
+	HasWithheldBlock bool
+	SyncCount        int
+	HasSyncCount     bool
+	RemovedCount     int
+	HasRemovedCount  bool
+	Message          string
+	Version          string
+	LogPath          string
+	HasLogPath       bool
+	NotLogged        string
+	Warning          string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -102,6 +108,10 @@ var (
 	// different label, so a reader — and the scenario asserting csync named no log —
 	// cannot mistake one for the other.
 	notLoggedRE = regexp.MustCompile(`(?m)^Not logged:[^\S\n]*(.*?)[^\S\n]*$`)
+	// withheldHeaderRE matches the header introducing the withheld-changes block.
+	// The block runs from this line to the next blank one, and parseOutput cuts that
+	// span out of the report before scanning it for actions.
+	withheldHeaderRE = regexp.MustCompile(`(?m)^Withheld \(gitignored\):[^\S\n]*$`)
 	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
 	// past — today, only its inability to write a run log.
 	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
@@ -157,6 +167,26 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if err == nil {
 			out.RemovedCount = n
 		}
+	}
+
+	// The withheld block's rows share the indented shape of the action list, so carve
+	// it out of the report the same way the summary is split off above. Left in
+	// place, its rows would be read as changes on offer and its header as the status
+	// message.
+	withheld := ""
+	loc := withheldHeaderRE.FindStringIndex(report)
+	if loc != nil {
+		out.HasWithheldBlock = true
+		rest := report[loc[1]:]
+		end := strings.Index(rest, "\n\n")
+		if end < 0 {
+			end = len(rest)
+		}
+		withheld = rest[:end]
+		report = report[:loc[0]] + report[loc[1]+end:]
+	}
+	for _, m := range actionLineRE.FindAllStringSubmatch(withheld, -1) {
+		out.Withheld = append(out.Withheld, Action{Verb: m[2], Path: m[3], Detail: m[4]})
 	}
 
 	vm := versionLineRE.FindStringSubmatch(report)

@@ -110,6 +110,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^that the file "([^"]*)" has been deleted locally$`, theFileHasBeenDeletedLocally)
 	ctx.Step(`^no actions should be reported$`, noActionsShouldBeReported)
 	ctx.Step(`^the reported actions should be:$`, theReportedActionsShouldBe)
+	ctx.Step(`^the withheld changes should be:$`, theWithheldChangesShouldBe)
+	ctx.Step(`^no withheld changes should be reported$`, noWithheldChangesShouldBeReported)
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
 	ctx.Step(`^the reported changes should be numbered, in order:$`, theReportedChangesShouldBeNumberedInOrder)
 	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)

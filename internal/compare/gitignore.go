@@ -95,11 +95,32 @@ func localExclusions(ctx context.Context, r *command.Runner, source, destination
 				return p == "/.csync.toml"
 			})
 		}
-		exc.patterns = append(exc.patterns, gitignored...)
+		// Only the ignored DIRECTORIES become --exclude patterns. An ignored file is
+		// deliberately left in the comparison so rsync says whether it differs, which is
+		// what lets csync report it as a withheld change rather than a bare count (#59);
+		// dropIgnoredActions removes it again before it can be offered. Directories stay
+		// pre-excluded because un-excluding one makes rsync walk every file beneath it —
+		// measured at roughly 5x on a large node_modules — and nobody is surprised that
+		// an ignored build directory did not sync.
+		exc.patterns = append(exc.patterns, ignoredDirs(gitignored)...)
 		exc.gitignored = excludedNames(gitignored)
 		exc.inWorkTree = true
 	}
 	return exc, nil
+}
+
+// ignoredDirs returns the subset of patterns that name directories, which `git
+// ls-files --directory` marks with a trailing slash. These are the only gitignore
+// patterns csync passes to rsync as --exclude; see localExclusions for why the
+// ignored files are deliberately left in.
+func ignoredDirs(patterns []string) []string {
+	var dirs []string
+	for _, p := range patterns {
+		if strings.HasSuffix(p, "/") {
+			dirs = append(dirs, p)
+		}
+	}
+	return dirs
 }
 
 // hasCsyncToml reports whether dir contains a .csync.toml file — a regular file,
@@ -187,11 +208,12 @@ func gitignoreExcludes(ctx context.Context, r *command.Runner, dir string) ([]st
 // that exists only on the remote yet matches a local ignore rule slips past it and
 // would be pulled. checkIgnored evaluates each surviving path against the local
 // repo's ignore rules — file existence not required — catching exactly those
-// remote-only cases. The two filters are disjoint: the pre-filter removes ignored
-// LOCAL files before rsync ever walks them, so they never reach this list, and this
-// pass only ever removes paths that survived to the comparison. The dropped names
-// join the disclosed set, since these are gitignored paths held back too.
-func dropIgnoredActions(ctx context.Context, r *command.Runner, dir string, actions []Action) ([]Action, []string, error) {
+// remote-only cases. It is also what removes the ignored LOCAL files that
+// localExclusions now deliberately leaves in the comparison, so this pass carries
+// every gitignored change csync declined to offer. The dropped actions are returned
+// whole rather than as names because the withheld disclosure reports each one's verb
+// alongside its path.
+func dropIgnoredActions(ctx context.Context, r *command.Runner, dir string, actions []Action) ([]Action, []Action, error) {
 	if len(actions) == 0 {
 		return actions, nil, nil
 	}
@@ -207,15 +229,29 @@ func dropIgnoredActions(ctx context.Context, r *command.Runner, dir string, acti
 		return actions, nil, nil
 	}
 	kept := make([]Action, 0, len(actions))
-	var dropped []string
+	var dropped []Action
 	for _, a := range actions {
 		if ignored[a.Path] {
-			dropped = append(dropped, a.Path)
+			dropped = append(dropped, a)
 			continue
 		}
 		kept = append(kept, a)
 	}
 	return kept, dropped, nil
+}
+
+// mergeExcluded adds each dropped action's path to names unless it is already
+// there. A gitignored file in the local tree is now disclosed twice over — once by
+// `git ls-files` and again when this pass drops its change — and counting it twice
+// would tell the user more paths were held back than were.
+func mergeExcluded(names []string, dropped []Action) []string {
+	for _, a := range dropped {
+		if slices.Contains(names, a.Path) {
+			continue
+		}
+		names = append(names, a.Path)
+	}
+	return names
 }
 
 // excludedNames turns the rsync exclude patterns from gitignoreExcludes into the plain

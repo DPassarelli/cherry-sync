@@ -183,6 +183,11 @@ func run() (code int) {
 	_ = runLog.Excluded(result.Excluded, result.GitDirExcluded, result.CsyncTomlExcluded)
 
 	printAbove(view.Excluded(excludedNotice(result)))
+	// A gitignored path that WOULD have moved is the only exclusion a user gets
+	// surprised by: the file changed, so its absence from the change list looks like
+	// csync missing it rather than honoring .gitignore. Name those changes here, above
+	// the list, so the absence is accounted for where it is noticed.
+	printAbove(view.Withheld(result.Withheld))
 
 	if len(result.Actions) == 0 {
 		// Nothing to do — stop before any selection UI. The non-interactive path
