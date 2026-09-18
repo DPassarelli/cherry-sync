@@ -62,6 +62,12 @@ type Result struct {
 	// Empty when the local side isn't a git work tree or ignores nothing. There's no
 	// opt-out. Each name is root-relative with no rsync anchor, e.g. "build/".
 	Excluded []string
+	// Withheld holds the changes csync found but will not offer, because the path is
+	// gitignored: the file differs, so it would have moved, and the user is told so
+	// rather than left to wonder why it never appeared. Only changed paths appear —
+	// an ignored file already identical on both sides was never going to move, so
+	// naming it would be noise (#59).
+	Withheld []Action
 	// GitDirExcluded reports whether a .git was held out of the comparison, on
 	// EITHER side — git never lists .git/ as ignored, so it is excluded explicitly,
 	// and the exclude applies to whichever side rsync reads. It is read back from
@@ -127,10 +133,12 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 	actions := parseActions(stdout)
 	sortActions(actions)
 	excluded := exc.gitignored
-	// The --exclude pre-filter is built from `git ls-files`, which sees only the
-	// local tree, so on a pull a remote-only file matching a local ignore rule
-	// slips through. Re-check the surviving paths against the local repo's rules and
-	// drop any it ignores, folding their names into the disclosed set. Skipped when the
+	var withheld []Action
+	// Re-check the surviving paths against the local repo's ignore rules and drop any
+	// it ignores. This catches both the ignored local files localExclusions leaves in
+	// on purpose (so rsync can say whether they differ) and, on a pull, a remote-only
+	// file matching a local rule that no `git ls-files` of the local tree could see.
+	// What it drops is exactly what csync then discloses as withheld. Skipped when the
 	// local side isn't a work tree (inWorkTree false) — nothing to ask git about.
 	if exc.inWorkTree {
 		progress.report("building the list")
@@ -140,10 +148,11 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 			return Result{}, err
 		}
 		actions = kept
-		excluded = append(excluded, dropped...)
+		withheld = dropped
+		excluded = mergeExcluded(excluded, dropped)
 	}
 	actions = withCounterparts(ctx, r, source, destination, actions, progress)
-	return Result{Actions: actions, Excluded: excluded, GitDirExcluded: gitDirHidden(stdout), CsyncTomlExcluded: exc.csyncToml}, nil
+	return Result{Actions: actions, Withheld: withheld, Excluded: excluded, GitDirExcluded: gitDirHidden(stdout), CsyncTomlExcluded: exc.csyncToml}, nil
 }
 
 // rsyncArgs builds the argument vector for the dry-run comparison. The `--`

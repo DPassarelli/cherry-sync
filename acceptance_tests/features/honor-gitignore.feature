@@ -41,12 +41,12 @@ Feature: Honor .gitignore when comparing
       | update | README.md |
     And   the reported change count should be 1
 
-  Scenario: The comparison discloses how many ignored paths it hid
+  Scenario: The comparison names the ignored change it withheld
     # Teeth: hiding debug.log is silent unless csync says so, and disclosure is
-    # the user's only signal since there's no opt-out flag. The count is 1 — just
-    # debug.log — even though the action list (README.md only) is identical to the
-    # scenario above. Drop the disclosure line and this goes red while the actions
-    # stay green, proving the count is reported in its own right.
+    # the user's only signal since there's no opt-out flag. The row names debug.log
+    # and the action csync declined, even though the action list (README.md only)
+    # is identical to the scenario above. Drop the disclosure and this goes red
+    # while the actions stay green, proving it is reported in its own right.
     Given a local git repository containing these files:
       """
       src/main.go
@@ -60,7 +60,9 @@ Feature: Honor .gitignore when comparing
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
-    Then  the reported excluded count should be 1
+    Then  the withheld changes should be:
+      | action | path      |
+      | create | debug.log |
 
   Scenario: A gitignored .csync.toml is disclosed once, not counted twice
     # csync withholds its own .csync.toml unconditionally, and a project with a saved
@@ -69,9 +71,11 @@ Feature: Honor .gitignore when comparing
     # disclosure, it would be announced twice, and a user reading ".csync.toml" plus
     # "2 gitignored paths" would think three files were held back when only two were.
     #
-    # Teeth: the count is 1 — debug.log alone. Let .csync.toml through into the
-    # gitignored set and it becomes 2, while its own disclosure stays green, which is
-    # exactly the double-count this pins.
+    # Teeth: the withheld set is debug.log alone, and the run log's excluded list
+    # holds that one path. Let .csync.toml through into the gitignored set and the
+    # log lists it a second time, while its own disclosure stays green — exactly the
+    # double-count this pins. The log carries the teeth because .csync.toml is
+    # excluded unconditionally and so can never surface as a withheld change.
     Given a local git repository containing these files:
       """
       src/main.go
@@ -89,8 +93,67 @@ Feature: Honor .gitignore when comparing
     And   that all of the files are identical between local and remote
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
-    Then  the reported excluded count should be 1
+    Then  the log should record the excluded paths:
+      | debug.log |
     And   the .csync.toml file should be reported as excluded
+
+  Scenario: An ignored file that changed is reported as withheld
+    # Teeth for #59: an ignored file that WOULD have moved is the only exclusion a
+    # user gets surprised by, and today it vanishes into a count. The row names the
+    # change csync declined to make. Restore the file-level pre-filter and rsync
+    # never compares .env, so no withheld row can be produced — red.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      .env
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      .env
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file ".env" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  the withheld changes should be:
+      | action | path |
+      | update | .env |
+
+  Scenario: An ignored file that matches on both sides is not reported as withheld
+    # The block reports withheld CHANGES, not withheld paths: an ignored file that
+    # is already identical was never going to move, so naming it is noise. Report
+    # every ignored path instead of only the changed ones and .env appears here — red.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      .env
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      .env
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "src/main.go" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  no withheld changes should be reported
+
+  Scenario: A change inside an ignored directory is not reported as withheld
+    # Ignored directories stay pre-excluded so rsync never walks them — a measured
+    # 5x on a large one — which is the deliberate limit of this disclosure: nobody is
+    # surprised that build/ did not sync. Drop the directory pre-filter to surface
+    # these and the walk cost comes back with them.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      build/output.bin
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "build/output.bin" has been changed locally
+    When  I run "csync ./project user@host:/project"
+    Then  no withheld changes should be reported
 
   Scenario: A non-repository local side excludes nothing
     # Teeth: this local directory is NOT a git work tree, yet it carries a
@@ -120,7 +183,7 @@ Feature: Honor .gitignore when comparing
       | update | README.md |
       | create | debug.log |
     And   the reported change count should be 2
-    And   no gitignored paths should be reported as excluded
+    And   no withheld changes should be reported
     And   the .git directory should not be reported as excluded
 
   Scenario: A file ignored via .git/info/exclude is left out
@@ -216,7 +279,7 @@ Feature: Honor .gitignore when comparing
     And   an empty remote directory
     When  I run "csync ./project user@host:/project"
     Then  the .git directory should be reported as excluded
-    And   no gitignored paths should be reported as excluded
+    And   no withheld changes should be reported
 
   Scenario: A submodule's nested .git metadata is never offered for sync
     # Teeth — the FLOATING ".git" exclude (no leading slash), covering the
@@ -289,7 +352,7 @@ Feature: Honor .gitignore when comparing
     # to exist locally — so the remote-only secret.log is dropped while notes.txt
     # (not ignored) is offered. Teeth: remove the check-ignore post-filter and
     # secret.log returns as a second create, the change count becomes 2, and the
-    # excluded count vanishes (no gitignored path reported) — red on all three.
+    # withheld row vanishes (secret.log accounted for nowhere) — red on all three.
     # Verified by experiment that `git check-ignore` flags a non-existent path yet
     # honors the index (a force-added tracked *.log would NOT be dropped).
     Given a local git repository containing these files:
@@ -309,7 +372,9 @@ Feature: Honor .gitignore when comparing
       | action | path      |
       | create | notes.txt |
     And   the reported change count should be 1
-    And   the reported excluded count should be 1
+    And   the withheld changes should be:
+      | action | path       |
+      | create | secret.log |
 
   @remote
   Scenario: Pull direction — a remote repository's .git is never offered for sync
@@ -359,7 +424,7 @@ Feature: Honor .gitignore when comparing
       """
     When  I run "csync user@host:/project ./project"
     Then  the .git directory should be reported as excluded
-    And   no gitignored paths should be reported as excluded
+    And   no withheld changes should be reported
 
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.

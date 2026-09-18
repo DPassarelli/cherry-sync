@@ -7,10 +7,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/cucumber/godog"
 )
 
 // parseLogAt reads the run log at path and returns it parsed, along with the raw
@@ -271,6 +275,31 @@ func theLogShouldRecordAmongTheExcludedPaths(ctx context.Context, path string) e
 		return nil
 	}
 	return fmt.Errorf("run log's excluded paths do not include %q; got %+v; contents:\n%s", path, log.ExcludedGitignored, content)
+}
+
+// theLogShouldRecordTheExcludedPaths asserts the exclusion record names exactly the
+// table's paths, in any order. Unlike its "among" sibling this is exhaustive, which
+// is what lets it catch a path disclosed twice over — the on-screen count that used
+// to catch that is gone.
+func theLogShouldRecordTheExcludedPaths(ctx context.Context, table *godog.Table) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	if !log.HasExcluded {
+		return fmt.Errorf("run log records no excluded line; contents:\n%s", content)
+	}
+	var want []string
+	for _, row := range table.Rows {
+		want = append(want, row.Cells[0].Value)
+	}
+	got := append([]string(nil), log.ExcludedGitignored...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("run log's excluded paths: got %+v, want %+v; contents:\n%s", got, want, content)
+	}
+	return nil
 }
 
 // theLogShouldRecordThatTheGitDirectoryWasExcluded asserts the exclusion record notes
