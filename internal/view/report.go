@@ -14,53 +14,50 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
-// joinAnd renders a list as English prose: "a", "a and b", or "a, b, and c". It
-// composes the Excluded disclosure line, which can name one to three withheld
-// things.
-func joinAnd(parts []string) string {
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	case 2:
-		return parts[0] + " and " + parts[1]
-	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
-	}
-}
-
-// Excluded returns the disclosure of what was held out of the comparison as a
-// dimmed parenthetical aside — "(excluding a, b, and c)" — or the empty string
-// when nothing was, so the caller can print it unconditionally and a clean sync
-// stays noise-free. It is deliberately not aligned with the source/destination
-// header: the disclosure is a separate note, not part of that two-line block. The
-// faint styling drops to plain text when stdout is not a terminal.
-func Excluded(parts []string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-	dim := lipgloss.NewStyle().Faint(true)
-	return dim.Render("(excluding "+joinAnd(parts)+")") + "\n"
-}
-
-// Withheld returns the block naming the changes csync found but will not offer,
-// because each path is gitignored — "Withheld (gitignored):" over one dimmed
-// "verb path" row each — or the empty string when there are none, so the caller can
-// print it unconditionally. The rows carry no selection number: there is no opt-out
-// for an ignored path, and a number would read as an offer. It ends with a blank
-// line so the block is visibly its own, separate from the change list that follows.
-func Withheld(actions []compare.Action) string {
-	if len(actions) == 0 {
+// Excluded returns the section naming what csync withholds on its own account —
+// its .csync.toml, and any .git it found — as a heading over one dimmed path per
+// line, or the empty string when there is nothing to name. The paths are named
+// rather than counted: there are only ever two, and a name tells the user which
+// file to stop looking for. It carries no surrounding blank lines, so the caller
+// can set it directly against the withheld section that follows.
+func Excluded(names []string) string {
+	if len(names) == 0 {
 		return ""
 	}
 	dim := lipgloss.NewStyle().Faint(true)
 	var b strings.Builder
-	b.WriteString(dim.Render("Withheld (gitignored):") + "\n")
-	for _, act := range actions {
-		fmt.Fprintf(&b, "  %s\n", dim.Render(act.Verb+" "+act.Path))
+	b.WriteString(dim.Render("Automatically excluding:") + "\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "  %s\n", dim.Render(n))
 	}
-	b.WriteString("\n")
+	return b.String()
+}
+
+// Withheld returns the section naming the changes csync found but will not offer,
+// because each path is gitignored, or the empty string when there are none. Each row
+// is the path, padded to a common width, then the action csync declined — the column
+// shape the picker uses, so the two lists read alike. The rows carry no selection
+// number: there is no opt-out for an ignored path, and a number would read as an
+// offer. Only changed paths appear; the full ignored set is in the run log, where it
+// costs no screen (#59).
+func Withheld(actions []compare.Action) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	width := 0
+	for _, act := range actions {
+		w := lipgloss.Width(act.Path)
+		if w > width {
+			width = w
+		}
+	}
+	dim := lipgloss.NewStyle().Faint(true)
+	var b strings.Builder
+	b.WriteString(dim.Render("Withheld by .gitignore:") + "\n")
+	for _, act := range actions {
+		pad := strings.Repeat(" ", width-lipgloss.Width(act.Path))
+		fmt.Fprintf(&b, "  %s\n", dim.Render(act.Path+pad+"  "+act.Verb))
+	}
 	return b.String()
 }
 

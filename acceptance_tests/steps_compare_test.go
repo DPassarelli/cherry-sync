@@ -191,37 +191,6 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	return nil
 }
 
-// theReportedExcludedCountShouldBe asserts csync printed an exclusion disclosure
-// and that its count equals want. The "(excluding …)" line is the user's only
-// signal that ignored paths were hidden, so its absence (HasExcludedCount false)
-// is itself a failure.
-func theReportedExcludedCountShouldBe(ctx context.Context, want int) error {
-	r := captured(ctx)
-	parsed := parseOutput(r.Stdout, r.Stderr)
-
-	if !parsed.HasExcludedCount {
-		return fmt.Errorf("no exclusion disclosure in output:\n%s", r.Stdout)
-	}
-	if parsed.ExcludedCount != want {
-		return fmt.Errorf("excluded count: got %d, want %d in output:\n%s", parsed.ExcludedCount, want, r.Stdout)
-	}
-	return nil
-}
-
-// noGitignoredPathsShouldBeReportedAsExcluded asserts csync printed no exclusion
-// disclosure at all — the "(excluding …)" aside is omitted entirely when nothing
-// was hidden, so a non-repo (or empty-ignore) sync stays free of empty-exclusion
-// noise.
-func noGitignoredPathsShouldBeReportedAsExcluded(ctx context.Context) error {
-	r := captured(ctx)
-	parsed := parseOutput(r.Stdout, r.Stderr)
-
-	if parsed.HasExcludedCount {
-		return fmt.Errorf("exclusion disclosure present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
-	}
-	return nil
-}
-
 // theGitDirectoryShouldBeReportedAsExcluded asserts csync's exclusion disclosure
 // announces the .git directory. git never lists .git/ as ignored, so this
 // disclosure is the user's only signal that the VCS metadata dir was held back.

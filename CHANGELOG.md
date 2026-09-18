@@ -8,7 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- A gitignored file that differs between the two sides is now named in a "Withheld (gitignored):" block above the change list, with the action csync declined to take. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical was never going to move), and changes inside an ignored directory are still not surfaced. (#59)
+- A gitignored file that differs between the two sides is now named under a "Withheld by .gitignore:" heading above the change list, alongside the action csync declined to take and laid out like the rows in the picker. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical on both sides was never going to move, and listing the rest would only repeat your .gitignore), and changes inside an ignored directory are still not surfaced. (#59)
+
+### Changed
+
+- The one-line "(excluding …)" disclosure is replaced by named sections above the change list. "Automatically excluding:" names csync's own .csync.toml and the .git directory rather than describing them in prose, and the gitignored-path count is gone — the full set of withheld paths is still recorded in the run log. (#59)
 
 ### Fixed
 
