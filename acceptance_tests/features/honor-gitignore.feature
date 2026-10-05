@@ -377,6 +377,50 @@ Feature: Honor .gitignore when comparing
       | create | secret.log |
 
   @remote
+  Scenario: Pull direction — a change inside a remote-only ignored directory is not reported as withheld
+    # The pull-side twin of "A change inside an ignored directory is not reported as
+    # withheld". An ignored directory that exists only on the remote is invisible to
+    # `git ls-files`, so it is never pre-excluded and rsync itemizes every file
+    # inside it; `git check-ignore` then withholds each one. Listing them one by one
+    # buries the withheld section under a directory nobody expected to sync. Teeth:
+    # drop the collapse and build/a/output.bin returns as a withheld create.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "build/a/output.bin" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  no withheld changes should be reported
+
+  @remote
+  Scenario: Pull direction — a remote-only ignored directory is logged once
+    # Collapsing the withheld rows must not lose the record of what was held back:
+    # the run log names the ignored directory, as a push already does via `git
+    # ls-files --directory`. Two files in separate subdirectories make "once"
+    # falsifiable and pin the TOPMOST ignored ancestor, the one the .gitignore names.
+    # Teeth: drop the collapse and the log lists both files; collapse to the deepest
+    # ignored ancestor and it lists build/a/ and build/b/.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "build/a/output.bin" has been added on the remote
+    And   that the file "build/b/other.bin" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the log should record the excluded paths:
+      | build/ |
+
+  @remote
   Scenario: Pull direction — a remote repository's .git is never offered for sync
     # The mirror of "The local .git directory is never offered for sync", and the
     # case #103 reports. The .git exclusion is gated on the LOCAL side being a work
