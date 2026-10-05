@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,6 +333,42 @@ func theFileShouldStillExistOnTheRemote(ctx context.Context, relPath string) err
 	}
 	if err != nil {
 		return fmt.Errorf("stat remote %s: %w", relPath, err)
+	}
+	return nil
+}
+
+// theWithheldChangesShouldBeSummarizedAs asserts the withheld block's summary rows
+// match the table exactly, in any order.
+func theWithheldChangesShouldBeSummarizedAs(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).WithheldSummaries
+
+	var want []WithheldSummary
+	for _, row := range table.Rows[1:] {
+		count, err := strconv.Atoi(row.Cells[1].Value)
+		if err != nil {
+			return fmt.Errorf("count %q: %w", row.Cells[1].Value, err)
+		}
+		want = append(want, WithheldSummary{Folder: row.Cells[0].Value, Count: count, Actions: row.Cells[2].Value})
+	}
+
+	byFolder := func(a, b WithheldSummary) int { return strings.Compare(a.Folder, b.Folder) }
+	slices.SortFunc(got, byFolder)
+	slices.SortFunc(want, byFolder)
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("withheld summaries: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// theWithheldChangesShouldListIndividualFiles asserts the withheld block names want
+// files one row each, with no summary standing in for any of them.
+func theWithheldChangesShouldListIndividualFiles(ctx context.Context, want int) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	got := len(out.Withheld)
+	if got != want || len(out.WithheldSummaries) > 0 {
+		return fmt.Errorf("withheld rows: got %d (and summaries %+v), want %d individual files in output:\n%s", got, out.WithheldSummaries, want, r.Stdout)
 	}
 	return nil
 }

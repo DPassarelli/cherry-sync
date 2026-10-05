@@ -24,16 +24,20 @@ type ReportedOutput struct {
 	// selectable, so folding them together would read as changes on offer.
 	Withheld         []Action
 	HasWithheldBlock bool
-	SyncCount        int
-	HasSyncCount     bool
-	RemovedCount     int
-	HasRemovedCount  bool
-	Message          string
-	Version          string
-	LogPath          string
-	HasLogPath       bool
-	NotLogged        string
-	Warning          string
+	// WithheldSummaries holds the withheld block's summary rows, each standing in for
+	// the many withheld changes under one top-level folder. They are kept apart from
+	// Withheld because a summary names a folder and a count, not a change.
+	WithheldSummaries []WithheldSummary
+	SyncCount         int
+	HasSyncCount      bool
+	RemovedCount      int
+	HasRemovedCount   bool
+	Message           string
+	Version           string
+	LogPath           string
+	HasLogPath        bool
+	NotLogged         string
+	Warning           string
 }
 
 // Action is a single planned change in csync's reported output: a verb
@@ -49,6 +53,15 @@ type Action struct {
 	// file compare, empty on a row that carries none (a create, a delete, or a row
 	// whose destination could not be measured).
 	Detail string
+}
+
+// WithheldSummary is the test-side view of one summary row in the withheld block:
+// the top-level folder it stands for, how many withheld files it covers, and its
+// actions column exactly as rendered (a lone verb, or per-verb counts).
+type WithheldSummary struct {
+	Folder  string
+	Count   int
+	Actions string
 }
 
 // labeledLineRE and actionLineRE match the two line shapes csync prints:
@@ -106,6 +119,11 @@ var (
 	// The block runs from this line to the next blank one, and parseOutput cuts that
 	// span out of the report before scanning it for actions.
 	withheldHeaderRE = regexp.MustCompile(`(?m)^Withheld by \.gitignore:[^\S\n]*$`)
+	// withheldSummaryRE captures a withheld block's summary row: the folder, its count
+	// of files (which may carry thousands separators), and the actions column. It is
+	// tried before actionLineRE, which would otherwise read the row as a change to a
+	// path named after the folder.
+	withheldSummaryRE = regexp.MustCompile(`^[^\S\n]+(\S+)[^\S\n]+([\d,]+) files[^\S\n]{2,}(.+?)[^\S\n]*$`)
 	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
 	// past — today, only its inability to write a run log.
 	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
@@ -193,8 +211,17 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	withheld, report := carveSection(report, withheldHeaderRE)
 	auto, report := carveSection(report, autoExcludedHeaderRE)
 	out.HasWithheldBlock = withheld != ""
-	for _, m := range actionLineRE.FindAllStringSubmatch(withheld, -1) {
-		out.Withheld = append(out.Withheld, Action{Verb: m[3], Path: m[2], Detail: m[4]})
+	for line := range strings.SplitSeq(withheld, "\n") {
+		sm := withheldSummaryRE.FindStringSubmatch(line)
+		if sm != nil {
+			n, _ := strconv.Atoi(strings.ReplaceAll(sm[2], ",", ""))
+			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: sm[1], Count: n, Actions: sm[3]})
+			continue
+		}
+		m := actionLineRE.FindStringSubmatch(line)
+		if m != nil {
+			out.Withheld = append(out.Withheld, Action{Verb: m[3], Path: m[2], Detail: m[4]})
+		}
 	}
 	out.ExcludedGitDir = strings.Contains(auto, ".git/")
 	out.ExcludedCsyncToml = strings.Contains(auto, ".csync.toml")

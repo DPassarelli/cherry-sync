@@ -33,34 +33,6 @@ func Excluded(names []string) string {
 	return b.String()
 }
 
-// Withheld returns the section naming the changes csync found but will not offer,
-// because each path is gitignored, or the empty string when there are none. Each row
-// is the path, padded to a common width, then the action csync declined — the column
-// shape the picker uses, so the two lists read alike. The rows carry no selection
-// number: there is no opt-out for an ignored path, and a number would read as an
-// offer. Only changed paths appear; the full ignored set is in the run log, where it
-// costs no screen (#59).
-func Withheld(actions []compare.Action) string {
-	if len(actions) == 0 {
-		return ""
-	}
-	width := 0
-	for _, act := range actions {
-		w := lipgloss.Width(act.Path)
-		if w > width {
-			width = w
-		}
-	}
-	dim := lipgloss.NewStyle().Faint(true)
-	var b strings.Builder
-	b.WriteString(dim.Render("Withheld by .gitignore:") + "\n")
-	for _, act := range actions {
-		pad := strings.Repeat(" ", width-lipgloss.Width(act.Path))
-		fmt.Fprintf(&b, "  %s\n", dim.Render(act.Path+pad+"  "+act.Verb))
-	}
-	return b.String()
-}
-
 // LogPath returns the disclosure of where this run's log was written, as a dimmed
 // "Log written to <path>" line. csync always says where it logged, on the runs that fail as
 // much as on the ones that succeed — those are the runs worth reading, and a

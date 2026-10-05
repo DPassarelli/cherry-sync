@@ -371,3 +371,30 @@ func copyTree(src, dst string) error {
 		return os.WriteFile(target, data, 0o644)
 	})
 }
+
+// filesHaveBeenAddedOnTheRemoteUnder adds count remote-only files to dir on the
+// remote. The ".log" extension lets one step serve both a directory rule
+// (`build/`) and a file-pattern rule (`logs/*.log`).
+func filesHaveBeenAddedOnTheRemoteUnder(ctx context.Context, count int, dir string) (context.Context, error) {
+	for i := 1; i <= count; i++ {
+		var err error
+		ctx, err = theFileHasBeenAddedOnTheRemote(ctx, fmt.Sprintf("%s/remote-%02d.log", dir, i))
+		if err != nil {
+			return ctx, err
+		}
+	}
+	return ctx, nil
+}
+
+// filesHaveBeenAddedLocallyUnder adds count local-only files to dir, named apart
+// from the remote ones so that a pull reads each as a delete.
+func filesHaveBeenAddedLocallyUnder(ctx context.Context, count int, dir string) (context.Context, error) {
+	for i := 1; i <= count; i++ {
+		var err error
+		ctx, err = theFileHasBeenAddedLocally(ctx, fmt.Sprintf("%s/local-%02d.log", dir, i))
+		if err != nil {
+			return ctx, err
+		}
+	}
+	return ctx, nil
+}

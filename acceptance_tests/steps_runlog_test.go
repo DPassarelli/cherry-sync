@@ -456,3 +456,18 @@ func theLogShouldNameTheSourceAndDestinationReported(ctx context.Context) error 
 	}
 	return nil
 }
+
+// theLogShouldRecordExcludedPaths asserts how many gitignored paths the exclusion
+// record names. A count suffices where the paths are generated in bulk; what it
+// guards is that a summarized folder still logs every file beneath it.
+func theLogShouldRecordExcludedPaths(ctx context.Context, want int) error {
+	log, content, err := resolvedLog(ctx)
+	if err != nil {
+		return err
+	}
+	got := len(log.ExcludedGitignored)
+	if got != want {
+		return fmt.Errorf("run log's excluded path count: got %d, want %d; contents:\n%s", got, want, content)
+	}
+	return nil
+}

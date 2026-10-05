@@ -176,22 +176,11 @@ func dropIgnoredActions(ctx context.Context, r *command.Runner, dir string, acti
 // `git ls-files` and again when this pass drops its change — and counting it twice
 // would tell the user more paths were held back than were.
 func mergeExcluded(names []string, dropped []Action) []string {
-	paths := make([]string, len(dropped))
-	for i, a := range dropped {
-		paths[i] = a.Path
-	}
-	return mergeNames(names, paths)
-}
-
-// mergeNames adds each of more to names unless it is already there. A directory
-// collapsed on a pull can also have been reported by `git ls-files` when part of
-// it exists locally, and naming it twice would overstate what was held back.
-func mergeNames(names, more []string) []string {
-	for _, n := range more {
-		if slices.Contains(names, n) {
+	for _, a := range dropped {
+		if slices.Contains(names, a.Path) {
 			continue
 		}
-		names = append(names, n)
+		names = append(names, a.Path)
 	}
 	return names
 }

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- A gitignored file that differs between the two sides is now named under a "Withheld by .gitignore:" heading above the change list, alongside the action csync declined to take and laid out like the rows in the picker. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical on both sides was never going to move, and listing the rest would only repeat your .gitignore), and changes inside an ignored directory are still not surfaced. (#59)
+- A gitignored file that differs between the two sides is now named under a "Withheld by .gitignore:" heading above the change list, alongside the action csync declined to take and laid out like the rows in the picker. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical on both sides was never going to move, and listing the rest would only repeat your .gitignore), and changes inside an ignored directory that exists locally are still not surfaced. A top-level folder with more than 10 withheld changes is summarized as one row with a count of each action, so a large ignored folder on the far side of a pull can't bury the changes on offer. (#59)
 
 ### Changed
 

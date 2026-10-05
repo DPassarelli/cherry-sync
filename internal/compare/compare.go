@@ -147,14 +147,9 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 		if err != nil {
 			return Result{}, err
 		}
-		c, err := collapseIgnoredDirs(ctx, r, dir, dropped)
-		if err != nil {
-			return Result{}, err
-		}
 		actions = kept
-		withheld = c.withheld
-		excluded = mergeExcluded(excluded, c.withheld)
-		excluded = mergeNames(excluded, c.dirs)
+		withheld = dropped
+		excluded = mergeExcluded(excluded, dropped)
 	}
 	actions = withCounterparts(ctx, r, source, destination, actions, progress)
 	return Result{Actions: actions, Withheld: withheld, Excluded: excluded, GitDirExcluded: gitDirHidden(stdout), CsyncTomlExcluded: exc.csyncToml}, nil
