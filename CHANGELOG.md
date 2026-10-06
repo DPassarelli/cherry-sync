@@ -6,11 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [1.3.1-rc.1] - 2026-10-06
-
-- Release candidate to exercise the updated release workflow that attempts to resolve #113. CI update only; no change to the application itself.
-
-## [1.3.0] - 2026-10-05
+## [1.3.0] - 2026-10-06
 
 ### Added
 
@@ -24,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A file that isn't gitignored is no longer hidden just because every local file in its folder is (for example, all matching `logs/*.log`). Previously csync excluded the whole folder, so a file present only on the other side never appeared. (#118)
 - A local path written with a `~` home shortcut now resolves to your home directory instead of reaching `rsync` as a literal directory name. Previously `~/project` as a source failed to find anything, and as a destination it quietly wrote into a directory named `~`. A `~user` shortcut names another account's home, which csync does not resolve, so it is rejected up front. (#71)
+- The release workflow's linux/arm64 smoketest no longer fails due to an intermittent Azure CLI deadlock. (#113)
 
 ## [1.2.0] - 2026-09-05
 
