@@ -5,33 +5,22 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/runlog"
 )
 
-// excludedNotice names what the comparison held back, for the one line that
-// discloses it. There is no opt-out flag, so that line is the user's only signal.
-// Up to three independent things can be withheld: csync's own .csync.toml (whenever
-// present), the .git/ metadata directory (when the local side is a repo), and
-// gitignored paths. Each appears only when it applies, and nothing withheld returns
-// nothing, so a clean sync stays noise-free.
-func excludedNotice(result compare.Result) []string {
+// autoExcluded names what csync withheld on its own account, in the order the
+// disclosure lists them: its own .csync.toml, and a .git directory if rsync reported
+// holding one back. The gitignored paths are deliberately absent — those are named
+// only when they would have moved (see compare.Result.Withheld), since listing the
+// rest just repeats the .gitignore the user can already read.
+func autoExcluded(result compare.Result) []string {
 	var excluded []string
 	if result.CsyncTomlExcluded {
 		excluded = append(excluded, ".csync.toml")
 	}
 	if result.GitDirExcluded {
-		excluded = append(excluded, "the .git directory")
-	}
-	n := len(result.Excluded)
-	if n > 0 {
-		noun := "paths"
-		if n == 1 {
-			noun = "path"
-		}
-		excluded = append(excluded, fmt.Sprintf("%d gitignored %s", n, noun))
+		excluded = append(excluded, ".git/")
 	}
 	return excluded
 }

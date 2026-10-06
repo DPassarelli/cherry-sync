@@ -182,7 +182,16 @@ func run() (code int) {
 	// rather than counted.
 	_ = runLog.Excluded(result.Excluded, result.GitDirExcluded, result.CsyncTomlExcluded)
 
-	printAbove(view.Excluded(excludedNotice(result)))
+	// What csync held back, named above the change list so an absence is accounted for
+	// where it is noticed: the paths it excludes on its own account, then the
+	// gitignored paths that WOULD have moved — the only exclusions a user gets
+	// surprised by, since the file changed and its absence looks like csync missing it
+	// rather than honoring .gitignore. The two sections sit together, wrapped in blank
+	// lines only when at least one of them has something to say.
+	disclosures := view.Excluded(autoExcluded(result)) + view.Withheld(result.Withheld)
+	if disclosures != "" {
+		printAbove("\n" + disclosures + "\n")
+	}
 
 	if len(result.Actions) == 0 {
 		// Nothing to do — stop before any selection UI. The non-interactive path

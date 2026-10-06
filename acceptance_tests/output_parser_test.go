@@ -15,11 +15,19 @@ type ReportedOutput struct {
 	Destination       string
 	ChangeCount       int
 	HasChangeCount    bool
-	ExcludedCount     int
-	HasExcludedCount  bool
 	ExcludedGitDir    bool
 	ExcludedCsyncToml bool
 	Actions           []Action
+	// Withheld holds the rows of the "Withheld (gitignored):" block — changes csync
+	// found but declined to offer because the path is gitignored. They are parsed
+	// apart from Actions because they share the indented row shape but are never
+	// selectable, so folding them together would read as changes on offer.
+	Withheld         []Action
+	HasWithheldBlock bool
+	// WithheldSummaries holds the withheld block's summary rows, each standing in for
+	// the many withheld changes under one top-level folder. They are kept apart from
+	// Withheld because a summary names a folder and a count, not a change.
+	WithheldSummaries []WithheldSummary
 	SyncCount         int
 	HasSyncCount      bool
 	RemovedCount      int
@@ -47,6 +55,15 @@ type Action struct {
 	Detail string
 }
 
+// WithheldSummary is the test-side view of one summary row in the withheld block:
+// the top-level folder it stands for, how many withheld files it covers, and its
+// actions column exactly as rendered (a lone verb, or per-verb counts).
+type WithheldSummary struct {
+	Folder  string
+	Count   int
+	Actions string
+}
+
 // labeledLineRE and actionLineRE match the two line shapes csync prints:
 // labeledLineRE captures `Label: value` summary lines (Source, Destination,
 // Changes); actionLineRE captures the indented action lines, with an optional
@@ -63,14 +80,10 @@ var (
 	// a path that contains one. A path that both contains "  (" and ends in ")"
 	// would still fool it, which no fixture does and a real report would not either.
 	actionLineRE = regexp.MustCompile(`(?m)^[^\S\n]+(?:(\d+)\.\s+)?(\S+)\s+(.+?)(?:  \((.*)\))?\s*$`)
-	// excludingRE captures the parenthetical disclosure of what was held out of the
-	// comparison, e.g. "(excluding .csync.toml, the .git directory, and 3 gitignored
-	// paths)". The captured group is the inner clause, parsed for its parts below.
-	excludingRE = regexp.MustCompile(`(?m)^\(excluding (.+)\)\s*$`)
-	// gitignoredCountRE pulls the gitignored-path count out of the excluding clause
-	// (e.g. "the .git directory and 3 gitignored paths"). The .git directory is
-	// disclosed separately and is not part of this count.
-	gitignoredCountRE = regexp.MustCompile(`(\d+) gitignored`)
+	// autoExcludedHeaderRE matches the header introducing the paths csync withholds
+	// on its own account — its .csync.toml and any .git it found. Like the withheld
+	// block, the section runs from this line to the next blank one.
+	autoExcludedHeaderRE = regexp.MustCompile(`(?m)^Automatically excluding:[^\S\n]*$`)
 	// syncCompleteRE pulls the file count out of the post-sync summary header
 	// ("Sync complete! (3 files)" / "(1 file)"), the count that used to be the
 	// "Synced: N" line.
@@ -102,6 +115,15 @@ var (
 	// different label, so a reader — and the scenario asserting csync named no log —
 	// cannot mistake one for the other.
 	notLoggedRE = regexp.MustCompile(`(?m)^Not logged:[^\S\n]*(.*?)[^\S\n]*$`)
+	// withheldHeaderRE matches the header introducing the withheld-changes block.
+	// The block runs from this line to the next blank one, and parseOutput cuts that
+	// span out of the report before scanning it for actions.
+	withheldHeaderRE = regexp.MustCompile(`(?m)^Withheld by \.gitignore:[^\S\n]*$`)
+	// withheldSummaryRE captures a withheld block's summary row: the folder, its count
+	// of files (which may carry thousands separators), and the actions column. It is
+	// tried before actionLineRE, which would otherwise read the row as a change to a
+	// path named after the folder.
+	withheldSummaryRE = regexp.MustCompile(`^[^\S\n]+(\S+)[^\S\n]+([\d,]+) files[^\S\n]{2,}(.+?)[^\S\n]*$`)
 	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
 	// past — today, only its inability to write a run log.
 	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
@@ -117,6 +139,29 @@ func operandValue(v string) string {
 		return before
 	}
 	return v
+}
+
+// carveSection cuts the disclosure section introduced by header out of report,
+// returning the section's rows and the report without them. The section ends at the
+// first line that is blank or not indented, so it stops at the next heading whether
+// or not a blank line separates the two — the sections are printed back to back.
+func carveSection(report string, header *regexp.Regexp) (string, string) {
+	loc := header.FindStringIndex(report)
+	if loc == nil {
+		return "", report
+	}
+	rest := report[loc[1]:]
+	end := len(rest)
+	offset := 0
+	for _, line := range strings.SplitAfter(rest, "\n") {
+		trimmed := strings.TrimRight(line, "\n")
+		if offset > 0 && (strings.TrimSpace(trimmed) == "" || !strings.HasPrefix(trimmed, " ")) {
+			end = offset
+			break
+		}
+		offset += len(line)
+	}
+	return rest[:end], report[:loc[0]] + report[loc[1]+end:]
 }
 
 // parseOutput translates csync's rendered stdout and stderr into a structured
@@ -158,6 +203,28 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 			out.RemovedCount = n
 		}
 	}
+
+	// The two disclosure sections sit directly against each other, and their indented
+	// rows share the shape of the action list, so carve each one out of the report
+	// before anything scans it: left in place, the withheld rows would read as changes
+	// on offer and a section heading as the status message.
+	withheld, report := carveSection(report, withheldHeaderRE)
+	auto, report := carveSection(report, autoExcludedHeaderRE)
+	out.HasWithheldBlock = withheld != ""
+	for line := range strings.SplitSeq(withheld, "\n") {
+		sm := withheldSummaryRE.FindStringSubmatch(line)
+		if sm != nil {
+			n, _ := strconv.Atoi(strings.ReplaceAll(sm[2], ",", ""))
+			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: sm[1], Count: n, Actions: sm[3]})
+			continue
+		}
+		m := actionLineRE.FindStringSubmatch(line)
+		if m != nil {
+			out.Withheld = append(out.Withheld, Action{Verb: m[3], Path: m[2], Detail: m[4]})
+		}
+	}
+	out.ExcludedGitDir = strings.Contains(auto, ".git/")
+	out.ExcludedCsyncToml = strings.Contains(auto, ".csync.toml")
 
 	vm := versionLineRE.FindStringSubmatch(report)
 	if vm != nil {
@@ -201,24 +268,6 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		}
 	}
 
-	// The "(excluding …)" aside discloses what was held out of the comparison: the
-	// .git directory (when the local side is a repo), csync's own .csync.toml, and/or
-	// a gitignored-path count. They are reported independently — .git/ exclusion can
-	// show with no gitignored paths at all — so parse them as separate signals rather
-	// than a single leading number.
-	em := excludingRE.FindStringSubmatch(report)
-	if em != nil {
-		out.ExcludedGitDir = strings.Contains(em[1], ".git directory")
-		out.ExcludedCsyncToml = strings.Contains(em[1], ".csync.toml")
-		cm := gitignoredCountRE.FindStringSubmatch(em[1])
-		if cm != nil {
-			out.HasExcludedCount = true
-			n, err := strconv.Atoi(cm[1])
-			if err == nil {
-				out.ExcludedCount = n
-			}
-		}
-	}
 	for _, m := range actionLineRE.FindAllStringSubmatch(report, -1) {
 		actionIdx := 0
 		if m[1] != "" {
@@ -233,7 +282,7 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if labeledLineRE.MatchString(line) || actionLineRE.MatchString(line) || excludingRE.MatchString(line) {
+		if labeledLineRE.MatchString(line) || actionLineRE.MatchString(line) {
 			continue
 		}
 		out.Message = strings.TrimSpace(line)

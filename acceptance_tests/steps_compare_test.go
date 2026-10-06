@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +45,39 @@ func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 	wantSorted := sortActions(verbPath(want))
 	if !reflect.DeepEqual(gotSorted, wantSorted) {
 		return fmt.Errorf("Actions: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// theWithheldChangesShouldBe asserts the "Withheld (gitignored):" block lists
+// exactly the table's rows — the changes csync found but declined to offer because
+// the path is gitignored. Order-insensitive, like its counterpart for the action
+// list.
+func theWithheldChangesShouldBe(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).Withheld
+
+	want, err := actionsFromTable(table)
+	if err != nil {
+		return err
+	}
+
+	gotSorted := sortActions(verbPath(got))
+	wantSorted := sortActions(verbPath(want))
+	if !reflect.DeepEqual(gotSorted, wantSorted) {
+		return fmt.Errorf("Withheld: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// noWithheldChangesShouldBeReported asserts csync named no withheld change at all:
+// an empty block is as much a failure as a populated one, since a heading over
+// nothing still tells the user something was held back.
+func noWithheldChangesShouldBeReported(ctx context.Context) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	if out.HasWithheldBlock || len(out.Withheld) > 0 {
+		return fmt.Errorf("expected no withheld changes, got %+v in output:\n%s", out.Withheld, r.Stdout)
 	}
 	return nil
 }
@@ -154,37 +188,6 @@ func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
 	}
 	if parsed.ChangeCount != want {
 		return fmt.Errorf("Changes: got %d, want %d in output:\n%s", parsed.ChangeCount, want, r.Stdout)
-	}
-	return nil
-}
-
-// theReportedExcludedCountShouldBe asserts csync printed an exclusion disclosure
-// and that its count equals want. The "(excluding …)" line is the user's only
-// signal that ignored paths were hidden, so its absence (HasExcludedCount false)
-// is itself a failure.
-func theReportedExcludedCountShouldBe(ctx context.Context, want int) error {
-	r := captured(ctx)
-	parsed := parseOutput(r.Stdout, r.Stderr)
-
-	if !parsed.HasExcludedCount {
-		return fmt.Errorf("no exclusion disclosure in output:\n%s", r.Stdout)
-	}
-	if parsed.ExcludedCount != want {
-		return fmt.Errorf("excluded count: got %d, want %d in output:\n%s", parsed.ExcludedCount, want, r.Stdout)
-	}
-	return nil
-}
-
-// noGitignoredPathsShouldBeReportedAsExcluded asserts csync printed no exclusion
-// disclosure at all — the "(excluding …)" aside is omitted entirely when nothing
-// was hidden, so a non-repo (or empty-ignore) sync stays free of empty-exclusion
-// noise.
-func noGitignoredPathsShouldBeReportedAsExcluded(ctx context.Context) error {
-	r := captured(ctx)
-	parsed := parseOutput(r.Stdout, r.Stderr)
-
-	if parsed.HasExcludedCount {
-		return fmt.Errorf("exclusion disclosure present (count %d) but none expected in output:\n%s", parsed.ExcludedCount, r.Stdout)
 	}
 	return nil
 }
@@ -330,6 +333,42 @@ func theFileShouldStillExistOnTheRemote(ctx context.Context, relPath string) err
 	}
 	if err != nil {
 		return fmt.Errorf("stat remote %s: %w", relPath, err)
+	}
+	return nil
+}
+
+// theWithheldChangesShouldBeSummarizedAs asserts the withheld block's summary rows
+// match the table exactly, in any order.
+func theWithheldChangesShouldBeSummarizedAs(ctx context.Context, table *godog.Table) error {
+	r := captured(ctx)
+	got := parseOutput(r.Stdout, r.Stderr).WithheldSummaries
+
+	var want []WithheldSummary
+	for _, row := range table.Rows[1:] {
+		count, err := strconv.Atoi(row.Cells[1].Value)
+		if err != nil {
+			return fmt.Errorf("count %q: %w", row.Cells[1].Value, err)
+		}
+		want = append(want, WithheldSummary{Folder: row.Cells[0].Value, Count: count, Actions: row.Cells[2].Value})
+	}
+
+	byFolder := func(a, b WithheldSummary) int { return strings.Compare(a.Folder, b.Folder) }
+	slices.SortFunc(got, byFolder)
+	slices.SortFunc(want, byFolder)
+	if !reflect.DeepEqual(got, want) {
+		return fmt.Errorf("withheld summaries: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
+	}
+	return nil
+}
+
+// theWithheldChangesShouldListIndividualFiles asserts the withheld block names want
+// files one row each, with no summary standing in for any of them.
+func theWithheldChangesShouldListIndividualFiles(ctx context.Context, want int) error {
+	r := captured(ctx)
+	out := parseOutput(r.Stdout, r.Stderr)
+	got := len(out.Withheld)
+	if got != want || len(out.WithheldSummaries) > 0 {
+		return fmt.Errorf("withheld rows: got %d (and summaries %+v), want %d individual files in output:\n%s", got, out.WithheldSummaries, want, r.Stdout)
 	}
 	return nil
 }

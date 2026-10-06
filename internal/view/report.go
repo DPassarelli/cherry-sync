@@ -14,34 +14,23 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
-// joinAnd renders a list as English prose: "a", "a and b", or "a, b, and c". It
-// composes the Excluded disclosure line, which can name one to three withheld
-// things.
-func joinAnd(parts []string) string {
-	switch len(parts) {
-	case 0:
-		return ""
-	case 1:
-		return parts[0]
-	case 2:
-		return parts[0] + " and " + parts[1]
-	default:
-		return strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1]
-	}
-}
-
-// Excluded returns the disclosure of what was held out of the comparison as a
-// dimmed parenthetical aside — "(excluding a, b, and c)" — or the empty string
-// when nothing was, so the caller can print it unconditionally and a clean sync
-// stays noise-free. It is deliberately not aligned with the source/destination
-// header: the disclosure is a separate note, not part of that two-line block. The
-// faint styling drops to plain text when stdout is not a terminal.
-func Excluded(parts []string) string {
-	if len(parts) == 0 {
+// Excluded returns the section naming what csync withholds on its own account —
+// its .csync.toml, and any .git it found — as a heading over one dimmed path per
+// line, or the empty string when there is nothing to name. The paths are named
+// rather than counted: there are only ever two, and a name tells the user which
+// file to stop looking for. It carries no surrounding blank lines, so the caller
+// can set it directly against the withheld section that follows.
+func Excluded(names []string) string {
+	if len(names) == 0 {
 		return ""
 	}
 	dim := lipgloss.NewStyle().Faint(true)
-	return dim.Render("(excluding "+joinAnd(parts)+")") + "\n"
+	var b strings.Builder
+	b.WriteString(dim.Render("Automatically excluding:") + "\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "  %s\n", dim.Render(n))
+	}
+	return b.String()
 }
 
 // LogPath returns the disclosure of where this run's log was written, as a dimmed
