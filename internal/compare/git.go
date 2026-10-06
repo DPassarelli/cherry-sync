@@ -94,6 +94,34 @@ func checkIgnored(ctx context.Context, r *command.Runner, dir string, paths []st
 	return ignored, nil
 }
 
+// confirmIgnoredDirs returns those of dirs (rsync patterns such as "/logs/") that
+// the git repository at dir ignores as directories, as opposed to folders whose
+// files all happen to be ignored. Each is asked about by name WITHOUT its trailing
+// slash: with the slash, git matches a contents rule like `logs/*` against the
+// folder itself (the `*` matching the empty name after the slash). Without it, git
+// still applies a directory-only rule like `build/`, because these folders exist
+// locally and git can see they are directories. Both verified by experiment.
+func confirmIgnoredDirs(ctx context.Context, r *command.Runner, dir string, dirs []string) ([]string, error) {
+	if len(dirs) == 0 {
+		return nil, nil
+	}
+	names := make([]string, len(dirs))
+	for i, d := range dirs {
+		names[i] = strings.TrimSuffix(strings.TrimPrefix(d, "/"), "/")
+	}
+	ignored, err := checkIgnored(ctx, r, dir, names)
+	if err != nil {
+		return nil, err
+	}
+	var confirmed []string
+	for i, d := range dirs {
+		if ignored[names[i]] {
+			confirmed = append(confirmed, d)
+		}
+	}
+	return confirmed, nil
+}
+
 // isGitWorkTree reports whether dir lies inside a git working tree. A missing git
 // binary or any git error counts as "no", so a machine without git simply gets no
 // gitignore exclusions rather than a failure.

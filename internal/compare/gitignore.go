@@ -100,7 +100,22 @@ func localExclusions(ctx context.Context, r *command.Runner, source, destination
 		// pre-excluded because un-excluding one makes rsync walk every file beneath it —
 		// measured at roughly 5x on a large node_modules — and nobody is surprised that
 		// an ignored build directory did not sync.
-		exc.patterns = append(exc.patterns, ignoredDirs(gitignored)...)
+		//
+		// A folder `git ls-files --directory` reports is not necessarily ignored itself:
+		// it also reports one whose files all happen to match a content rule such as
+		// logs/*.log, listing those files beside it. Excluding such a folder would hide a
+		// remote file the rule does not match (#118), so only folders git confirms as
+		// ignored are excluded, and the rest drop out of the names, their files already
+		// being named one by one.
+		dirs := ignoredDirs(gitignored)
+		confirmed, err := confirmIgnoredDirs(ctx, r, dir, dirs)
+		if err != nil {
+			return exclusions{}, err
+		}
+		gitignored = slices.DeleteFunc(gitignored, func(p string) bool {
+			return slices.Contains(dirs, p) && !slices.Contains(confirmed, p)
+		})
+		exc.patterns = append(exc.patterns, confirmed...)
 		exc.gitignored = excludedNames(gitignored)
 		exc.inWorkTree = true
 	}

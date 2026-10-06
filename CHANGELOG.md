@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-05
+
 ### Added
 
 - A gitignored file that differs between the two sides is now named under a "Withheld by .gitignore:" heading above the change list, alongside the action csync declined to take and laid out like the rows in the picker. Previously it vanished into a count, so a file you expected to transfer just never appeared. Only changed paths are listed (an ignored file already identical on both sides was never going to move, and listing the rest would only repeat your .gitignore), and changes inside an ignored directory that exists locally are still not surfaced. A top-level folder with more than 10 withheld changes is summarized as one row with a count of each action, so a large ignored folder on the far side of a pull can't bury the changes on offer. (#59)
@@ -16,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A file that isn't gitignored is no longer hidden just because every local file in its folder is (for example, all matching `logs/*.log`). Previously csync excluded the whole folder, so a file present only on the other side never appeared. (#118)
 - A local path written with a `~` home shortcut now resolves to your home directory instead of reaching `rsync` as a literal directory name. Previously `~/project` as a source failed to find anything, and as a destination it quietly wrote into a directory named `~`. A `~user` shortcut names another account's home, which csync does not resolve, so it is rejected up front. (#71)
 
 ## [1.2.0] - 2026-09-05
@@ -158,7 +161,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/dpassarelli/cherry-sync/compare/v0.10.0...v1.0.0
