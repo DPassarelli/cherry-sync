@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1-rc.1] - 2026-10-06
+
+- Release candidate to exercise the updated release workflow that attempts to resolve #113. CI update only; no change to the application itself.
+
 ## [1.3.0] - 2026-10-05
 
 ### Added

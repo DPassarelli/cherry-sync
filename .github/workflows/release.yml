@@ -194,14 +194,28 @@ jobs:
           test -n "$asset" || { echo "no asset matched cherry-sync_*_linux_arm64" >&2; exit 1; }
           mv "$asset" smoketest-bin/csync
 
-      # Throwaway SSH key, and a VM whose port 22 is open only to this runner's
-      # IP. Provisioning is its own step so a failure here fails here, rather
-      # than surfacing later as a confusing SSH error.
+      # Throwaway SSH key, generated on the host because the az container image
+      # below ships no ssh-keygen.
+      - name: Generate SSH key
+        run: ssh-keygen -t ed25519 -N '' -f ./id
+
+      # A VM whose port 22 is open only to this runner's IP. Provisioning is its
+      # own step so a failure here fails here, rather than surfacing later as a
+      # confusing SSH error.
+      #
+      # az runs from its container image, not the runner's install: the
+      # runner's az bundles Python 3.14, whose import locking deadlocks az
+      # mid-command (Azure/azure-cli#33996, #113). The pinned image runs on
+      # Azure Linux 3.0's Python 3.12, which avoids it. Revisit once that issue
+      # is fixed upstream.
       - name: Provision the arm64 VM
         id: provision
-        run: |
-          ssh-keygen -t ed25519 -N '' -f ./id
-          AZ_SSH_PUBKEY=./id.pub _scripts/azure-smoketest-vm.sh up
+        uses: azure/cli@v3
+        env:
+          AZ_SSH_PUBKEY: ./id.pub
+        with:
+          azcliversion: 2.91.0
+          inlineScript: _scripts/azure-smoketest-vm.sh up
 
       # Copy the binary + smoketest.sh to the VM and run the smoketest over SSH.
       - name: Smoketest over SSH
@@ -214,9 +228,13 @@ jobs:
           ssh -i ./id -o StrictHostKeyChecking=accept-new "${VM_USER}@${VM_HOST}" \
             "chmod +x ./csync && bash ./smoketest.sh ./csync ${GITHUB_REF_NAME}"
 
+      # Same containerized az as provisioning, for the same reason.
       - name: Tear down VM
         if: always()
-        run: _scripts/azure-smoketest-vm.sh down
+        uses: azure/cli@v3
+        with:
+          azcliversion: 2.91.0
+          inlineScript: _scripts/azure-smoketest-vm.sh down
 
   # Reveal the release only if every gate job passed. On any failure this job
   # does not run and the release stays a draft, invisible, for inspection.
