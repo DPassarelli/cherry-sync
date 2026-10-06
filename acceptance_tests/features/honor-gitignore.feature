@@ -376,13 +376,16 @@ Feature: Honor .gitignore when comparing
       | action | path       |
       | create | secret.log |
 
-  @remote @wip
+  @remote
   Scenario: Pull direction — a folder of ignored files still offers a remote file that isn't ignored
     # A content rule like logs/*.log ignores files, not the folder. But when every
     # file in the local folder happens to match it, `git ls-files --directory`
-    # reports the folder itself as ignored (verified by experiment), and csync turns
-    # that into an --exclude for the whole folder. A remote file the rule does not
-    # match is then never compared, so it can never be offered, and nothing says why.
+    # reports the folder alongside its files (verified by experiment), and csync
+    # used to turn that into an --exclude for the whole folder. A remote file the
+    # rule does not match was then never compared, so it could never be offered,
+    # and nothing said why (#118). Teeth: exclude every folder ls-files reports,
+    # without asking git whether the folder itself is ignored, and notes.txt is
+    # never offered.
     Given a local git repository containing these files:
       """
       src/main.go
@@ -398,6 +401,32 @@ Feature: Honor .gitignore when comparing
     Then  the reported actions should be:
       | action | path           |
       | create | logs/notes.txt |
+
+  @remote
+  Scenario: Pull direction — a re-included file in a folder of ignored files is still offered
+    # The same hole as #118 through a different rule shape: `logs/*` with a re-include
+    # for the README, a common way to keep a generated folder documented. Every local
+    # file in logs/ is ignored, so `git ls-files --directory` reports the folder, and
+    # csync must ask git whether the folder itself is ignored. Asked as "logs/" with a
+    # trailing slash, git matches `logs/*` against it (the `*` matching the empty name
+    # after the slash) and would wrongly confirm it. Teeth: query the folder with its
+    # trailing slash and README.md is never offered.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      logs/old.log
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      logs/*
+      !logs/README.md
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "logs/README.md" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path           |
+      | create | logs/README.md |
 
   @remote
   Scenario: Many withheld changes under one top-level folder are summarized
