@@ -376,6 +376,29 @@ Feature: Honor .gitignore when comparing
       | action | path       |
       | create | secret.log |
 
+  @remote @wip
+  Scenario: Pull direction — a folder of ignored files still offers a remote file that isn't ignored
+    # A content rule like logs/*.log ignores files, not the folder. But when every
+    # file in the local folder happens to match it, `git ls-files --directory`
+    # reports the folder itself as ignored (verified by experiment), and csync turns
+    # that into an --exclude for the whole folder. A remote file the rule does not
+    # match is then never compared, so it can never be offered, and nothing says why.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      logs/old.log
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      logs/*.log
+      """
+    And   that all of the files are identical between local and remote
+    And   that the file "logs/notes.txt" has been added on the remote
+    When  I run "csync user@host:/project ./project"
+    Then  the reported actions should be:
+      | action | path           |
+      | create | logs/notes.txt |
+
   @remote
   Scenario: Many withheld changes under one top-level folder are summarized
     # An ignored directory that exists only on the remote of a pull is invisible to
@@ -420,11 +443,11 @@ Feature: Honor .gitignore when comparing
 
   @remote
   Scenario: A summary counts each action separately
-    # A folder whose contents are ignored but which holds a tracked file is never
+    # A folder whose contents are ignored but which holds a file that isn't is never
     # pre-excluded, on either side, so a pull can withhold creates and deletes from
-    # it together. A single verb would misstate half the rows. The tracked README
-    # keeps `git ls-files` from reporting logs/ as a wholly ignored directory, which
-    # would hide the folder from the comparison altogether. Teeth: report only the
+    # it together. A single verb would misstate half the rows. The README keeps `git
+    # ls-files` from reporting logs/ as a wholly ignored directory, which would hide
+    # the folder from the comparison altogether. Teeth: report only the
     # first row's verb and the summary reads "create" alone.
     Given a local git repository containing these files:
       """
