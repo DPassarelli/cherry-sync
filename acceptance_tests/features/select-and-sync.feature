@@ -2,11 +2,9 @@
 # not-yet-implemented scenario carries its own @wip tag (excluded via the
 # "~@wip" tag filter the runner applies); drop a scenario's tag when we drill in.
 #
-# @remote runs every scenario here over a fake SSH remote (RSYNC_RSH + a
-# `fakehost:` operand), so rsync transfers in real sender/receiver mode and emits
-# the `<f`/`>f` direction codes a true push/pull would. Local-to-local always
-# itemizes `>`, which structurally hid a push-direction bug until this harness
-# exposed it.
+# @remote runs every scenario here over a fake SSH remote, so transfers run the
+# way they would against a real host. A local-to-local run reports every change
+# in the same direction, which once hid a push-direction bug.
 @remote
 Feature: Select and sync files
 
@@ -45,24 +43,14 @@ Feature: Select and sync files
     And   the file "src/adder.go" should be identical between local and remote
 
   Scenario: A filename containing non-ASCII bytes transfers intact
-    # rsync's --itemize-changes octal-escapes non-ASCII bytes by default (a UTF-8
-    # name like café.txt prints as \#nnn...). csync parsed that escaped text and
-    # fed it back via --files-from, which wants the literal bytes, so rsync looked
-    # for a file that doesn't exist and the transfer failed (exit 23). Passing -8
-    # on the compare makes rsync emit the raw bytes, which round-trip cleanly.
-    # Real-use trigger: a macOS screenshot whose name carries a narrow no-break
-    # space (U+202F). Distinct from the @wip embedded-newline scenario below: -8
-    # covers high-bit bytes only — rsync still escapes true control chars.
+    # This first surfaced with a macOS screenshot, whose name carries a narrow
+    # no-break space (U+202F).
     Given that the file "café.txt" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "a"
     Then  the reported sync count should be 1
     And   the file "café.txt" should be identical between local and remote
 
   Scenario: A completed sync leaves nothing to re-sync
-    # Idempotence guard: after csync transfers a set of changes, re-running the
-    # same compare must report nothing left to do. A second run that still finds
-    # differences means the transfer didn't fully reconcile the two sides — for
-    # whatever reason — leaving the user re-syncing the same files indefinitely.
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "a"
@@ -79,9 +67,6 @@ Feature: Select and sync files
     And   the file "src/adder.go" should not exist on the remote
 
   Scenario: A different number selects a different change
-    # Triangulates the by-number selection: with "1" pinned to the first row
-    # above, "2" must reach the second — proving the typed response is actually
-    # read, not a hardcoded "always the first".
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "2"
@@ -103,22 +88,13 @@ Feature: Select and sync files
     And   the file "README.md" should still differ between local and remote
 
   Scenario: An out-of-range number is rejected like an unrecognized response
-    # Sibling to "An unrecognized response is rejected": with a single change in
-    # the list, the only valid pick is 1, so "2" names no row. It gets the same
-    # treatment as "wat" — reject, transfer nothing, non-zero exit.
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "2"
     Then  csync should return a non-zero exit code
     And   the file "README.md" should still differ between local and remote
 
   Scenario: A hyphen range selects an inclusive span of changes
-    # The hyphen fills in the span: "1-3" must select rows 1, 2 AND 3 — not just
-    # the two endpoints, which is what the comma list "1,3" would mean. A fourth
-    # change sits at row 4 as the upper bound; it must stay unsynced, proving the
-    # range is bounded and stops at 3. Row order follows the tree-order contract
-    # (see order-reported-actions.feature): top-level files before subdir entries,
-    # alphabetical within each, so the four staged changes number:
-    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -131,13 +107,7 @@ Feature: Select and sync files
     And   the file "src/parser.go" should still differ between local and remote
 
   Scenario: A comma list selects exactly the named changes
-    # Unlike a hyphen span, a comma list picks only the rows named: "1,3" must
-    # select rows 1 and 3 and skip row 2 entirely. The skipped middle is what
-    # distinguishes the list "1,3" from the span "1-3". Row order follows the
-    # tree-order contract (see order-reported-actions.feature): top-level files
-    # before subdir entries, alphabetical within each, so the three staged
-    # changes number:
-    #   1. LICENSE   2. README.md   3. src/main.go
+    # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -148,12 +118,7 @@ Feature: Select and sync files
     And   the file "README.md" should still differ between local and remote
 
   Scenario: A combined range and list selects the span plus the named change
-    # The two grammars compose in one response: "1-2,4" selects the span 1-2 and
-    # the single member 4, while row 3 — between the span's end and member 4 —
-    # stays unsynced, proving the gap is skipped. Row order follows the tree-order
-    # contract (see order-reported-actions.feature): top-level files before subdir
-    # entries, alphabetical within each, so the four staged changes number:
-    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -166,12 +131,7 @@ Feature: Select and sync files
     And   the file "src/main.go" should still differ between local and remote
 
   Scenario: Overlapping members are synced once, not twice
-    # A row named by more than one member — here row 2, covered by both the span
-    # "1-3" and the single "2" — must be selected once, so the reported count is
-    # the number of distinct changes (3), not the number of members written (4).
-    # Row order follows the tree-order contract (see order-reported-actions.feature):
-    # top-level files before subdir entries, alphabetical within each:
-    #   1. LICENSE   2. README.md   3. src/main.go
+    # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -182,11 +142,6 @@ Feature: Select and sync files
     And   the file "src/main.go" should be identical between local and remote
 
   Scenario: An out-of-range member rejects the whole selection
-    # When any member names a row past the end of the list, the entire response is
-    # rejected — not clamped to the valid rows. With two changes, "1-3" reaches
-    # past row 2, so nothing transfers and csync exits non-zero, like an
-    # unrecognized response. Asserting NEITHER file syncs rules out a partial
-    # selection of rows 1-2.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1-3"
@@ -195,10 +150,7 @@ Feature: Select and sync files
     And   the file "README.md" should still differ between local and remote
 
   Scenario: A reversed range is rejected
-    # A range whose endpoints are both in bounds but descend ("3-1") is malformed,
-    # not a backwards span — it is rejected like any unrecognized response rather
-    # than silently reordered to "1-3". Both endpoints name valid rows here, so the
-    # rejection isolates the reversal itself, not an out-of-range bound.
+    # It is not silently reordered to "1-3".
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -209,12 +161,7 @@ Feature: Select and sync files
     And   the file "src/main.go" should still differ between local and remote
 
   Scenario: Whitespace around members and range operands is ignored
-    # Spaces inside a selection — after a comma, or around a hyphen — are
-    # tolerated, so "1 - 2, 4" reads the same as "1-2,4": rows 1, 2, and 4, with
-    # row 3 left unsynced. (Leading and trailing whitespace on the whole response
-    # is already trimmed; this covers the whitespace between members.) Row order
-    # follows the tree-order contract (see order-reported-actions.feature):
-    #   1. LICENSE   2. README.md   3. src/main.go   4. src/parser.go
+    # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
@@ -227,13 +174,7 @@ Feature: Select and sync files
     And   the file "src/main.go" should still differ between local and remote
 
   Scenario: A file removed on the source is reported as a deletion
-    # On a push (local -> remote), a file present on the remote but gone from the
-    # local side is a deletion: --delete on the compare surfaces it as a delete
-    # row alongside the green/yellow create/update rows. This is detection only —
-    # the run reports the removal but applies nothing (the prompt reads EOF and
-    # selects nothing), so the file is still on the remote afterward. Applying a
-    # selected deletion is a later scenario. Teeth: without --delete on the
-    # compare, rsync emits no *deleting line and no delete action is reported.
+    # No selection is made, so the deletion is reported but not applied.
     Given that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project"
     Then  the reported actions should be:
@@ -243,31 +184,21 @@ Feature: Select and sync files
     And   the file "README.md" should still exist on the remote
 
   Scenario: A selected deletion is applied to the destination
-    # The apply half of the detection scenario above: choosing a delete row
-    # removes the file from the destination. csync applies removals in a second
-    # rsync pass (filter-rule --delete) after the transfer pass. A nested target
-    # also proves the filter rules carry the file's ancestor directories — without
-    # them rsync's trailing --exclude='*' protects the directory and nothing is
-    # deleted.
+    # A nested file shows the removal reaches inside folders.
     Given that the file "src/parser.go" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "a"
     Then  the reported sync count should be 1
     And   the file "src/parser.go" should not exist on the remote
 
   Scenario: Declining a deletion leaves the file on the destination
-    # Selecting "n" declines every change, so a reported removal is not applied —
-    # the file stays on the remote. The safety mirror of the apply scenario:
-    # detection surfaces the delete, but nothing is destroyed unless chosen.
     Given that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "n"
     Then  the reported sync count should be 0
     And   the file "README.md" should still exist on the remote
 
   Scenario: A run mixing a transfer and a deletion applies and reports both
-    # Creates/updates and removals ride the same selection in one run: "a" accepts
-    # both, the transfer pass adds the new file and the delete pass removes the
-    # stale one. The summary counts the total and calls out how many were removals,
-    # so "2 files total" doesn't read as if both were transfers.
+    # The summary calls out the removals, so "2 files total" doesn't read as two
+    # transfers.
     Given that the file "src/adder.go" has been added locally
     And   that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "a"
@@ -277,10 +208,7 @@ Feature: Select and sync files
     And   the file "README.md" should not exist on the remote
 
   Scenario: Selecting only the transfer leaves the deletion unapplied
-    # A removal is cherry-pickable like any other change: with the added file at
-    # row 1 and the deletion at row 2 (tree order — a top-level create before the
-    # deleted file… see order-reported-actions.feature), picking "1" transfers the
-    # new file and leaves the stale one in place on the remote.
+    # Rows number in tree order: 1 adder.go, 2 README.md (the deletion).
     Given that the file "adder.go" has been added locally
     And   that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "1"
@@ -289,9 +217,6 @@ Feature: Select and sync files
     And   the file "README.md" should still exist on the remote
 
   Scenario: A completed deletion leaves nothing to re-sync
-    # Idempotence for removals: after csync applies a deletion, re-running the same
-    # compare must report nothing left. A second run that still sees the removal
-    # means the delete pass didn't actually reconcile the two sides.
     Given that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "a"
     And   I run "csync ./project user@host:/project" a second time
@@ -299,13 +224,9 @@ Feature: Select and sync files
     And   the reported change count should be 0
 
   Scenario: A deletion candidate whose name holds a glob character is not offered
-    # csync applies deletions with an rsync filter rule, in which *, ?, and [ are
-    # glob metacharacters — an unescaped one could match and remove the wrong file.
-    # Escaping them safely is deferred (tracked separately), so for now a removable
-    # file whose name contains one is dropped from detection: never shown as a
-    # delete row, never removed. Here a[1].txt exists only on the remote (a
-    # deletion on push), but the "[1]" would glob to "a1.txt", so it is held back
-    # and the run reports nothing. Teeth: without the drop, it surfaces as a delete.
+    # rsync filter rules treat *, ?, and [ as wildcards, so removing a[1].txt
+    # could remove a1.txt instead. Until escaping lands, such files are not
+    # offered for deletion.
     Given that the file "a[1].txt" has been added on the remote
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
@@ -314,9 +235,6 @@ Feature: Select and sync files
 
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
-    # The mirror of the push scenarios, source and destination swapped. A file
-    # that exists only on the remote is created on the local side when selected,
-    # exercising pull end to end (today only push is covered).
     Given that the file "notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project" and respond with "a"
     Then  the reported sync count should be 1
@@ -324,16 +242,7 @@ Feature: Select and sync files
 
   @wip
   Scenario: A selected filename containing a newline transfers intact
-    # SECURITY.md invariant: the --files-from list is NUL-delimited (--from0) so
-    # a newline inside a filename can't split into a second entry. The new steps
-    # keep the awkward byte out of the Gherkin — the create step picks a fixed
-    # name containing a newline and remembers it; the assertion reads that same
-    # name back. A split would fail to transfer the file intact, so the
-    # identical-check is what proves the byte stayed inert.
-    #
-    # Heads up for drill-in: this also stresses the compare side. parseActions
-    # splits rsync's --itemize-changes output on "\n", so a newline in a name
-    # breaks diff parsing too, not just the transfer — expect to touch both.
+    # A newline in a filename must not split it into two entries. See SECURITY.md.
     Given that a file whose name contains a newline has been added locally
     When  I run "csync ./project user@host:/project" and respond with "a"
     Then  the reported sync count should be 1
