@@ -29,7 +29,6 @@ Feature: Saved sync targets
       src/main.go
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
@@ -49,7 +48,6 @@ Feature: Saved sync targets
       src/main.go
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
@@ -90,7 +88,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
@@ -111,7 +108,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
@@ -132,7 +128,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
@@ -149,7 +144,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       # no remote defined yet
@@ -171,7 +165,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = ""
@@ -193,7 +186,6 @@ Feature: Saved sync targets
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project

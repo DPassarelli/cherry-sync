@@ -23,7 +23,6 @@ Feature: Log each run
     # log path on its failure paths too (those are the runs worth reading), so
     # the disclosure alone cannot tell a clean run from a broken one, and a run
     # that died after opening the log would otherwise satisfy this scenario.
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
     And   csync should report where it logged the run
@@ -116,8 +115,7 @@ Feature: Log each run
     # what happened. A deletion-only run reaches rsync twice, the comparison and the
     # removal, with no transfer in between (nothing was created or updated), so the
     # removal is the second record — recorded here just as the transfer is above.
-    Given that all of the files are identical between local and remote
-    And   that the file "README.md" has been deleted locally
+    Given that the file "README.md" has been deleted locally
     And   I have started csync but not yet answered the prompt
     When  I answer the prompt
     Then  csync should exit normally
@@ -132,7 +130,7 @@ Feature: Log each run
     # check and is not logged; the ignore-rule query is the command that shaped the
     # file list, so it is.
     #
-    # The identical-pair setup reaches rsync and returns without prompting, so the
+    # Nothing differs, so the run reaches rsync and returns without prompting, and the
     # whole run — including the git query that runs before the comparison — is on hand
     # to read once csync exits. A plain, non-repo directory logs no git at all, which
     # is what ties this record to the work tree.
@@ -141,7 +139,6 @@ Feature: Log each run
       src/main.go
       README.md
       """
-    And   that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
     And   the log should record running "git" for the ignore rules
@@ -153,12 +150,10 @@ Feature: Log each run
     # be trusted to show what csync actually invoked — the same reasoning as the
     # no-shell rule, where a space is exactly where naive joining corrupts meaning.
     #
-    # The identical pair is plumbing, not the subject: it stands up the remote csync
-    # compares against and lets the run finish without stopping at a prompt, so the log
-    # is on hand to read. It has no bearing on the argument the log records — the source
-    # operand reaches rsync's argv whatever the two sides hold.
+    # Nothing differs, so the run finishes without stopping at a prompt and the log is
+    # on hand to read. What the two sides hold has no bearing on the argument the log
+    # records — the source operand reaches rsync's argv either way.
     Given a local directory whose path contains a space
-    And   that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  the log should record that source path as one argument
 
@@ -170,7 +165,6 @@ Feature: Log each run
     # instead, so the operand round-trips whole. Companion to the space scenario above:
     # that one proves real boundaries survive, this proves false ones cannot be minted.
     Given a local directory whose path contains a double quote
-    And   that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  the log should record that source path as one argument
 
@@ -246,9 +240,8 @@ Feature: Log each run
     # sub-millisecond call from reading as having taken no time at all. So every recorded
     # command shows a positive, decimal-free duration like "44ms".
     #
-    # The identical-pair setup reaches rsync and returns without prompting, so the
+    # Nothing differs, so the run reaches rsync and returns without prompting, and the
     # comparison's duration is on hand to read once csync exits.
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
     And   the logged duration should be a positive whole number of milliseconds
@@ -307,7 +300,6 @@ Feature: Log each run
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
@@ -319,7 +311,6 @@ Feature: Log each run
     # from the resolved source and destination below it. For an explicit run the two
     # look alike; the distinction earns its keep for a saved-target push or pull,
     # where the operands are derived and only this line still shows the verb.
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
     And   the log should record the command line that was run
@@ -330,11 +321,10 @@ Feature: Log each run
     # destination it echoed in its header: the log agrees with what the user saw, so a
     # reader is never left guessing which way the sync went.
     #
-    # The identical-pair setup is the simplest run that reaches rsync and returns
+    # With nothing differing, this is the simplest run that reaches rsync and returns
     # without prompting, so the whole run — header, log, disclosed path — is on hand
     # to reconcile once it exits. No path is named here; csync is the source of truth
     # for what the operands resolved to.
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  csync should return exit code 0
     And   the log should name the source and destination csync reported
@@ -347,8 +337,7 @@ Feature: Log each run
     # csync resolved that verb to from .csync.toml (here, "." and the saved remote).
     # A troubleshooter reading a "push went the wrong way" report needs both halves:
     # what was asked for, and what it became.
-    Given that all of the files are identical between local and remote
-    And   a ".csync.toml" in the project directory containing:
+    Given a ".csync.toml" in the project directory containing:
       """
       remote = "user@host:/project"
       """
@@ -436,12 +425,10 @@ Feature: Log each run
   # layout is pinned here and nowhere else — change it, and only this block moves.
 
   Scenario: The log is written under the XDG state directory
-    # The identical-pair setup is scaffolding, not the point: it is the simplest
-    # run that reaches rsync and so writes a log (nothing differs, so csync reports
-    # no changes and returns without prompting). What is under test is that the log
+    # With nothing differing, this is the simplest run that reaches rsync and so
+    # writes a log (csync reports no changes and returns without prompting). What is under test is that the log
     # honors XDG_STATE_HOME.
     Given the environment variable XDG_STATE_HOME is set
-    And   that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  the run log should be under "cherry-sync" in $XDG_STATE_HOME
 
@@ -451,7 +438,6 @@ Feature: Log each run
     # distinct from the one above, or a csync that ignored XDG_STATE_HOME entirely
     # and always used the home fallback would pass the XDG scenario by accident.
     Given the environment variable XDG_STATE_HOME is not set
-    And   that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  the run log should be under "cherry-sync" in ~/.local/state
 
@@ -462,7 +448,6 @@ Feature: Log each run
     # for a sharper reason: csync withholds only .csync.toml and .git from a
     # comparison, so a log written in-tree would show up as a change and be pushed
     # to the remote — but the scenarios above already pin it outside the project.
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  the run log directory should be accessible only by its owner
     And   the run log file should be accessible only by its owner

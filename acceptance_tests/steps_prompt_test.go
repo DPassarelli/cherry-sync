@@ -49,6 +49,10 @@ func theChangedFileIsDeletedBeforeIAnswer(ctx context.Context) error {
 // transfer, then blocks — so the process is suspended, not merely slow, and a step
 // that reads the log now cannot be racing a csync that is still writing it.
 func iHaveStartedCsyncButNotYetAnsweredThePrompt(ctx context.Context) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")

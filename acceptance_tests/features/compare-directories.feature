@@ -14,14 +14,12 @@ Feature: Compare directories
       """
 
   Scenario: None of the files are different
-    Given that all of the files are identical between local and remote
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
     And   the reported change count should be 0
 
   Scenario: One of the files is different
-    Given that all of the files are identical between local and remote
-    And   that the file "README.md" has been changed locally
+    Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project"
     Then  the reported actions should be:
       | action | path      |
@@ -29,8 +27,7 @@ Feature: Compare directories
     And   the reported change count should be 1
 
   Scenario: Two of the files are different
-    Given that all of the files are identical between local and remote
-    And   that the file "README.md" has been changed locally
+    Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project"
     Then  the reported actions should be:
@@ -40,8 +37,7 @@ Feature: Compare directories
     And   the reported change count should be 2
 
   Scenario: Pull direction — a file is new on the remote
-    Given that all of the files are identical between local and remote
-    And   that the file "src/remote_only.go" has been added on the remote
+    Given that the file "src/remote_only.go" has been added on the remote
     When  I run "csync user@host:/project ./project"
     Then  the reported actions should be:
       | action | path               |
@@ -55,8 +51,7 @@ Feature: Compare directories
     # compare pass settles it by content, so the row itemizes as `.f..t......`
     # (no content bit) and is dropped. Remove --checksum and this goes red:
     # README.md reports as a phantom "update".
-    Given that all of the files are identical between local and remote
-    And   that the file "README.md" has a different modification time but identical content
+    Given that the file "README.md" has a different modification time but identical content
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
     And   the reported change count should be 0

@@ -35,7 +35,6 @@ Feature: Interactive mode
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     When  I run "csync" and respond with:
       """
@@ -55,7 +54,6 @@ Feature: Interactive mode
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     When  I run "csync" and respond with:
       """
@@ -75,7 +73,6 @@ Feature: Interactive mode
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     When  I run "csync" and respond with:
       """
@@ -100,7 +97,6 @@ Feature: Interactive mode
       """
       README.md
       """
-    And   that all of the files are identical between local and remote
     And   I run "csync" and respond with:
       """
       ./project

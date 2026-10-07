@@ -15,7 +15,6 @@ Feature: Explain how each file differs
       README.md
       src/main.go
       """
-    And   that all of the files are identical between local and remote
 
   Scenario: An updated file reports its size gap and how old each copy is
     Given that the local copy of "README.md" is 2 KB larger than the remote copy

@@ -20,7 +20,6 @@ Feature: Bound a stalled transfer
       src/main.go
       README.md
       """
-    And   that all of the files are identical between local and remote
 
   Scenario: A remote that goes silent during the transfer ends the run
     Given that the file "README.md" has been changed locally

@@ -170,6 +170,11 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		return ctx, fmt.Errorf("expected command to start with %q, got %q", "csync", parts[0])
 	}
 
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
+
 	args := parts[1:]
 	// <empty> is a sentinel for an empty-string argument: the step regex and
 	// strings.Fields can't carry a literal "" through the Gherkin command, so
@@ -201,7 +206,7 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
-	err := cmd.Run()
+	err = cmd.Run()
 
 	// A csync that never exits is a failure of the thing under test, not a slow
 	// machine: report it as one rather than letting the killed child's signal be
