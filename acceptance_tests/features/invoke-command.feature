@@ -36,10 +36,8 @@ Feature: Invoke command
     And  the reported error should mention "source path is empty"
 
   Scenario: A local source written with a ~ home shortcut finds the files
-    # Teeth for #71: rsync takes a literal "~" as a directory name, so an
-    # unexpanded ~/project resolves against the CWD and the comparison finds
-    # nothing (exit 23). csync expands it before rsync sees it. Drop the
-    # expansion and no action is reported — red.
+    # rsync takes "~" as a literal directory name, so csync expands it before
+    # rsync sees it (#71).
     Given a local directory in the home directory containing these files:
       """
       README.md
@@ -57,9 +55,9 @@ Feature: Invoke command
     Then csync should report that it rewrote "~/project"
 
   Scenario: A local ~user home shortcut is rejected
-    # ~user names another user's home, which csync does not resolve. It is
-    # rejected up front, as the remote side already rejects it, rather than
-    # reaching rsync as a literal directory name.
+    # ~user names another user's home, which csync does not resolve. Rejecting it
+    # up front, as the remote side does, beats rsync failing on a literal
+    # directory name.
     When I run "csync ~deploy/project user@host:/project"
     Then csync should return a non-zero exit code
     And  the reported error should mention "~"

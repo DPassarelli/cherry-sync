@@ -25,12 +25,8 @@ Feature: Interactive mode
 
   @wip
   Scenario: No arguments — prompting drives a sync
-    # The answers are fed on stdin in prompt order: source, then destination,
-    # then the change selection, then the save y/N. Here: source "./project",
-    # destination "user@host:/project", "a" to sync all, "n" to skip saving.
-    # README is changed locally; after the prompted run it must match the
-    # remote, proving the prompted operands flowed into the same compare/sync
-    # path as the explicit two-arg form.
+    # Answers are given in prompt order: source, destination, change selection,
+    # then whether to save.
     Given a local directory containing these files:
       """
       README.md
@@ -48,8 +44,7 @@ Feature: Interactive mode
 
   @wip
   Scenario: Declining the save prompt writes no config
-    # Answering "n" to the final prompt must leave the project directory without
-    # a .csync.toml. Guards against the tool writing config the user declined.
+    # csync must never write a config the user declined.
     Given a local directory containing these files:
       """
       README.md
@@ -66,9 +61,8 @@ Feature: Interactive mode
 
   @wip
   Scenario: Accepting the save prompt writes the entered remote
-    # Answering "y" must persist the REMOTE operand (the one carrying user@host:)
-    # as `remote` in ./project/.csync.toml — not the local operand. The written
-    # value is what `csync push`/`pull` will later read back.
+    # The remote operand is what gets saved, since it is what `csync push` and
+    # `csync pull` read back later.
     Given a local directory containing these files:
       """
       README.md
@@ -88,11 +82,8 @@ Feature: Interactive mode
 
   @wip
   Scenario: A saved target round-trips into a later push
-    # Integration proof that the saved file is not just present but correct:
-    # after interactive mode writes the config, `csync push` from the same
-    # directory reuses it with no source/destination prompts and reconciles a
-    # fresh change. If the saved `remote` were wrong or unparseable, this push
-    # would fail or prompt — red.
+    # The saved file must be usable, not just present: a later push reuses it
+    # without asking for the source or destination again.
     Given a local directory containing these files:
       """
       README.md

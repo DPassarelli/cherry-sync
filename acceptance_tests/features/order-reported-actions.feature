@@ -13,25 +13,11 @@ Feature: Order the reported actions
   #   3. number-leading names before letter-leading names
   #   4. numbers compared by value (2 < 10), letters alphabetically
   #      (case-insensitive, byte order breaking case-only ties)
-  # This decouples both the displayed list and the selection numbering from
-  # rsync's --itemize emit order, which groups directory contents differently.
 
   Scenario: Reported actions are ordered like a file tree
-    # The fixture mixes the path shapes that exercise the rule:
-    #   - dot group leads; within it the dot file (.gitignore) precedes the dot
-    #     directory (.config/) — files before directories
-    #   - numeric names sort by value, not lexically: 01 < 2 < 10
-    #   - number-leading names precede letter-leading names
-    #   - mixed case interleaves among letters: main.go between LICENSE and README.md
-    #   - TODO.md exercises uppercase-letter placement in the letter group. The
-    #     case-only TODO.md/todo.md tie is deliberately NOT tested here: the two
-    #     names collapse to a single file on a case-insensitive filesystem (macOS
-    #     APFS), so the fixture can't represent both cross-platform. That rule is
-    #     pinned filesystem-free by TestComparePaths_UpperBeforeLowerOnCaseTie in
-    #     internal/compare.
-    #   - nested src/* sorts after every top-level file (files before subdirs)
-    # An empty remote makes every file a clean "create", isolating the ordering
-    # of paths from any verb differences.
+    # A case-only tie (TODO.md vs. todo.md) is left out: the two names collapse to
+    # one file on a case-insensitive filesystem such as macOS APFS, so a unit test
+    # covers it instead.
     Given a local directory containing these files:
       """
       .gitignore
@@ -63,17 +49,8 @@ Feature: Order the reported actions
       | create | src/parser.go         |
 
   Scenario: Each reported change is labeled with its selection number
-    # The number a user types at the prompt to pick a change is shown next to
-    # that change, counting from 1 in the displayed (tree) order — so "1" always
-    # refers to the first row. This makes the select-by-number affordance in
-    # select-and-sync.feature usable: today the selection logic indexes the
-    # sorted list correctly, but the list is printed without visible numbers.
-    #
-    # Coupling note for when this is drilled in: the rendered index becomes part
-    # of what the output-parser facade reads. A new step (e.g. "should be
-    # numbered, in order") plus an index field on the parsed action keep the
-    # existing verb/path assertions in compare-directories and the scenario
-    # above from breaking on the changed line shape.
+    # The number shown beside each change is the one typed at the prompt to pick
+    # it, counting from 1 in the displayed order.
     Given a local directory containing these files:
       """
       README.md
