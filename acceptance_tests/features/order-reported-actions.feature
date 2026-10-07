@@ -49,8 +49,6 @@ Feature: Order the reported actions
       | create | src/parser.go         |
 
   Scenario: Each reported change is labeled with its selection number
-    # The number shown beside each change is the one typed at the prompt to pick
-    # it, counting from 1 in the displayed order.
     Given a local directory containing these files:
       """
       README.md

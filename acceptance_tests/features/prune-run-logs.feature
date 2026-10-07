@@ -13,7 +13,6 @@ Feature: Prune run logs
       """
 
   Scenario: A run below the limit prunes nothing
-    # Pruning is a ceiling, not a quota: with room to spare, nothing is removed.
     Given 5 run logs already exist
     When  I run "csync ./project user@host:/project"
     Then  the log directory should hold 6 run logs

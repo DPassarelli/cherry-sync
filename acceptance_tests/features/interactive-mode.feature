@@ -44,7 +44,6 @@ Feature: Interactive mode
 
   @wip
   Scenario: Declining the save prompt writes no config
-    # csync must never write a config the user declined.
     Given a local directory containing these files:
       """
       README.md

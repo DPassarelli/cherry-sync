@@ -45,8 +45,6 @@ Feature: Compare directories
     And   the reported change count should be 1
 
   Scenario: A file that differs only in modification time is not a change
-    # Identical content with a different mtime (git checkout stamps each machine
-    # differently) is not a change, so it must not be offered for sync.
     Given that the file "README.md" has a different modification time but identical content
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
