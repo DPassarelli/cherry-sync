@@ -32,7 +32,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -56,7 +55,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -90,7 +88,6 @@ Feature: Honor .gitignore when comparing
       """
       remote = "user@host:/project"
       """
-    And   that all of the files are identical between local and remote
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
     Then  the log should record the excluded paths:
@@ -111,7 +108,6 @@ Feature: Honor .gitignore when comparing
       """
       .env
       """
-    And   that all of the files are identical between local and remote
     And   that the file ".env" has been changed locally
     When  I run "csync ./project user@host:/project"
     Then  the withheld changes should be:
@@ -131,7 +127,6 @@ Feature: Honor .gitignore when comparing
       """
       .env
       """
-    And   that all of the files are identical between local and remote
     And   that the file "src/main.go" has been changed locally
     When  I run "csync ./project user@host:/project"
     Then  no withheld changes should be reported
@@ -150,7 +145,6 @@ Feature: Honor .gitignore when comparing
       """
       build/
       """
-    And   that all of the files are identical between local and remote
     And   that the file "build/output.bin" has been changed locally
     When  I run "csync ./project user@host:/project"
     Then  no withheld changes should be reported
@@ -174,7 +168,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -203,7 +196,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "README.md" has been changed locally
     And   that the file "debug.log" has been added locally
     When  I run "csync ./project user@host:/project"
@@ -234,7 +226,6 @@ Feature: Honor .gitignore when comparing
       """
       /build/
       """
-    And   that all of the files are identical between local and remote
     And   that the file "build/artifact.o" has been changed locally
     And   that the file "src/build/keep.go" has been changed locally
     When  I run "csync ./project user@host:/project"
@@ -332,7 +323,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "debug.log" has been changed locally
     And   that the file "notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project"
@@ -364,7 +354,6 @@ Feature: Honor .gitignore when comparing
       """
       *.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "secret.log" has been added on the remote
     And   that the file "notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project"
@@ -395,7 +384,6 @@ Feature: Honor .gitignore when comparing
       """
       logs/*.log
       """
-    And   that all of the files are identical between local and remote
     And   that the file "logs/notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project"
     Then  the reported actions should be:
@@ -421,7 +409,6 @@ Feature: Honor .gitignore when comparing
       logs/*
       !logs/README.md
       """
-    And   that all of the files are identical between local and remote
     And   that the file "logs/README.md" has been added on the remote
     When  I run "csync user@host:/project ./project"
     Then  the reported actions should be:
@@ -445,7 +432,6 @@ Feature: Honor .gitignore when comparing
       """
       build/
       """
-    And   that all of the files are identical between local and remote
     And   that 11 files have been added on the remote under "build/a"
     When  I run "csync user@host:/project ./project"
     Then  the withheld changes should be summarized as:
@@ -465,7 +451,6 @@ Feature: Honor .gitignore when comparing
       """
       build/
       """
-    And   that all of the files are identical between local and remote
     And   that 10 files have been added on the remote under "build/a"
     When  I run "csync user@host:/project ./project"
     Then  the withheld changes should list 10 individual files
@@ -487,7 +472,6 @@ Feature: Honor .gitignore when comparing
       """
       logs/*.log
       """
-    And   that all of the files are identical between local and remote
     And   that 6 files have been added on the remote under "logs"
     And   that 5 files have been added locally under "logs"
     When  I run "csync user@host:/project ./project"
@@ -510,7 +494,6 @@ Feature: Honor .gitignore when comparing
       """
       build/
       """
-    And   that all of the files are identical between local and remote
     And   that 11 files have been added on the remote under "build/a"
     When  I run "csync user@host:/project ./project"
     Then  the log should record 11 excluded paths

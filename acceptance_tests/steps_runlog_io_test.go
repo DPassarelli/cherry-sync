@@ -55,12 +55,8 @@ func aRunLogShouldExistAtTheReportedPath(ctx context.Context) error {
 // file, and how many, is not what those scenarios are about — they name neither —
 // so this composes the existing steps and picks a file from the Background itself.
 func thatAFileHasBeenChangedLocally(ctx context.Context) (context.Context, error) {
-	ctx, err := allFilesIdenticalBetweenLocalAndRemote(ctx)
-	if err != nil {
-		return ctx, err
-	}
 	const changed = "README.md"
-	ctx, err = theFileHasBeenChangedLocally(ctx, changed)
+	ctx, err := theFileHasBeenChangedLocally(ctx, changed)
 	if err != nil {
 		return ctx, err
 	}

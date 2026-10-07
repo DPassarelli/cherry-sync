@@ -34,6 +34,10 @@ func sideDir(ctx context.Context, side string) (string, error) {
 // absolute size) is what lets the scenario state the gap it cares about without
 // also having to know what the fixture happened to put there.
 func theLocalCopyIsLarger(ctx context.Context, relPath string, kb int) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, err := sideDir(ctx, "local")
 	if err != nil {
 		return ctx, err
@@ -60,6 +64,10 @@ func theLocalCopyIsLarger(ctx context.Context, relPath string, kb int) (context.
 // empty, so changing one alone would change the size along with the content and
 // describe a different case entirely.
 func theTwoCopiesDifferInContentButNotSize(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	// Distinct bytes of equal length, long enough that the two cannot collide.
 	content := map[string][]byte{
 		"local":  bytes.Repeat([]byte("L"), 512),
@@ -84,6 +92,10 @@ func theTwoCopiesDifferInContentButNotSize(ctx context.Context, relPath string) 
 // used are coarse (minutes and up) because csync renders them in whole units, and a
 // scenario that pinned seconds would race the clock it is measured against.
 func theCopyWasLastModified(ctx context.Context, side, relPath string, count int, unit string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	dir, err := sideDir(ctx, side)
 	if err != nil {
 		return ctx, err
@@ -113,6 +125,10 @@ func theCopyWasLastModified(ctx context.Context, side, relPath string, count int
 // destination measurement, leaving the row to say the content is the only
 // difference.
 func bothCopiesCarryTheSameModificationTime(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	when := time.Now().Add(-time.Hour)
 	for _, side := range []string{"local", "remote"} {
 		dir, err := sideDir(ctx, side)

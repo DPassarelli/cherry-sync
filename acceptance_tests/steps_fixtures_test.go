@@ -156,6 +156,10 @@ func theLocalFileContains(ctx context.Context, name string, ds *godog.DocString)
 // verbatim when no remote was set up, which the resolution-display scenario
 // relies on to assert the literal placeholder.
 func aCsyncTomlInTheProjectDirectoryContaining(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
@@ -165,7 +169,7 @@ func aCsyncTomlInTheProjectDirectoryContaining(ctx context.Context, ds *godog.Do
 	if remote != "" {
 		content = strings.ReplaceAll(content, "user@host:/project", remote)
 	}
-	err := os.WriteFile(filepath.Join(local, ".csync.toml"), []byte(content), 0o644)
+	err = os.WriteFile(filepath.Join(local, ".csync.toml"), []byte(content), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write .csync.toml: %w", err)
 	}
@@ -194,13 +198,20 @@ func writeFiles(dir, content string) error {
 	return nil
 }
 
-// allFilesIdenticalBetweenLocalAndRemote copies the local tree into a fresh
-// remote tempdir so the two sides start identical, stashing the remote path
-// under remotePathKey.
-func allFilesIdenticalBetweenLocalAndRemote(ctx context.Context) (context.Context, error) {
+// mirrorRemote gives the scenario a remote that starts as a copy of the local
+// tree, unless a remote was already set up or there is no local tree to copy.
+// Starting identical is the common case, so scenarios state only how the two
+// sides differ. Steps call it just before the sides first diverge (and runs call
+// it before csync starts), so the copy carries every piece of shared setup, such
+// as a .gitignore, and none of the divergence.
+func mirrorRemote(ctx context.Context) (context.Context, error) {
+	existing, _ := ctx.Value(remotePathKey{}).(string)
+	if existing != "" {
+		return ctx, nil
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
-		return ctx, fmt.Errorf("local path not set; missing Background step?")
+		return ctx, nil
 	}
 	remote, err := os.MkdirTemp("", "csync-remote-*")
 	if err != nil {
@@ -251,12 +262,16 @@ func aRemoteGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.Doc
 // theFileHasBeenChangedLocally overwrites the named file in the local tree so a
 // later comparison reports it as modified.
 func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
 	}
 	full := filepath.Join(local, relPath)
-	err := os.WriteFile(full, []byte("modified\n"), 0o644)
+	err = os.WriteFile(full, []byte("modified\n"), 0o644)
 	if err != nil {
 		return ctx, fmt.Errorf("write %s: %w", full, err)
 	}
@@ -275,12 +290,16 @@ func theFileHasBeenChangedLocally(ctx context.Context, relPath string) (context.
 // wall-clock second, so their mtimes compare equal at rsync's 1-second granularity;
 // dating this one to the past forces the mtime-only delta the scenario needs.
 func theFileHasADifferentMtimeButIdenticalContent(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
 	}
 	full := filepath.Join(local, relPath)
-	err := os.Chtimes(full, localChangeMtime, localChangeMtime)
+	err = os.Chtimes(full, localChangeMtime, localChangeMtime)
 	if err != nil {
 		return ctx, fmt.Errorf("chtimes %s: %w", full, err)
 	}
@@ -290,12 +309,16 @@ func theFileHasADifferentMtimeButIdenticalContent(ctx context.Context, relPath s
 // theFileHasBeenAddedLocally writes a new file (creating parent dirs) into the
 // local tree so a later comparison reports it as added.
 func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
 	}
 	full := filepath.Join(local, relPath)
-	err := os.MkdirAll(filepath.Dir(full), 0o755)
+	err = os.MkdirAll(filepath.Dir(full), 0o755)
 	if err != nil {
 		return ctx, fmt.Errorf("mkdir: %w", err)
 	}
@@ -315,11 +338,15 @@ func theFileHasBeenAddedLocally(ctx context.Context, relPath string) (context.Co
 // gone from the local side — a deletion on a push. With --delete on the compare,
 // a later comparison reports it as a removal.
 func theFileHasBeenDeletedLocally(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
 		return ctx, fmt.Errorf("local path not set; missing Background step?")
 	}
-	err := os.Remove(filepath.Join(local, relPath))
+	err = os.Remove(filepath.Join(local, relPath))
 	if err != nil {
 		return ctx, fmt.Errorf("remove %s: %w", relPath, err)
 	}
@@ -329,12 +356,16 @@ func theFileHasBeenDeletedLocally(ctx context.Context, relPath string) (context.
 // theFileHasBeenAddedOnTheRemote writes a new file (creating parent dirs) into
 // the remote tree so a later comparison reports it as remote-only.
 func theFileHasBeenAddedOnTheRemote(ctx context.Context, relPath string) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
 	remote, _ := ctx.Value(remotePathKey{}).(string)
 	if remote == "" {
-		return ctx, fmt.Errorf("remote path not set; missing 'identical between local and remote' step?")
+		return ctx, fmt.Errorf("remote path not set; missing a local directory step?")
 	}
 	full := filepath.Join(remote, relPath)
-	err := os.MkdirAll(filepath.Dir(full), 0o755)
+	err = os.MkdirAll(filepath.Dir(full), 0o755)
 	if err != nil {
 		return ctx, fmt.Errorf("mkdir: %w", err)
 	}

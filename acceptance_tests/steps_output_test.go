@@ -9,10 +9,22 @@ import (
 	"strings"
 )
 
+// asPlaceholder maps the scenario's real remote back to the "user@host:/project"
+// placeholder it stands in for. Every scenario with a local tree gets a remote,
+// so an operand display would otherwise show a throwaway tempdir that no scenario
+// can name.
+func asPlaceholder(ctx context.Context, operand string) string {
+	remote := resolvedRemote(ctx)
+	if remote != "" && operand == remote {
+		return "user@host:/project"
+	}
+	return operand
+}
+
 // theReportedSourceShouldBe asserts the parsed "Source:" line equals want.
 func theReportedSourceShouldBe(ctx context.Context, want string) error {
 	r := captured(ctx)
-	got := parseOutput(r.Stdout, r.Stderr).Source
+	got := asPlaceholder(ctx, parseOutput(r.Stdout, r.Stderr).Source)
 
 	if got != want {
 		return fmt.Errorf("Source: got %q, want %q in output:\n%s", got, want, r.Stdout)
@@ -23,7 +35,7 @@ func theReportedSourceShouldBe(ctx context.Context, want string) error {
 // theReportedDestinationShouldBe asserts the parsed "Destination:" line equals want.
 func theReportedDestinationShouldBe(ctx context.Context, want string) error {
 	r := captured(ctx)
-	got := parseOutput(r.Stdout, r.Stderr).Destination
+	got := asPlaceholder(ctx, parseOutput(r.Stdout, r.Stderr).Destination)
 
 	if got != want {
 		return fmt.Errorf("Destination: got %q, want %q in output:\n%s", got, want, r.Stdout)

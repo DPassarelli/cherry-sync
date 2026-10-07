@@ -11,7 +11,6 @@ Feature: Prune run logs
       src/main.go
       README.md
       """
-    And   that all of the files are identical between local and remote
 
   Scenario: A run below the limit prunes nothing
     # Pruning is a ceiling, not a quota: a directory with room to spare is left

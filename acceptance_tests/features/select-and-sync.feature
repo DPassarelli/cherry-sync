@@ -22,7 +22,6 @@ Feature: Select and sync files
       LICENSE
       .gitignore
       """
-    And   that all of the files are identical between local and remote
 
   Scenario: No differences — nothing to sync, no prompt
     When  I run "csync ./project user@host:/project"

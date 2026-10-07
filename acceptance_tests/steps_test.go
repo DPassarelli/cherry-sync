@@ -102,7 +102,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a local git repository containing these files:$`, aLocalGitRepositoryContainingTheseFiles)
 	ctx.Step(`^the repository's "([^"]*)" contains:$`, theLocalFileContains)
 	ctx.Step(`^the directory's "([^"]*)" contains:$`, theLocalFileContains)
-	ctx.Step(`^that all of the files are identical between local and remote$`, allFilesIdenticalBetweenLocalAndRemote)
 	ctx.Step(`^an empty remote directory$`, anEmptyRemoteDirectory)
 	ctx.Step(`^a remote git repository containing these files:$`, aRemoteGitRepositoryContainingTheseFiles)
 	ctx.Step(`^that the file "([^"]*)" has been changed locally$`, theFileHasBeenChangedLocally)

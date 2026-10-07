@@ -137,8 +137,8 @@ type outputKey struct{}
 // `./project` with the real path before invoking csync.
 type localPathKey struct{}
 
-// remotePathKey stashes the per-scenario remote tempdir path set up by the
-// `... identical between local and remote` and `empty remote directory` steps.
+// remotePathKey stashes the per-scenario remote tempdir path, set up by the
+// remote-setup steps or mirrored from the local tree by mirrorRemote.
 // iRun reads it to substitute `user@host:/project` before invoking csync.
 type remotePathKey struct{}
 
