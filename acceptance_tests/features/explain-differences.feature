@@ -33,10 +33,8 @@ Feature: Explain how each file differs
     Then  the reported detail for "README.md" should be "source last updated 4m ago · dest last updated 2d ago"
 
   Scenario: A file matching in size and timestamp differs in content alone
-    # Nothing outward separates the two copies, so the destination pass (a
-    # size+mtime quick check) reports nothing about this file and there is no age
-    # to compare against. This is the state most easily mistaken for a bug, so it
-    # is named outright rather than left blank.
+    # Nothing outward separates the two copies. This is the state most easily
+    # mistaken for a bug, so it is named outright rather than left blank.
     Given that the two copies of "README.md" differ in content but not in size
     And   that both copies of "README.md" carry the same modification time
     When  I run "csync ./project user@host:/project"
@@ -53,10 +51,9 @@ Feature: Explain how each file differs
     Then  no detail should be reported for "README.md"
 
   Scenario: A destination that cannot be measured still reports its changes
-    # The measurement only annotates a row. A comparison that has already
-    # succeeded must not be failed by an annotation that could not be gathered,
-    # so the run carries on and the row falls back to naming which attributes
-    # differ.
+    # The measurement only annotates a row, so failing to gather it must not fail
+    # a comparison that already succeeded. The row names which attributes differ
+    # instead.
     Given that the file "README.md" has been changed locally
     And   a remote that answers the comparison but fails the measurement
     When  I run "csync ./project user@host:/project"

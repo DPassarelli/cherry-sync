@@ -45,34 +45,23 @@ Feature: Compare directories
     And   the reported change count should be 1
 
   Scenario: A file that differs only in modification time is not a change
-    # A file whose content is byte-identical but whose mtime differs (e.g. git
-    # checkout stamps a different mtime per machine) must not surface as a change.
-    # rsync's size+mtime quick-check flags it for transfer; --checksum on the
-    # compare pass settles it by content, so the row itemizes as `.f..t......`
-    # (no content bit) and is dropped. Remove --checksum and this goes red:
-    # README.md reports as a phantom "update".
+    # Identical content with a different mtime (git checkout stamps each machine
+    # differently) is not a change, so it must not be offered for sync.
     Given that the file "README.md" has a different modification time but identical content
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
     And   the reported change count should be 0
 
   Scenario: A source that looks like an rsync option is treated as a path
-    # Security regression guard. rsyncArgs puts `--` before the operands, so an
-    # option-looking source (here `-e`, rsync's remote-shell flag) reaches rsync
-    # as a path. That path doesn't exist, so rsync errors and csync exits
-    # non-zero. Delete the `--` and rsync would honor `-e` and exit 0 — flipping
-    # this red. This asserts the guard's *behavior*, not its implementation.
-    # See SECURITY.md.
+    # A path that starts with "-" must reach rsync as a path, never as an
+    # option (-e would run a remote shell). See SECURITY.md.
     When  I run "csync -e ./project"
     Then  csync should return a non-zero exit code
 
   Scenario: A comparison that fails reports what rsync said
-    # An exit code names neither the failing component nor the failure: 255 is ssh's
-    # code passed through rsync, worn identically by a refused key, a changed host
-    # key, and an unreachable host. What a user can act on is the sentence rsync
-    # wrote on stderr, so csync repeats it rather than reducing the failure to a
-    # number. A missing source is the failure this suite can raise without a broken
-    # remote, and the diagnostic it draws names why the path could not be read.
+    # An exit code can't tell a refused key from a changed host key or an
+    # unreachable host (ssh exits 255 for all three). rsync's own message is what
+    # a user can act on.
     Given a local source path that does not exist
     And   an empty remote directory
     When  I run "csync ./project user@host:/project"
