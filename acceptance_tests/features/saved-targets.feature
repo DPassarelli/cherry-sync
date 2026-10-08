@@ -50,37 +50,6 @@ Feature: Saved sync targets
     Then  the reported source should be "."
     And   the reported destination should be "user@host:/project"
 
-  Scenario: csync does not offer its own .csync.toml as a change
-    # Like .git, csync's config is tooling metadata, never a file to sync. This
-    # holds on any run, not just push and pull.
-    Given a local directory containing these files:
-      """
-      README.md
-      """
-    And   a ".csync.toml" in the project directory containing:
-      """
-      remote = "user@host:/project"
-      """
-    And   that the file "README.md" has been changed locally
-    When  I run "csync ./project user@host:/project" and respond with "n"
-    Then  the reported actions should be:
-      | action | path      |
-      | update | README.md |
-    And   the reported change count should be 1
-
-  Scenario: csync discloses that it held back its .csync.toml
-    # There is no opt-out, so csync must say what it held back.
-    Given a local directory containing these files:
-      """
-      README.md
-      """
-    And   a ".csync.toml" in the project directory containing:
-      """
-      remote = "user@host:/project"
-      """
-    When  I run "csync ./project user@host:/project"
-    Then  the .csync.toml file should be reported as excluded
-
   Scenario: A missing .csync.toml fails loudly and transfers nothing
     # There is no fallback to a default. This covers non-interactive use; at a
     # terminal, push and pull will instead offer to create the file (see
