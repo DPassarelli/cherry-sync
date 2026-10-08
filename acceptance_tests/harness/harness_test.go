@@ -348,7 +348,7 @@ func TestFeatures(t *testing.T) {
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"features"},
+			Paths:    []string{".."},
 			Strict:   true,
 			Tags:     tags,
 			TestingT: t,

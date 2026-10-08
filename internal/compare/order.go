@@ -1,7 +1,7 @@
 // order.go computes the stable display order of reported actions — the sequence
 // the user sees and selects against — so the list is predictable rather than
 // rsync's directory-grouped emit order. The end-to-end contract lives in
-// features/order-reported-actions.feature; the per-rule unit tests in
+// acceptance_tests/order-reported-actions.feature; the per-rule unit tests in
 // order_test.go.
 
 package compare
@@ -14,7 +14,7 @@ import (
 // sortActions orders actions the way a file tree presents them, so the
 // displayed list — and the numbering the user selects against — is stable and
 // predictable rather than rsync's directory-grouped emit order. See the
-// contract documented in features/order-reported-actions.feature.
+// contract documented in acceptance_tests/order-reported-actions.feature.
 func sortActions(actions []Action) {
 	slices.SortFunc(actions, func(a, b Action) int {
 		return comparePaths(a.Path, b.Path)

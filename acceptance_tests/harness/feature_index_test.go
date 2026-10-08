@@ -11,12 +11,12 @@ import (
 // capturing the file name.
 var featureLinkRE = regexp.MustCompile(`\]\(([a-z0-9-]+\.feature)\)`)
 
-// TestFeatureIndex_LinksEveryFeature keeps features/README.md, the map of user
+// TestFeatureIndex_LinksEveryFeature keeps acceptance_tests/README.md, the map of user
 // journeys, from drifting away from the specs it describes: a feature added
 // without a place on the map, or a link left pointing at a renamed file, fails
 // here rather than leaving readers with a stale picture.
 func TestFeatureIndex_LinksEveryFeature(t *testing.T) {
-	index, err := os.ReadFile(filepath.Join("features", "README.md"))
+	index, err := os.ReadFile(filepath.Join("..", "README.md"))
 	if err != nil {
 		t.Fatalf("reading the feature index: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestFeatureIndex_LinksEveryFeature(t *testing.T) {
 		linked[m[1]] = true
 	}
 
-	files, err := filepath.Glob(filepath.Join("features", "*.feature"))
+	files, err := filepath.Glob(filepath.Join("..", "*.feature"))
 	if err != nil {
 		t.Fatalf("listing features: %v", err)
 	}
@@ -34,12 +34,12 @@ func TestFeatureIndex_LinksEveryFeature(t *testing.T) {
 		name := filepath.Base(f)
 		present[name] = true
 		if !linked[name] {
-			t.Errorf("features/README.md does not link %s", name)
+			t.Errorf("acceptance_tests/README.md does not link %s", name)
 		}
 	}
 	for name := range linked {
 		if !present[name] {
-			t.Errorf("features/README.md links %s, which does not exist", name)
+			t.Errorf("acceptance_tests/README.md links %s, which does not exist", name)
 		}
 	}
 }

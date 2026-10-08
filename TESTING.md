@@ -85,15 +85,15 @@ Tests assert against what csync produces, but they should not parse it inline in
 ## File organization
 
 ```
-acceptance_tests/features/*.feature   Gherkin specs — the behavior catalog
-acceptance_tests/features/README.md   the feature map: the specs in the order a user meets them
-acceptance_tests/*_test.go            the black-box suite: harness, step definitions, parsing facades
+acceptance_tests/*.feature            Gherkin specs — the behavior catalog
+acceptance_tests/README.md            the feature map: the specs in the order a user meets them
+acceptance_tests/harness/*_test.go    the black-box suite: godog wiring, step definitions, parsing facades
 internal/<pkg>/*_test.go              unit tests next to the code they cover
 ```
 
-The black-box acceptance suite (godog wiring, step definitions, and the parsing facades) lives together under `acceptance_tests/`, keeping the repository root free of source files. Its scenarios and the specs they run sit side by side. Unit tests live in `_test.go` files alongside the package they serve. Neither is ever placed in `internal/` in a way that lets production code import it.
+The black-box acceptance suite lives under `acceptance_tests/`, keeping the repository root free of source files. The specs sit at the top of that folder, beside the map that orders them, so a reader who opens it meets the behavior first; the Go code that runs them is one level down in `harness/`. Unit tests live in `_test.go` files alongside the package they serve. Neither is ever placed in `internal/` in a way that lets production code import it.
 
-Within `acceptance_tests/`, three naming conventions decide where a new piece goes, and they are the part worth knowing — the list of files that happen to exist today is whatever `ls` says:
+Within `acceptance_tests/harness/`, three naming conventions decide where a new piece goes, and they are the part worth knowing — the list of files that happen to exist today is whatever `ls` says:
 
 - **`steps_*_test.go` holds step definitions, grouped by what they exercise** — the run log, the interactive prompt, the directory fixtures — rather than gathered into one file. Add a group when a new concern arrives; the groups are expected to change as the suite grows.
 - **The registry that binds each Gherkin phrase to its function sits in its own file**, so the suite's whole vocabulary can be read without scrolling past the implementations.
