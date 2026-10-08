@@ -10,8 +10,7 @@ Feature: Report version
 
   Scenario: --version short-circuits any operands
     When I run "csync --version ./project user@host:/project"
-    Then csync should return exit code 0
-    And  the reported version should be "cherry-sync v0.0.0-test"
+    Then the reported version should be "cherry-sync v0.0.0-test"
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.

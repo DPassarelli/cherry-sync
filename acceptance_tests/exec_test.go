@@ -123,6 +123,10 @@ func csyncEnv(ctx context.Context) []string {
 		// `fakehost:` operand transfers on this machine over the real remote code
 		// path. csync's own rsync child inherits this environment.
 		rsh := fakeRsh
+		remoteHome, _ := ctx.Value(remoteHomeKey{}).(string)
+		if remoteHome != "" {
+			env = append(env, "FAKE_REMOTE_HOME="+remoteHome)
+		}
 		failMeasure, _ := ctx.Value(failMeasureModeKey{}).(bool)
 		if failMeasure {
 			rsh = failMeasureRsh
@@ -170,12 +174,16 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		return ctx, fmt.Errorf("expected command to start with %q, got %q", "csync", parts[0])
 	}
 
-	ctx, err := mirrorRemote(ctx)
+	args := parts[1:]
+	ctx, err := defaultLocalProject(ctx, args)
+	if err != nil {
+		return ctx, err
+	}
+	ctx, err = mirrorRemote(ctx)
 	if err != nil {
 		return ctx, err
 	}
 
-	args := parts[1:]
 	// <empty> is a sentinel for an empty-string argument: the step regex and
 	// strings.Fields can't carry a literal "" through the Gherkin command, so
 	// scenarios write <empty> and we substitute it here.

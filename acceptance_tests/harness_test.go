@@ -39,13 +39,17 @@ var csyncBinary string
 var fakeRsh string
 
 // fakeRshScript is the body of the fake remote shell. rsync invokes a remote
-// shell as `rsh <host> <command...>`; dropping the host and exec-ing the rest
+// shell as `rsh [-l <user>] <host> <command...>`; dropping the user and host,
+// moving into the remote's stand-in login home (so a relative remote path such
+// as host:project resolves the way ssh would resolve it), and exec-ing the rest
 // locally makes a `fakehost:` transfer run on this machine yet still travel
 // rsync's remote (sender/receiver) code path — so it emits the `<f`/`>f`
 // direction codes a real push/pull would, which local-to-local never does and
 // the suite was therefore structurally blind to.
 const fakeRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
 shift
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
 exec "$@"
 `
 
@@ -141,6 +145,22 @@ type localPathKey struct{}
 // remote-setup steps or mirrored from the local tree by mirrorRemote.
 // iRun reads it to substitute `user@host:/project` before invoking csync.
 type remotePathKey struct{}
+
+// remoteHomeKey stashes the throwaway directory that holds the scenario's remote,
+// standing in for the login home a real remote resolves relative paths against.
+// csyncEnv hands it to the fake remote shell, and the After hook removes it.
+type remoteHomeKey struct{}
+
+// exitCheckKey holds the scenario's *exitCheck, which records whether any step
+// asserted on csync's exit status. It is a pointer because the exit-code steps
+// return only an error, so they cannot hand a changed context back to godog.
+type exitCheckKey struct{}
+
+// exitCheck notes that a scenario asserted on csync's exit status, which lifts
+// the After hook's default demand that every run succeed.
+type exitCheck struct {
+	asserted bool
+}
 
 // remoteModeKey flags a scenario (via the @remote tag) as needing a real remote
 // transport: runCsync then resolves the remote placeholder to a `fakehost:` path
