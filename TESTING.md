@@ -86,6 +86,7 @@ Tests assert against what csync produces, but they should not parse it inline in
 
 ```
 acceptance_tests/features/*.feature   Gherkin specs — the behavior catalog
+acceptance_tests/features/README.md   the feature map: the specs in the order a user meets them
 acceptance_tests/*_test.go            the black-box suite: harness, step definitions, parsing facades
 internal/<pkg>/*_test.go              unit tests next to the code they cover
 ```
@@ -97,6 +98,8 @@ Within `acceptance_tests/`, three naming conventions decide where a new piece go
 - **`steps_*_test.go` holds step definitions, grouped by what they exercise** — the run log, the interactive prompt, the directory fixtures — rather than gathered into one file. Add a group when a new concern arrives; the groups are expected to change as the suite grows.
 - **The registry that binds each Gherkin phrase to its function sits in its own file**, so the suite's whole vocabulary can be read without scrolling past the implementations.
 - **`*_parser_test.go` holds a parsing facade**, one per thing being parsed.
+
+The feature map is the one inventory kept on purpose, because it orders the specs by user journey, which a glob cannot. `TestFeatureIndex_LinksEveryFeature` fails when a feature is missing from it or a link points at a file that no longer exists, so add each new feature to the map in the same change.
 
 Deliberately absent: an inventory of the files themselves. This section listed them once, a reorganization deleted one, and the doc went on pointing contributors at a file that no longer existed. Directories, globs and conventions survive that; a list does not.
 
