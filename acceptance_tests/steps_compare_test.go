@@ -265,6 +265,59 @@ func theReportedRemovedCountShouldBe(ctx context.Context, want int) error {
 	return nil
 }
 
+// theFilesShouldEndUp asserts each listed file ended the run "in sync" (the same on
+// both sides, including absent from both, as after an applied deletion) or "out of
+// sync" (a change left unapplied). It also requires csync's "Synced:" count to
+// equal the in-sync rows, so a scenario listing every change it made never has to
+// restate the count; a run that printed no count must have synced none of them.
+func theFilesShouldEndUp(ctx context.Context, table *godog.Table) error {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+	synced := 0
+	for _, row := range table.Rows[1:] {
+		path, state := row.Cells[0].Value, row.Cells[1].Value
+		inSync, err := sameOnBothSides(local, remote, path)
+		if err != nil {
+			return err
+		}
+		switch {
+		case state == "in sync" && inSync:
+			synced++
+		case state == "out of sync" && !inSync:
+		case state == "in sync", state == "out of sync":
+			return fmt.Errorf("file %q: want %s, but it is not", path, state)
+		default:
+			return fmt.Errorf("file %q: unknown state %q (want \"in sync\" or \"out of sync\")", path, state)
+		}
+	}
+	r := captured(ctx)
+	parsed := parseOutput(r.Stdout, r.Stderr)
+	got := 0
+	if parsed.HasSyncCount {
+		got = parsed.SyncCount
+	}
+	if got != synced {
+		return fmt.Errorf("Synced: got %d, want %d (the in-sync rows) in output:\n%s", got, synced, r.Stdout)
+	}
+	return nil
+}
+
+// sameOnBothSides reports whether relPath holds the same bytes on both sides, or
+// is absent from both.
+func sameOnBothSides(local, remote, relPath string) (bool, error) {
+	localBytes, localErr := os.ReadFile(filepath.Join(local, relPath))
+	remoteBytes, remoteErr := os.ReadFile(filepath.Join(remote, relPath))
+	for _, err := range []error{localErr, remoteErr} {
+		if err != nil && !os.IsNotExist(err) {
+			return false, fmt.Errorf("read %s: %w", relPath, err)
+		}
+	}
+	if localErr != nil || remoteErr != nil {
+		return localErr != nil && remoteErr != nil, nil
+	}
+	return bytes.Equal(localBytes, remoteBytes), nil
+}
+
 // theFileShouldBeIdenticalBetweenLocalAndRemote asserts the named file has the
 // same bytes on both sides — i.e. the transfer actually moved it.
 func theFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context, relPath string) error {
@@ -281,59 +334,6 @@ func theFileShouldBeIdenticalBetweenLocalAndRemote(ctx context.Context, relPath 
 	}
 	if !bytes.Equal(localBytes, remoteBytes) {
 		return fmt.Errorf("file %q differs: local %q, remote %q", relPath, localBytes, remoteBytes)
-	}
-	return nil
-}
-
-// theFileShouldStillDifferBetweenLocalAndRemote asserts the named file's bytes
-// differ across the two sides — i.e. a change that wasn't selected was left
-// untransferred (the file exists on both sides, but the remote is still stale).
-func theFileShouldStillDifferBetweenLocalAndRemote(ctx context.Context, relPath string) error {
-	local, _ := ctx.Value(localPathKey{}).(string)
-	remote, _ := ctx.Value(remotePathKey{}).(string)
-
-	localBytes, err := os.ReadFile(filepath.Join(local, relPath))
-	if err != nil {
-		return fmt.Errorf("read local %s: %w", relPath, err)
-	}
-	remoteBytes, err := os.ReadFile(filepath.Join(remote, relPath))
-	if err != nil {
-		return fmt.Errorf("read remote %s: %w", relPath, err)
-	}
-	if bytes.Equal(localBytes, remoteBytes) {
-		return fmt.Errorf("file %q is identical on both sides but should still differ", relPath)
-	}
-	return nil
-}
-
-// theFileShouldNotExistOnTheRemote asserts the named file is absent on the
-// remote side — i.e. a change that wasn't selected was not transferred.
-func theFileShouldNotExistOnTheRemote(ctx context.Context, relPath string) error {
-	remote, _ := ctx.Value(remotePathKey{}).(string)
-
-	_, err := os.Stat(filepath.Join(remote, relPath))
-	if err == nil {
-		return fmt.Errorf("file %q exists on the remote but should not", relPath)
-	}
-	if !os.IsNotExist(err) {
-		return fmt.Errorf("stat remote %s: %w", relPath, err)
-	}
-	return nil
-}
-
-// theFileShouldStillExistOnTheRemote asserts the named file is present on the
-// remote side — i.e. a reported deletion was not applied (it was left unselected,
-// or the run only reported changes without transferring). The mirror of
-// theFileShouldNotExistOnTheRemote.
-func theFileShouldStillExistOnTheRemote(ctx context.Context, relPath string) error {
-	remote, _ := ctx.Value(remotePathKey{}).(string)
-
-	_, err := os.Stat(filepath.Join(remote, relPath))
-	if os.IsNotExist(err) {
-		return fmt.Errorf("file %q is absent on the remote but should still exist", relPath)
-	}
-	if err != nil {
-		return fmt.Errorf("stat remote %s: %w", relPath, err)
 	}
 	return nil
 }

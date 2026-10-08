@@ -48,7 +48,9 @@ Feature: Treat every path as a literal path
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
     And   the reported error should mention ".csync.toml"
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   @remote
   Scenario: A deletion candidate whose name holds a glob character is not offered
@@ -58,7 +60,9 @@ Feature: Treat every path as a literal path
     Given that the file "a[1].txt" has been added on the remote
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
-    And   the file "a[1].txt" should still exist on the remote
+    And   the files should end up:
+      | path     | state       |
+      | a[1].txt | out of sync |
 
   @remote @wip
   Scenario: A selected filename containing a newline transfers intact
