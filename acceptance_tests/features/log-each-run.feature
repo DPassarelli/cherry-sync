@@ -70,6 +70,22 @@ Feature: Log each run
     When  I run "csync ./project user@host:/project"
     Then  the log should record running "git" for the ignore rules
 
+  @git @remote
+  Scenario: The run log records every withheld file, even when summarized
+    # The run log is where a user checks whether one particular file was held
+    # back.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that 11 files have been added on the remote under "build/a"
+    When  I run "csync user@host:/project ./project"
+    Then  the log should record 11 excluded paths
+
   Scenario: A path containing a space is logged as a single argument
     Given a local directory whose path contains a space
     When  I run "csync ./project user@host:/project"
