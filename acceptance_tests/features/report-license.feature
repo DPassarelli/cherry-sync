@@ -12,5 +12,4 @@ Feature: Report license
 
   Scenario: --license short-circuits any operands
     When I run "csync --license ./project user@host:/project"
-    Then csync should return exit code 0
-    And  the reported license should contain "MIT License"
+    Then the reported license should contain "MIT License"

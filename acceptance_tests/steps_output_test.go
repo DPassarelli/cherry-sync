@@ -9,11 +9,14 @@ import (
 	"strings"
 )
 
-// asPlaceholder maps the scenario's real remote back to the "user@host:/project"
-// placeholder it stands in for. Every scenario with a local tree gets a remote,
-// so an operand display would otherwise show a throwaway tempdir that no scenario
-// can name.
+// asPlaceholder maps the scenario's real operands back to the "./project" and
+// "user@host:/project" placeholders they stand in for. The harness substitutes
+// throwaway directories for both, which no scenario can name.
 func asPlaceholder(ctx context.Context, operand string) string {
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local != "" && operand == local {
+		return "./project"
+	}
 	remote := resolvedRemote(ctx)
 	if remote != "" && operand == remote {
 		return "user@host:/project"
@@ -43,8 +46,33 @@ func theReportedDestinationShouldBe(ctx context.Context, want string) error {
 	return nil
 }
 
+// markExitAsserted records that the scenario has spoken for csync's exit status,
+// so a non-zero exit is the scenario's own expectation rather than a failure.
+func markExitAsserted(ctx context.Context) {
+	check, _ := ctx.Value(exitCheckKey{}).(*exitCheck)
+	if check != nil {
+		check.asserted = true
+	}
+}
+
+// unassertedFailure reports a csync run that exited non-zero in a scenario that
+// never asserted on the exit status. Success is the default expectation, so a
+// scenario only names the exit status when failing is part of what it describes.
+func unassertedFailure(ctx context.Context) error {
+	check, _ := ctx.Value(exitCheckKey{}).(*exitCheck)
+	if check != nil && check.asserted {
+		return nil
+	}
+	r, ok := ctx.Value(outputKey{}).(runResult)
+	if !ok || r.ExitCode == 0 {
+		return nil
+	}
+	return fmt.Errorf("csync exited %d, but the scenario expects success (stderr: %q)", r.ExitCode, r.Stderr)
+}
+
 // csyncShouldReturnExitCode asserts the captured process exit code equals want.
 func csyncShouldReturnExitCode(ctx context.Context, want int) error {
+	markExitAsserted(ctx)
 	got := captured(ctx).ExitCode
 
 	if got != want {
@@ -56,6 +84,7 @@ func csyncShouldReturnExitCode(ctx context.Context, want int) error {
 // csyncShouldReturnANonZeroExitCode asserts the captured exit code is non-zero
 // (the error path, without pinning a specific code).
 func csyncShouldReturnANonZeroExitCode(ctx context.Context) error {
+	markExitAsserted(ctx)
 	r := captured(ctx)
 
 	if r.ExitCode == 0 {

@@ -86,6 +86,12 @@ func aLocalDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocStrin
 // "~/project" operand has something to resolve to once csync expands it. The path
 // is stashed under localPathKey like its plain twin.
 func aLocalDirectoryInTheHomeDirectoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
+	return homeProject(ctx, ds.Content)
+}
+
+// homeProject creates ~/project in the scenario's throwaway home, holding the
+// newline-separated files in content, and stashes it under localPathKey.
+func homeProject(ctx context.Context, content string) (context.Context, error) {
 	home, _ := ctx.Value(homeKey{}).(string)
 	if home == "" {
 		return ctx, fmt.Errorf("scenario home directory not set")
@@ -95,11 +101,29 @@ func aLocalDirectoryInTheHomeDirectoryContainingTheseFiles(ctx context.Context, 
 	if err != nil {
 		return ctx, fmt.Errorf("mkdir: %w", err)
 	}
-	err = writeFiles(dir, ds.Content)
+	err = writeFiles(dir, content)
 	if err != nil {
 		return ctx, err
 	}
 	return context.WithValue(ctx, localPathKey{}, dir), nil
+}
+
+// defaultLocalProject gives a run that names the local project ("./project" or
+// "~/project") a directory to find when the scenario set none up. Scenarios about
+// how csync reads its operands then succeed without describing a project they
+// never look at. It lives in the home directory so that both spellings resolve
+// to the same place.
+func defaultLocalProject(ctx context.Context, args []string) (context.Context, error) {
+	existing, _ := ctx.Value(localPathKey{}).(string)
+	if existing != "" {
+		return ctx, nil
+	}
+	for _, a := range args {
+		if a == "./project" || a == "~/project" {
+			return homeProject(ctx, "README.md")
+		}
+	}
+	return ctx, nil
 }
 
 // aLocalGitRepositoryContainingTheseFiles creates a local tempdir, initializes a
@@ -213,28 +237,43 @@ func mirrorRemote(ctx context.Context) (context.Context, error) {
 	if local == "" {
 		return ctx, nil
 	}
-	remote, err := os.MkdirTemp("", "csync-remote-*")
+	ctx, err := newRemoteDir(ctx)
 	if err != nil {
-		return ctx, fmt.Errorf("mktempdir: %w", err)
+		return ctx, err
 	}
+	remote, _ := ctx.Value(remotePathKey{}).(string)
 	err = copyTree(local, remote)
 	if err != nil {
 		return ctx, fmt.Errorf("copy: %w", err)
 	}
-	return context.WithValue(ctx, remotePathKey{}, remote), nil
+	return ctx, nil
 }
 
-// anEmptyRemoteDirectory creates an empty remote tempdir and stashes its path
-// under remotePathKey.
-func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
-	remote, err := os.MkdirTemp("", "csync-remote-*")
+// newRemoteDir creates the scenario's remote as a "project" folder inside its own
+// throwaway home, stashing the folder under remotePathKey and the home under
+// remoteHomeKey. A saved remote may name its path relative to the login home
+// (host:project), and the fake remote shell resolves such a path from there, as
+// ssh would.
+func newRemoteDir(ctx context.Context) (context.Context, error) {
+	home, err := os.MkdirTemp("", "csync-remote-*")
 	if err != nil {
 		return ctx, fmt.Errorf("mktempdir: %w", err)
+	}
+	ctx = context.WithValue(ctx, remoteHomeKey{}, home)
+	remote := filepath.Join(home, "project")
+	err = os.Mkdir(remote, 0o755)
+	if err != nil {
+		return ctx, fmt.Errorf("mkdir: %w", err)
 	}
 	return context.WithValue(ctx, remotePathKey{}, remote), nil
 }
 
-// aRemoteGitRepositoryContainingTheseFiles creates a remote tempdir, initializes
+// anEmptyRemoteDirectory creates an empty remote directory.
+func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
+	return newRemoteDir(ctx)
+}
+
+// aRemoteGitRepositoryContainingTheseFiles creates a remote directory, initializes
 // a git work tree in it, and populates it with the (empty) files named in the
 // DocString. It is the mirror of the local-repository step, for the scenarios
 // where the repository is the side csync reads rather than the side it runs on —
@@ -242,10 +281,11 @@ func anEmptyRemoteDirectory(ctx context.Context) (context.Context, error) {
 // the local side alone has nothing to find. The path is stashed under
 // remotePathKey, like the other remote-setup steps.
 func aRemoteGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.DocString) (context.Context, error) {
-	remote, err := os.MkdirTemp("", "csync-remote-*")
+	ctx, err := newRemoteDir(ctx)
 	if err != nil {
-		return ctx, fmt.Errorf("mktempdir: %w", err)
+		return ctx, err
 	}
+	remote, _ := ctx.Value(remotePathKey{}).(string)
 	cmd := exec.Command("git", "init", "-q")
 	cmd.Dir = remote
 	err = cmd.Run()
@@ -256,7 +296,7 @@ func aRemoteGitRepositoryContainingTheseFiles(ctx context.Context, ds *godog.Doc
 	if err != nil {
 		return ctx, err
 	}
-	return context.WithValue(ctx, remotePathKey{}, remote), nil
+	return ctx, nil
 }
 
 // theFileHasBeenChangedLocally overwrites the named file in the local tree so a

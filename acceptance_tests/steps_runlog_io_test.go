@@ -13,6 +13,17 @@ import (
 	"strings"
 )
 
+// csyncShouldReportWhereItLoggedTheFailedRun asserts a run that failed still
+// disclosed its log. Checking the failure here keeps the scenario from passing on a
+// clean run, should its setup ever stop producing the failure it describes.
+func csyncShouldReportWhereItLoggedTheFailedRun(ctx context.Context) error {
+	err := csyncShouldReturnANonZeroExitCode(ctx)
+	if err != nil {
+		return err
+	}
+	return csyncShouldReportWhereItLoggedTheRun(ctx)
+}
+
 // csyncShouldReportWhereItLoggedTheRun asserts csync disclosed the path of the
 // run log it wrote. A record nobody can find is not a record, so the disclosure is a
 // behavior in its own right — which is why the steps that read a log's contents find
@@ -144,6 +155,17 @@ func csyncShouldSayLastOfAllThatTheRunWasNotLogged(ctx context.Context) error {
 		return fmt.Errorf("csync's last word was %q, not that the run went unlogged", last)
 	}
 	return nil
+}
+
+// noRunLogShouldHaveBeenWrittenForTheRejectedRun asserts a run csync refused left no
+// log behind. Checking the refusal here keeps the scenario from passing on a run
+// that went through, should its invocation ever stop being rejected.
+func noRunLogShouldHaveBeenWrittenForTheRejectedRun(ctx context.Context) error {
+	err := csyncShouldReturnANonZeroExitCode(ctx)
+	if err != nil {
+		return err
+	}
+	return noRunLogShouldHaveBeenWritten(ctx)
 }
 
 // noRunLogShouldHaveBeenWritten asserts nothing was recorded under the scenario's

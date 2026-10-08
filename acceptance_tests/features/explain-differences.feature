@@ -58,5 +58,4 @@ Feature: Explain how each file differs
     And   a remote that answers the comparison but fails the measurement
     When  I run "csync ./project user@host:/project"
     Then  the reported change count should be 1
-    And   csync should return exit code 0
     And   the reported detail for "README.md" should be "size and mtime"

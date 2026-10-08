@@ -170,13 +170,6 @@ func iAnswerThePrompt(ctx context.Context) (context.Context, error) {
 	return context.WithValue(ctx, outputKey{}, result), nil
 }
 
-// csyncShouldExitNormally asserts csync ran to completion rather than falling over
-// partway. It is `exit code 0` said in the vocabulary of a scenario that cares only
-// that the run finished, since a csync that died has nothing to report about a log.
-func csyncShouldExitNormally(ctx context.Context) error {
-	return csyncShouldReturnExitCode(ctx, 0)
-}
-
 // theReportedLogPathShouldBeTheOneIFoundEarlier ties the log csync discloses on the
 // way out to the file it was seen filling in mid-run. Without it the two halves are
 // each honest and jointly useless: csync could write one file and name another.

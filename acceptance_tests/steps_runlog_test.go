@@ -104,6 +104,10 @@ var exitStatusRE = regexp.MustCompile(`exit status (\d+)`)
 // log must show. A runner that logged a fixed exit=0, or dropped the process's real
 // code, reddens here — which is what keeps the log honest about the runs worth reading.
 func theLogShouldRecordTheComparisonsFailingExitCode(ctx context.Context) error {
+	err := csyncShouldReturnANonZeroExitCode(ctx)
+	if err != nil {
+		return err
+	}
 	r := captured(ctx)
 	m := exitStatusRE.FindStringSubmatch(r.Stderr)
 	if m == nil {
@@ -155,6 +159,10 @@ func csyncShouldReportTheDiagnosticRsyncWrote(ctx context.Context) error {
 // shown, which holds whichever rsync flavor produced it and however much of a long
 // diagnostic the log chose to keep.
 func theLogShouldRecordWhatRsyncSaidAboutTheFailure(ctx context.Context) error {
+	err := csyncShouldReturnANonZeroExitCode(ctx)
+	if err != nil {
+		return err
+	}
 	log, content, err := resolvedLog(ctx)
 	if err != nil {
 		return err

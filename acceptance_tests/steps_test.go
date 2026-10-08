@@ -31,6 +31,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the reported version should be "([^"]*)"$`, theReportedVersionShouldBe)
 	ctx.Step(`^the reported license should contain "([^"]*)"$`, theReportedLicenseShouldContain)
 	ctx.Step(`^csync should report where it logged the run$`, csyncShouldReportWhereItLoggedTheRun)
+	ctx.Step(`^csync should report where it logged the failed run$`, csyncShouldReportWhereItLoggedTheFailedRun)
 	ctx.Step(`^a run log should exist at the reported path$`, aRunLogShouldExistAtTheReportedPath)
 	ctx.Step(`^that a file has been changed locally$`, thatAFileHasBeenChangedLocally)
 	ctx.Step(`^a remote that goes silent once the comparison is done$`, aRemoteThatGoesSilentOnceTheComparisonIsDone)
@@ -73,7 +74,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// A restatement of `csync should return exit code 0` in the vocabulary of a
 	// scenario that has no interest in the number, only in csync having finished
 	// what it was doing rather than falling over partway.
-	ctx.Step(`^csync should exit normally$`, csyncShouldExitNormally)
 	ctx.Step(`^the reported log path should be the one I found earlier$`, theReportedLogPathShouldBeTheOneIFoundEarlier)
 	ctx.Step(`^that csync cannot write its log$`, thatCsyncCannotWriteItsLog)
 	ctx.Step(`^the changed file is deleted before I answer$`, theChangedFileIsDeletedBeforeIAnswer)
@@ -82,6 +82,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^csync should not report where it logged the run$`, csyncShouldNotReportWhereItLoggedTheRun)
 	ctx.Step(`^csync should say last of all that the run was not logged$`, csyncShouldSayLastOfAllThatTheRunWasNotLogged)
 	ctx.Step(`^no run log should have been written$`, noRunLogShouldHaveBeenWritten)
+	ctx.Step(`^no run log should have been written for the rejected run$`, noRunLogShouldHaveBeenWrittenForTheRejectedRun)
 	ctx.Step(`^the environment variable XDG_STATE_HOME is set$`, xdgStateHomeIsSet)
 	ctx.Step(`^the environment variable XDG_STATE_HOME is not set$`, xdgStateHomeIsNotSet)
 	ctx.Step(`^the run log should be under "([^"]*)" in (.+)$`, theRunLogShouldBeUnderIn)
@@ -136,6 +137,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			return ctx, fmt.Errorf("mktempdir: %w", err)
 		}
 		ctx = context.WithValue(ctx, homeKey{}, home)
+		ctx = context.WithValue(ctx, exitCheckKey{}, &exitCheck{})
 		for _, tag := range sc.Tags {
 			if tag.Name == "@remote" {
 				ctx = context.WithValue(ctx, remoteModeKey{}, true)
@@ -144,7 +146,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		return ctx, nil
 	})
 
-	ctx.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
+	ctx.After(func(ctx context.Context, _ *godog.Scenario, stepErr error) (context.Context, error) {
 		// Reap a csync left blocked at the prompt — by a scenario that means to leave
 		// it there, or by one that failed before it could answer. Without this, the
 		// tempdirs below are removed out from under a live process and `go test` waits
@@ -159,14 +161,17 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		if localPath != "" {
 			os.RemoveAll(localPath)
 		}
-		remotePath, _ := ctx.Value(remotePathKey{}).(string)
-		if remotePath != "" {
-			os.RemoveAll(remotePath)
+		remoteHome, _ := ctx.Value(remoteHomeKey{}).(string)
+		if remoteHome != "" {
+			os.RemoveAll(remoteHome)
 		}
 		home, _ := ctx.Value(homeKey{}).(string)
 		if home != "" {
 			os.RemoveAll(home)
 		}
-		return ctx, nil
+		if stepErr != nil {
+			return ctx, nil
+		}
+		return ctx, unassertedFailure(ctx)
 	})
 }

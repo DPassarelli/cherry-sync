@@ -21,10 +21,8 @@ Feature: Show help
 
   Scenario: The -h alias behaves like --help
     When I run "csync -h"
-    Then csync should return exit code 0
-    And  the help text should contain "cherry-sync"
+    Then the help text should contain "cherry-sync"
 
   Scenario: --help short-circuits any operands
     When I run "csync --help ./project user@host:/project"
-    Then csync should return exit code 0
-    And  the help text should contain "cherry-sync"
+    Then the help text should contain "cherry-sync"
