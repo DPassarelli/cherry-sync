@@ -120,7 +120,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the withheld changes should list (\d+) individual files$`, theWithheldChangesShouldListIndividualFiles)
 	ctx.Step(`^the reported actions should be, in order:$`, theReportedActionsShouldBeInOrder)
 	ctx.Step(`^the reported changes should be numbered, in order:$`, theReportedChangesShouldBeNumberedInOrder)
-	ctx.Step(`^the reported change count should be (\d+)$`, theReportedChangeCountShouldBe)
 	ctx.Step(`^the \.git directory should be reported as excluded$`, theGitDirectoryShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.csync\.toml file should be reported as excluded$`, theCsyncTomlShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.git directory should not be reported as excluded$`, theGitDirectoryShouldNotBeReportedAsExcluded)

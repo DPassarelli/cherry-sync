@@ -26,7 +26,7 @@ func noActionsShouldBeReported(ctx context.Context) error {
 	if len(got) != 0 {
 		return fmt.Errorf("Actions: got %d (%+v), want 0", len(got), got)
 	}
-	return nil
+	return changeCountShouldBe(ctx, 0)
 }
 
 // theReportedActionsShouldBe asserts the reported actions match the table,
@@ -46,7 +46,7 @@ func theReportedActionsShouldBe(ctx context.Context, table *godog.Table) error {
 	if !reflect.DeepEqual(gotSorted, wantSorted) {
 		return fmt.Errorf("Actions: got %+v, want %+v in output:\n%s", got, want, r.Stdout)
 	}
-	return nil
+	return changeCountShouldBe(ctx, len(want))
 }
 
 // theWithheldChangesShouldBe asserts the "Withheld (gitignored):" block lists
@@ -177,9 +177,10 @@ func sortActions(a []Action) []Action {
 	return cpy
 }
 
-// theReportedChangeCountShouldBe asserts csync printed a "Changes:" line and
-// that its count equals want.
-func theReportedChangeCountShouldBe(ctx context.Context, want int) error {
+// changeCountShouldBe asserts csync printed a "Changes:" line whose count equals
+// want. The action-list steps call it so the summary line can never disagree with
+// the list it summarizes, without every scenario restating the count.
+func changeCountShouldBe(ctx context.Context, want int) error {
 	r := captured(ctx)
 	parsed := parseOutput(r.Stdout, r.Stderr)
 

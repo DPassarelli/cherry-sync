@@ -57,5 +57,7 @@ Feature: Explain how each file differs
     Given that the file "README.md" has been changed locally
     And   a remote that answers the comparison but fails the measurement
     When  I run "csync ./project user@host:/project"
-    Then  the reported change count should be 1
+    Then  the reported actions should be:
+      | action | path      |
+      | update | README.md |
     And   the reported detail for "README.md" should be "size and mtime"

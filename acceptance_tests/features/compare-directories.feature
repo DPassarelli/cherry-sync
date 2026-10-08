@@ -16,7 +16,6 @@ Feature: Compare directories
   Scenario: None of the files are different
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
-    And   the reported change count should be 0
 
   Scenario: One of the files is different
     Given that the file "README.md" has been changed locally
@@ -24,7 +23,6 @@ Feature: Compare directories
     Then  the reported actions should be:
       | action | path      |
       | update | README.md |
-    And   the reported change count should be 1
 
   Scenario: Two of the files are different
     Given that the file "README.md" has been changed locally
@@ -34,7 +32,6 @@ Feature: Compare directories
       | action | path         |
       | update | README.md    |
       | create | src/adder.go |
-    And   the reported change count should be 2
 
   Scenario: Pull direction — a file is new on the remote
     Given that the file "src/remote_only.go" has been added on the remote
@@ -42,13 +39,11 @@ Feature: Compare directories
     Then  the reported actions should be:
       | action | path               |
       | create | src/remote_only.go |
-    And   the reported change count should be 1
 
   Scenario: A file that differs only in modification time is not a change
     Given that the file "README.md" has a different modification time but identical content
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
-    And   the reported change count should be 0
 
   Scenario: A comparison that fails reports what rsync said
     # An exit code can't tell a refused key from a changed host key or an
