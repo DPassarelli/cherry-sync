@@ -175,11 +175,7 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 	}
 
 	args := parts[1:]
-	ctx, err := defaultLocalProject(ctx, args)
-	if err != nil {
-		return ctx, err
-	}
-	ctx, err = mirrorRemote(ctx)
+	ctx, err := mirrorRemote(ctx)
 	if err != nil {
 		return ctx, err
 	}

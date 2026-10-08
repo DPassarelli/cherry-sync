@@ -223,30 +223,12 @@ Feature: Select and sync files
     Then  no actions should be reported
     And   the reported change count should be 0
 
-  Scenario: A deletion candidate whose name holds a glob character is not offered
-    # rsync filter rules treat *, ?, and [ as wildcards, so removing a[1].txt
-    # could remove a1.txt instead. Until escaping lands, such files are not
-    # offered for deletion.
-    Given that the file "a[1].txt" has been added on the remote
-    When  I run "csync ./project user@host:/project"
-    Then  no actions should be reported
-    And   the reported change count should be 0
-    And   the file "a[1].txt" should still exist on the remote
-
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
     Given that the file "notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project" and respond with "a"
     Then  the reported sync count should be 1
     And   the file "notes.txt" should be identical between local and remote
-
-  @wip
-  Scenario: A selected filename containing a newline transfers intact
-    # A newline in a filename must not split it into two entries. See SECURITY.md.
-    Given that a file whose name contains a newline has been added locally
-    When  I run "csync ./project user@host:/project" and respond with "a"
-    Then  the reported sync count should be 1
-    And   that file should be identical between local and remote
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.

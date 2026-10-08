@@ -121,7 +121,7 @@ func Run(ctx context.Context, r *command.Runner, source, destination string, pro
 	// The variable args are safe by construction — see SECURITY.md: no shell (the
 	// runner uses exec.Command, not sh -c), a `--` separator added by rsyncArgs, and
 	// path operands validated in cli.Parse. The guard is proven behaviorally by the
-	// "treated as a path" scenario in compare-directories.feature, which fails if the
+	// "treated as a path" scenario in guard-unsafe-input.feature, which fails if the
 	// `--` is removed.
 	out, err := r.Run(ctx, "rsync", args, nil)
 	if err != nil {

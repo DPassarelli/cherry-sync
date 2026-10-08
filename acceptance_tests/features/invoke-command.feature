@@ -30,11 +30,6 @@ Feature: Invoke command
     And  the reported error should mention "'pill' is not a command"
     And  the reported error should mention "pull"
 
-  Scenario: Empty path argument — report the empty operand and exit non-zero
-    When I run "csync <empty> user@host:/project"
-    Then csync should return exit code 2
-    And  the reported error should mention "source path is empty"
-
   Scenario: A local source written with a ~ home shortcut finds the files
     # rsync takes "~" as a literal directory name, so csync expands it before
     # rsync sees it (#71).

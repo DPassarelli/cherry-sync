@@ -108,24 +108,6 @@ func homeProject(ctx context.Context, content string) (context.Context, error) {
 	return context.WithValue(ctx, localPathKey{}, dir), nil
 }
 
-// defaultLocalProject gives a run that names the local project ("./project" or
-// "~/project") a directory to find when the scenario set none up. Scenarios about
-// how csync reads its operands then succeed without describing a project they
-// never look at. It lives in the home directory so that both spellings resolve
-// to the same place.
-func defaultLocalProject(ctx context.Context, args []string) (context.Context, error) {
-	existing, _ := ctx.Value(localPathKey{}).(string)
-	if existing != "" {
-		return ctx, nil
-	}
-	for _, a := range args {
-		if a == "./project" || a == "~/project" {
-			return homeProject(ctx, "README.md")
-		}
-	}
-	return ctx, nil
-}
-
 // aLocalGitRepositoryContainingTheseFiles creates a local tempdir, initializes a
 // git work tree in it, and populates it with the (empty) files named in the
 // DocString — the local-side setup the .gitignore scenarios need so csync can ask
@@ -223,11 +205,16 @@ func writeFiles(dir, content string) error {
 }
 
 // mirrorRemote gives the scenario a remote that starts as a copy of the local
-// tree, unless a remote was already set up or there is no local tree to copy.
-// Starting identical is the common case, so scenarios state only how the two
-// sides differ. Steps call it just before the sides first diverge (and runs call
-// it before csync starts), so the copy carries every piece of shared setup, such
-// as a .gitignore, and none of the divergence.
+// tree, unless a remote was already set up. Starting identical is the common
+// case, so scenarios state only how the two sides differ. Steps call it just
+// before the sides first diverge (and runs call it before csync starts), so the
+// copy carries every piece of shared setup, such as a .gitignore, and none of the
+// divergence.
+//
+// A scenario that set up no local tree gets a default ~/project, so one that
+// cares only about the remote, or about how csync reads its operands, need not
+// describe a project it never looks at. It lives in the home directory so that
+// "./project" and "~/project" resolve to the same place.
 func mirrorRemote(ctx context.Context) (context.Context, error) {
 	existing, _ := ctx.Value(remotePathKey{}).(string)
 	if existing != "" {
@@ -235,7 +222,12 @@ func mirrorRemote(ctx context.Context) (context.Context, error) {
 	}
 	local, _ := ctx.Value(localPathKey{}).(string)
 	if local == "" {
-		return ctx, nil
+		var err error
+		ctx, err = homeProject(ctx, "README.md")
+		if err != nil {
+			return ctx, err
+		}
+		local, _ = ctx.Value(localPathKey{}).(string)
 	}
 	ctx, err := newRemoteDir(ctx)
 	if err != nil {

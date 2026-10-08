@@ -80,23 +80,6 @@ Feature: Saved sync targets
     And   the reported error should mention ".csync.toml"
     And   the file "README.md" should still differ between local and remote
 
-  Scenario: A .csync.toml with an empty remote value is rejected
-    # A path from config gets the same validation as one from the command line.
-    # See SECURITY.md.
-    Given a local directory containing these files:
-      """
-      README.md
-      """
-    And   a ".csync.toml" in the project directory containing:
-      """
-      remote = ""
-      """
-    And   that the file "README.md" has been changed locally
-    When  I run "csync push" from the project directory
-    Then  csync should return a non-zero exit code
-    And   the reported error should mention ".csync.toml"
-    And   the file "README.md" should still differ between local and remote
-
   Scenario: Malformed TOML is rejected with a clear error
     Given a local directory containing these files:
       """
@@ -123,20 +106,6 @@ Feature: Saved sync targets
     When  I run "csync pull ./project"
     Then  csync should return exit code 2
     And   the reported error should mention "'pull' takes no arguments"
-
-  Scenario: A configured remote that looks like an rsync option is treated as a path
-    # A path read from config must not get around the guard on option-looking
-    # paths. See SECURITY.md.
-    Given a local directory containing these files:
-      """
-      README.md
-      """
-    And   a ".csync.toml" in the project directory containing:
-      """
-      remote = "-e"
-      """
-    When  I run "csync pull" from the project directory
-    Then  csync should return a non-zero exit code
 
   Scenario: A saved remote with a ~ home shortcut is normalized before use
     # rsync takes a remote "~" literally (#50). csync rewrites it as a path
