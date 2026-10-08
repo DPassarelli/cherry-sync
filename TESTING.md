@@ -33,6 +33,7 @@ One round of behavior, from idea to merged code:
 - **Imperative over declarative.** Prefer `When I run "csync ./project user@host:/project"` and `Then the reported source should be "./project"` over vague phrasing like "the user can see the planned actions." Specific assertions surface design decisions; vague ones erode them. Loosening a too-tight assertion later is easy; tightening a too-loose one means re-deriving what the design originally was.
 - **Tables for world state.** When a scenario depends on the state of multiple files on each side, use a Gherkin table. Concrete state is easier to verify and easier to translate into fixtures.
 - **One scenario, one behavior.** Don't bundle multiple expectations into a single scenario. If a related expectation matters, write a second scenario.
+- **`@wip` for agreed but unimplemented scenarios.** A scenario reviewed and agreed ahead of its implementation carries the `@wip` tag, which the runner excludes; drop the tag when you drill in.
 - **TODO blocks for unstamped scenarios.** When you identify a scenario but aren't ready to drill into it, leave it as a commented block at the bottom of the feature file. The feature file then doubles as a visible per-feature backlog.
 
 ## Unit test style

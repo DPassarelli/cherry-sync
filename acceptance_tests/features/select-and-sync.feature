@@ -1,7 +1,3 @@
-# Scenarios are brought into the run one at a time as we implement them. Each
-# not-yet-implemented scenario carries its own @wip tag (excluded via the
-# "~@wip" tag filter the runner applies); drop a scenario's tag when we drill in.
-#
 # @remote runs every scenario here over a fake SSH remote, so transfers run the
 # way they would against a real host. A local-to-local run reports every change
 # in the same direction, which once hid a push-direction bug.

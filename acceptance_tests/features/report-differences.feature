@@ -1,4 +1,4 @@
-Feature: Compare directories
+Feature: Report differences between local and remote
 
   In order to understand what a sync will do before committing to it,
   I want to see which files differ and what action would be taken.

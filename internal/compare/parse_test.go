@@ -28,7 +28,7 @@ func itoa(n int64) string {
 
 // Behavior: with no rsync output, parseActions returns no actions. Mirrors
 // the Gherkin scenario "None of the files are different" in
-// features/compare-directories.feature.
+// features/report-differences.feature.
 func TestParseActions_Empty_ReturnsNoActions(t *testing.T) {
 	got := parseActions("")
 
@@ -39,7 +39,7 @@ func TestParseActions_Empty_ReturnsNoActions(t *testing.T) {
 
 // Behavior: a single `>f...` update line yields a single update Action.
 // Mirrors the Gherkin scenario "One of the files is different" in
-// features/compare-directories.feature.
+// features/report-differences.feature.
 func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) {
 	got := parseActions(line(">fcst......", 42, "README.md"))
 
@@ -54,7 +54,7 @@ func TestParseActions_OneUpdate_ReturnsOneUpdateAction(t *testing.T) {
 
 // Behavior: a `>f+++++++++` line (all-new attribute markers) yields a create
 // Action. Mirrors the new-file half of the Gherkin scenario "Two of the files
-// are different" in features/compare-directories.feature.
+// are different" in features/report-differences.feature.
 func TestParseActions_OneCreate_ReturnsOneCreateAction(t *testing.T) {
 	got := parseActions(line(">f+++++++++", 10, "src/adder.go"))
 

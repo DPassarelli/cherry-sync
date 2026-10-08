@@ -12,7 +12,7 @@ import (
 // path against the login home) and flagged as rewritten. Without this, modern
 // rsync's protected-args default passes the "~" literally and the transfer fails
 // with exit 12 — the bug in #50. Mirrors the "~ home shortcut is normalized"
-// scenario in saved-targets.feature.
+// scenario in sync-with-saved-remote.feature.
 func TestNormalize_RemoteTildeSlash_StrippedAndFlagged(t *testing.T) {
 	got, err := operand.Normalize("user@host:~/working")
 	if err != nil {
@@ -154,7 +154,7 @@ func TestNormalize_LocalTildeNotLeading_Unchanged(t *testing.T) {
 // Behavior: a local "~user" shortcut is rejected rather than resolved, matching
 // how the remote side treats it. The message names the tilde so the user can see
 // what to fix. Mirrors the "~user home shortcut is rejected" scenario in
-// invoke-command.feature.
+// name-source-and-destination.feature.
 func TestNormalize_LocalTildeUser_Rejected(t *testing.T) {
 	_, err := operand.Normalize("~deploy/project")
 	if err == nil {

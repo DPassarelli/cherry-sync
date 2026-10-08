@@ -1,4 +1,4 @@
-Feature: Invoke command
+Feature: Name the source and destination
 
   In order to use csync against any local/remote pair without pre-configuration,
   I want to specify the source and destination as command-line arguments.
