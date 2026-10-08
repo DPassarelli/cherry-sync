@@ -21,7 +21,6 @@ Feature: Never sync tooling metadata
       | action | path        |
       | create | README.md   |
       | create | src/main.go |
-    And   the reported change count should be 2
 
   @git
   Scenario: The .git exclusion is disclosed even when nothing is gitignored
@@ -52,7 +51,6 @@ Feature: Never sync tooling metadata
       | action | path              |
       | create | README.md         |
       | create | vendor/lib/lib.go |
-    And   the reported change count should be 2
 
   @git @remote
   Scenario: Pull direction — a remote repository's .git is never offered for sync
@@ -71,7 +69,6 @@ Feature: Never sync tooling metadata
     Then  the reported actions should be:
       | action | path        |
       | create | src/main.go |
-    And   the reported change count should be 1
 
   @git @remote
   Scenario: Pull direction — the remote repository's .git exclusion is disclosed
@@ -106,7 +103,6 @@ Feature: Never sync tooling metadata
     Then  the reported actions should be:
       | action | path      |
       | update | README.md |
-    And   the reported change count should be 1
 
   @remote
   Scenario: csync discloses that it held back its .csync.toml

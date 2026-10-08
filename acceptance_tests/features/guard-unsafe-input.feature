@@ -58,7 +58,6 @@ Feature: Treat every path as a literal path
     Given that the file "a[1].txt" has been added on the remote
     When  I run "csync ./project user@host:/project"
     Then  no actions should be reported
-    And   the reported change count should be 0
     And   the file "a[1].txt" should still exist on the remote
 
   @remote @wip

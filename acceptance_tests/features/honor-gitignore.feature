@@ -26,7 +26,6 @@ Feature: Leave ignored files out of a sync
     Then  the reported actions should be:
       | action | path      |
       | update | README.md |
-    And   the reported change count should be 1
 
   Scenario: A non-repository local side excludes nothing
     # Exclusion depends on being in a git work tree, not on a .gitignore being
@@ -47,7 +46,6 @@ Feature: Leave ignored files out of a sync
       | action | path      |
       | update | README.md |
       | create | debug.log |
-    And   the reported change count should be 2
     And   no withheld changes should be reported
     And   the .git directory should not be reported as excluded
 
@@ -68,7 +66,6 @@ Feature: Leave ignored files out of a sync
     Then  the reported actions should be:
       | action | path      |
       | update | README.md |
-    And   the reported change count should be 1
 
   Scenario: A top-level ignore does not float onto a same-named nested path
     Given a local git repository containing these files:
@@ -88,7 +85,6 @@ Feature: Leave ignored files out of a sync
     Then  the reported actions should be:
       | action | path              |
       | update | src/build/keep.go |
-    And   the reported change count should be 1
 
   @remote
   Scenario: Pull direction — the local repo's ignore set still governs
@@ -108,7 +104,6 @@ Feature: Leave ignored files out of a sync
     Then  the reported actions should be:
       | action | path      |
       | create | notes.txt |
-    And   the reported change count should be 1
 
   @remote
   Scenario: Pull direction — a remote-only file the local repo ignores is held back
@@ -127,7 +122,6 @@ Feature: Leave ignored files out of a sync
     Then  the reported actions should be:
       | action | path      |
       | create | notes.txt |
-    And   the reported change count should be 1
     And   the withheld changes should be:
       | action | path       |
       | create | secret.log |

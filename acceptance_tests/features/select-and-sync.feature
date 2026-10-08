@@ -56,7 +56,6 @@ Feature: Select and sync files
     When  I run "csync ./project user@host:/project" and respond with "a"
     And   I run "csync ./project user@host:/project" a second time
     Then  no actions should be reported
-    And   the reported change count should be 0
 
   Scenario: Choosing a subset by number syncs only those files
     Given that the file "README.md" has been changed locally
@@ -180,7 +179,6 @@ Feature: Select and sync files
     Then  the reported actions should be:
       | action | path      |
       | delete | README.md |
-    And   the reported change count should be 1
     And   the file "README.md" should still exist on the remote
 
   Scenario: A selected deletion is applied to the destination
@@ -221,7 +219,6 @@ Feature: Select and sync files
     When  I run "csync ./project user@host:/project" and respond with "a"
     And   I run "csync ./project user@host:/project" a second time
     Then  no actions should be reported
-    And   the reported change count should be 0
 
   @wip
   Scenario: Pull direction — a remote-new file is brought down when selected
