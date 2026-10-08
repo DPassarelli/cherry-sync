@@ -9,7 +9,7 @@ import (
 
 // Behavior: given two positional arguments, Parse returns them as the
 // Source and Destination of an Args value. Mirrors the Gherkin scenario in
-// features/invoke-command.feature ("Push direction").
+// features/name-source-and-destination.feature ("Push direction").
 func TestParse_ExtractsSourceAndDestination(t *testing.T) {
 	got, err := cli.Parse([]string{"./project", "user@host:/project"})
 	if err != nil {
@@ -26,8 +26,8 @@ func TestParse_ExtractsSourceAndDestination(t *testing.T) {
 }
 
 // Behavior: with no arguments, Parse returns an error. Mirrors the Gherkin
-// scenario "No arguments — show usage and exit non-zero" in
-// features/invoke-command.feature; main.go turns the error into the
+// scenario "No arguments — report the problem and exit non-zero" in
+// features/name-source-and-destination.feature; main.go turns the error into the
 // user-facing usage message.
 func TestParse_NoArguments_ReturnsError(t *testing.T) {
 	_, err := cli.Parse([]string{})
@@ -146,8 +146,8 @@ func TestParse_Help_ShortCircuitsOperands(t *testing.T) {
 
 // Behavior: an empty-string path is rejected. Left unchecked, "" + "/" = "/"
 // would point rsync at the filesystem root. Mirrors the Gherkin scenario
-// "Empty path argument — show usage and exit non-zero" in
-// features/invoke-command.feature. Either position counts.
+// "Empty path argument — report the empty operand and exit non-zero" in
+// features/guard-unsafe-input.feature. Either position counts.
 func TestParse_EmptyPath_ReturnsError(t *testing.T) {
 	cases := map[string][]string{
 		"empty source":      {"", "user@host:/project"},

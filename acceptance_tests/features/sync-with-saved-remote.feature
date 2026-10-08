@@ -2,7 +2,7 @@
 # the way they would against a real host (see select-and-sync.feature for why
 # that matters).
 @remote
-Feature: Saved sync targets
+Feature: Sync with a saved remote
 
   In order to avoid retyping a remote I sync with often, I want to save it once
   in the project's .csync.toml and refer to it with `csync push` / `csync pull`.
@@ -55,7 +55,7 @@ Feature: Saved sync targets
   Scenario: A missing .csync.toml fails loudly and transfers nothing
     # There is no fallback to a default. This covers non-interactive use; at a
     # terminal, push and pull will instead offer to create the file (see
-    # interactive-mode.feature).
+    # prompt-for-source-and-destination.feature).
     Given a local directory containing these files:
       """
       README.md
