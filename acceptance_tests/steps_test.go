@@ -124,11 +124,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the \.csync\.toml file should be reported as excluded$`, theCsyncTomlShouldBeReportedAsExcluded)
 	ctx.Step(`^the \.git directory should not be reported as excluded$`, theGitDirectoryShouldNotBeReportedAsExcluded)
 	ctx.Step(`^the reported sync count should be (\d+)$`, theReportedSyncCountShouldBe)
+	ctx.Step(`^the files should end up:$`, theFilesShouldEndUp)
 	ctx.Step(`^the reported removed count should be (\d+)$`, theReportedRemovedCountShouldBe)
-	ctx.Step(`^the file "([^"]*)" should be identical between local and remote$`, theFileShouldBeIdenticalBetweenLocalAndRemote)
-	ctx.Step(`^the file "([^"]*)" should not exist on the remote$`, theFileShouldNotExistOnTheRemote)
-	ctx.Step(`^the file "([^"]*)" should still exist on the remote$`, theFileShouldStillExistOnTheRemote)
-	ctx.Step(`^the file "([^"]*)" should still differ between local and remote$`, theFileShouldStillDifferBetweenLocalAndRemote)
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		home, err := os.MkdirTemp("", "csync-home-*")

@@ -19,8 +19,9 @@ Feature: Saved sync targets
       """
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "README.md" should be identical between local and remote
+    Then  the files should end up:
+      | path      | state   |
+      | README.md | in sync |
 
   Scenario: Pull resolves the saved remote as the source
     Given a local directory containing these files:
@@ -34,8 +35,9 @@ Feature: Saved sync targets
       """
     And   that the file "notes.txt" has been added on the remote
     When  I run "csync pull" from the project directory and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "notes.txt" should be identical between local and remote
+    Then  the files should end up:
+      | path      | state   |
+      | notes.txt | in sync |
 
   Scenario: Push reports the resolved source and destination
     Given a local directory containing these files:
@@ -62,7 +64,9 @@ Feature: Saved sync targets
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
     And   the reported error should mention ".csync.toml"
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: A .csync.toml with no remote key is rejected
     # An empty config is not an implicit default.
@@ -78,7 +82,9 @@ Feature: Saved sync targets
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
     And   the reported error should mention ".csync.toml"
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: Malformed TOML is rejected with a clear error
     Given a local directory containing these files:
@@ -93,7 +99,9 @@ Feature: Saved sync targets
     When  I run "csync push" from the project directory
     Then  csync should return a non-zero exit code
     And   the reported error should mention "invalid .csync.toml"
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: push rejects extra arguments
     # Otherwise `csync push ./project` would read as syncing a directory named

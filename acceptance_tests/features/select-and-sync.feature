@@ -30,25 +30,28 @@ Feature: Select and sync files
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "<empty>"
-    Then  the reported sync count should be 2
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/adder.go" should be identical between local and remote
+    Then  the files should end up:
+      | path         | state   |
+      | README.md    | in sync |
+      | src/adder.go | in sync |
 
   Scenario: Selecting "a" selects every change
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "a"
-    Then  the reported sync count should be 2
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/adder.go" should be identical between local and remote
+    Then  the files should end up:
+      | path         | state   |
+      | README.md    | in sync |
+      | src/adder.go | in sync |
 
   Scenario: A filename containing non-ASCII bytes transfers intact
     # This first surfaced with a macOS screenshot, whose name carries a narrow
     # no-break space (U+202F).
     Given that the file "café.txt" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "café.txt" should be identical between local and remote
+    Then  the files should end up:
+      | path     | state   |
+      | café.txt | in sync |
 
   Scenario: A completed sync leaves nothing to re-sync
     Given that the file "README.md" has been changed locally
@@ -61,36 +64,43 @@ Feature: Select and sync files
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "1"
-    Then  the reported sync count should be 1
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/adder.go" should not exist on the remote
+    Then  the files should end up:
+      | path         | state       |
+      | README.md    | in sync     |
+      | src/adder.go | out of sync |
 
   Scenario: A different number selects a different change
     Given that the file "README.md" has been changed locally
     And   that the file "src/adder.go" has been added locally
     When  I run "csync ./project user@host:/project" and respond with "2"
-    Then  the reported sync count should be 1
-    And   the file "src/adder.go" should be identical between local and remote
-    And   the file "README.md" should still differ between local and remote
+    Then  the files should end up:
+      | path         | state       |
+      | src/adder.go | in sync     |
+      | README.md    | out of sync |
 
   Scenario: Choosing none transfers nothing and exits cleanly
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "n"
-    Then  the reported sync count should be 0
-    And   the file "README.md" should still differ between local and remote
+    Then  the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
     And   csync should return exit code 0
 
   Scenario: An unrecognized response is rejected without transferring
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "wat"
     Then  csync should return a non-zero exit code
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: An out-of-range number is rejected like an unrecognized response
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "2"
     Then  csync should return a non-zero exit code
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: A hyphen range selects an inclusive span of changes
     # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
@@ -99,11 +109,12 @@ Feature: Select and sync files
     And   that the file "src/main.go" has been changed locally
     And   that the file "src/parser.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1-3"
-    Then  the reported sync count should be 3
-    And   the file "LICENSE" should be identical between local and remote
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/main.go" should be identical between local and remote
-    And   the file "src/parser.go" should still differ between local and remote
+    Then  the files should end up:
+      | path          | state       |
+      | LICENSE       | in sync     |
+      | README.md     | in sync     |
+      | src/main.go   | in sync     |
+      | src/parser.go | out of sync |
 
   Scenario: A comma list selects exactly the named changes
     # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go.
@@ -111,10 +122,11 @@ Feature: Select and sync files
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1,3"
-    Then  the reported sync count should be 2
-    And   the file "LICENSE" should be identical between local and remote
-    And   the file "src/main.go" should be identical between local and remote
-    And   the file "README.md" should still differ between local and remote
+    Then  the files should end up:
+      | path        | state       |
+      | LICENSE     | in sync     |
+      | src/main.go | in sync     |
+      | README.md   | out of sync |
 
   Scenario: A combined range and list selects the span plus the named change
     # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
@@ -123,11 +135,12 @@ Feature: Select and sync files
     And   that the file "src/main.go" has been changed locally
     And   that the file "src/parser.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1-2,4"
-    Then  the reported sync count should be 3
-    And   the file "LICENSE" should be identical between local and remote
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/parser.go" should be identical between local and remote
-    And   the file "src/main.go" should still differ between local and remote
+    Then  the files should end up:
+      | path          | state       |
+      | LICENSE       | in sync     |
+      | README.md     | in sync     |
+      | src/parser.go | in sync     |
+      | src/main.go   | out of sync |
 
   Scenario: Overlapping members are synced once, not twice
     # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go.
@@ -135,18 +148,21 @@ Feature: Select and sync files
     And   that the file "README.md" has been changed locally
     And   that the file "src/main.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1-3,2"
-    Then  the reported sync count should be 3
-    And   the file "LICENSE" should be identical between local and remote
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/main.go" should be identical between local and remote
+    Then  the files should end up:
+      | path        | state   |
+      | LICENSE     | in sync |
+      | README.md   | in sync |
+      | src/main.go | in sync |
 
   Scenario: An out-of-range member rejects the whole selection
     Given that the file "LICENSE" has been changed locally
     And   that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1-3"
     Then  csync should return a non-zero exit code
-    And   the file "LICENSE" should still differ between local and remote
-    And   the file "README.md" should still differ between local and remote
+    And   the files should end up:
+      | path      | state       |
+      | LICENSE   | out of sync |
+      | README.md | out of sync |
 
   Scenario: A reversed range is rejected
     # It is not silently reordered to "1-3".
@@ -155,9 +171,11 @@ Feature: Select and sync files
     And   that the file "src/main.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "3-1"
     Then  csync should return a non-zero exit code
-    And   the file "LICENSE" should still differ between local and remote
-    And   the file "README.md" should still differ between local and remote
-    And   the file "src/main.go" should still differ between local and remote
+    And   the files should end up:
+      | path        | state       |
+      | LICENSE     | out of sync |
+      | README.md   | out of sync |
+      | src/main.go | out of sync |
 
   Scenario: Whitespace around members and range operands is ignored
     # Rows number in tree order: 1 LICENSE, 2 README.md, 3 src/main.go, 4 src/parser.go.
@@ -166,11 +184,12 @@ Feature: Select and sync files
     And   that the file "src/main.go" has been changed locally
     And   that the file "src/parser.go" has been changed locally
     When  I run "csync ./project user@host:/project" and respond with "1 - 2, 4"
-    Then  the reported sync count should be 3
-    And   the file "LICENSE" should be identical between local and remote
-    And   the file "README.md" should be identical between local and remote
-    And   the file "src/parser.go" should be identical between local and remote
-    And   the file "src/main.go" should still differ between local and remote
+    Then  the files should end up:
+      | path          | state       |
+      | LICENSE       | in sync     |
+      | README.md     | in sync     |
+      | src/parser.go | in sync     |
+      | src/main.go   | out of sync |
 
   Scenario: A file removed on the source is reported as a deletion
     # No selection is made, so the deletion is reported but not applied.
@@ -179,20 +198,24 @@ Feature: Select and sync files
     Then  the reported actions should be:
       | action | path      |
       | delete | README.md |
-    And   the file "README.md" should still exist on the remote
+    And   the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: A selected deletion is applied to the destination
     # A nested file shows the removal reaches inside folders.
     Given that the file "src/parser.go" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "src/parser.go" should not exist on the remote
+    Then  the files should end up:
+      | path          | state   |
+      | src/parser.go | in sync |
 
   Scenario: Declining a deletion leaves the file on the destination
     Given that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "n"
-    Then  the reported sync count should be 0
-    And   the file "README.md" should still exist on the remote
+    Then  the files should end up:
+      | path      | state       |
+      | README.md | out of sync |
 
   Scenario: A run mixing a transfer and a deletion applies and reports both
     # The summary calls out the removals, so "2 files total" doesn't read as two
@@ -200,19 +223,21 @@ Feature: Select and sync files
     Given that the file "src/adder.go" has been added locally
     And   that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "a"
-    Then  the reported sync count should be 2
+    Then  the files should end up:
+      | path         | state   |
+      | src/adder.go | in sync |
+      | README.md    | in sync |
     And   the reported removed count should be 1
-    And   the file "src/adder.go" should be identical between local and remote
-    And   the file "README.md" should not exist on the remote
 
   Scenario: Selecting only the transfer leaves the deletion unapplied
     # Rows number in tree order: 1 adder.go, 2 README.md (the deletion).
     Given that the file "adder.go" has been added locally
     And   that the file "README.md" has been deleted locally
     When  I run "csync ./project user@host:/project" and respond with "1"
-    Then  the reported sync count should be 1
-    And   the file "adder.go" should be identical between local and remote
-    And   the file "README.md" should still exist on the remote
+    Then  the files should end up:
+      | path      | state       |
+      | adder.go  | in sync     |
+      | README.md | out of sync |
 
   Scenario: A completed deletion leaves nothing to re-sync
     Given that the file "README.md" has been deleted locally
@@ -224,8 +249,9 @@ Feature: Select and sync files
   Scenario: Pull direction — a remote-new file is brought down when selected
     Given that the file "notes.txt" has been added on the remote
     When  I run "csync user@host:/project ./project" and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "notes.txt" should be identical between local and remote
+    Then  the files should end up:
+      | path      | state   |
+      | notes.txt | in sync |
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.

@@ -39,8 +39,9 @@ Feature: Interactive mode
       a
       n
       """
-    Then  the reported sync count should be 1
-    And   the file "README.md" should be identical between local and remote
+    Then  the files should end up:
+      | path      | state   |
+      | README.md | in sync |
 
   @wip
   Scenario: Declining the save prompt writes no config
@@ -96,8 +97,9 @@ Feature: Interactive mode
       """
     And   that the file "README.md" has been changed locally
     When  I run "csync push" from the project directory and respond with "a"
-    Then  the reported sync count should be 1
-    And   the file "README.md" should be identical between local and remote
+    Then  the files should end up:
+      | path      | state   |
+      | README.md | in sync |
 
   # ---------------------------------------------------------------------------
   # TODO: Additional scenarios for this feature, not yet drafted.
