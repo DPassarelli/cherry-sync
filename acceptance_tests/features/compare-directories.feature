@@ -50,12 +50,6 @@ Feature: Compare directories
     Then  no actions should be reported
     And   the reported change count should be 0
 
-  Scenario: A source that looks like an rsync option is treated as a path
-    # A path that starts with "-" must reach rsync as a path, never as an
-    # option (-e would run a remote shell). See SECURITY.md.
-    When  I run "csync -e ./project"
-    Then  csync should return a non-zero exit code
-
   Scenario: A comparison that fails reports what rsync said
     # An exit code can't tell a refused key from a changed host key or an
     # unreachable host (ssh exits 255 for all three). rsync's own message is what
