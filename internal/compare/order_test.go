@@ -4,7 +4,7 @@ import "testing"
 
 // The tests below pin the individual ordering rules of comparePaths, one rule
 // per pair. The holistic, end-to-end ordering is covered by the scenario in
-// features/order-reported-actions.feature; these isolate each rule (and edge
+// acceptance_tests/order-reported-actions.feature; these isolate each rule (and edge
 // cases the feature fixture doesn't contain, like 01 vs 1) so a failure points
 // straight at the rule that broke.
 

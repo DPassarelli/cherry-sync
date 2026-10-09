@@ -9,7 +9,7 @@ import (
 
 // Behavior: given two positional arguments, Parse returns them as the
 // Source and Destination of an Args value. Mirrors the Gherkin scenario in
-// features/name-source-and-destination.feature ("Push direction").
+// acceptance_tests/name-source-and-destination.feature ("Push direction").
 func TestParse_ExtractsSourceAndDestination(t *testing.T) {
 	got, err := cli.Parse([]string{"./project", "user@host:/project"})
 	if err != nil {
@@ -27,7 +27,7 @@ func TestParse_ExtractsSourceAndDestination(t *testing.T) {
 
 // Behavior: with no arguments, Parse returns an error. Mirrors the Gherkin
 // scenario "No arguments — report the problem and exit non-zero" in
-// features/name-source-and-destination.feature; main.go turns the error into the
+// acceptance_tests/name-source-and-destination.feature; main.go turns the error into the
 // user-facing usage message.
 func TestParse_NoArguments_ReturnsError(t *testing.T) {
 	_, err := cli.Parse([]string{})
@@ -39,7 +39,7 @@ func TestParse_NoArguments_ReturnsError(t *testing.T) {
 
 // Behavior: --version selects Version mode. Mirrors the Gherkin scenario "The
 // --version flag prints the version and exits successfully" in
-// features/report-version.feature; main.go turns Version mode into the printed
+// acceptance_tests/report-version.feature; main.go turns Version mode into the printed
 // version line.
 func TestParse_Version_SelectsVersionMode(t *testing.T) {
 	got, err := cli.Parse([]string{"--version"})
@@ -71,7 +71,7 @@ func TestParse_Version_ShortCircuitsOperands(t *testing.T) {
 
 // Behavior: --license selects License mode. Mirrors the Gherkin scenario "The
 // --license flag prints the license and exits successfully" in
-// features/report-license.feature; main.go turns License mode into the printed
+// acceptance_tests/report-license.feature; main.go turns License mode into the printed
 // license text.
 func TestParse_License_SelectsLicenseMode(t *testing.T) {
 	got, err := cli.Parse([]string{"--license"})
@@ -102,7 +102,7 @@ func TestParse_License_ShortCircuitsOperands(t *testing.T) {
 
 // Behavior: --help selects Help mode. Mirrors the Gherkin scenario "The --help
 // flag prints usage to stdout and exits successfully" in
-// features/show-help.feature; main.go turns Help mode into the printed usage.
+// acceptance_tests/show-help.feature; main.go turns Help mode into the printed usage.
 func TestParse_Help_SelectsHelpMode(t *testing.T) {
 	got, err := cli.Parse([]string{"--help"})
 	if err != nil {
@@ -147,7 +147,7 @@ func TestParse_Help_ShortCircuitsOperands(t *testing.T) {
 // Behavior: an empty-string path is rejected. Left unchecked, "" + "/" = "/"
 // would point rsync at the filesystem root. Mirrors the Gherkin scenario
 // "Empty path argument — report the empty operand and exit non-zero" in
-// features/guard-unsafe-input.feature. Either position counts.
+// acceptance_tests/guard-unsafe-input.feature. Either position counts.
 func TestParse_EmptyPath_ReturnsError(t *testing.T) {
 	cases := map[string][]string{
 		"empty source":      {"", "user@host:/project"},
