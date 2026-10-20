@@ -23,7 +23,7 @@ import (
 // of the scroll region so it stays visible, the offset of the scroll window's first
 // line (carried between frames so the window holds its position until the cursor
 // reaches an edge), and whether the user accepted (Enter) rather than cancelled
-// (Ctrl-C/Esc/q).
+// (Ctrl-C).
 type pickerModel struct {
 	actions  []compare.Action
 	sel      *selection.Selection
@@ -71,7 +71,7 @@ func newModel(actions []compare.Action) pickerModel {
 
 // RunPicker shows the interactive picker over actions and returns the actions the
 // user chose to sync — empty when there is nothing to do, whether the user
-// cancelled (Ctrl-C/Esc/q) or confirmed with nothing checked. The accepted check
+// cancelled (Ctrl-C) or confirmed with nothing checked. The accepted check
 // is what separates the two from a real selection: the picker starts all-checked,
 // so a cancel must report nothing rather than leak the default set. preamble is the
 // text main has already printed above the picker (banner, header, exclusions); the
@@ -101,8 +101,8 @@ func (m pickerModel) Init() tea.Cmd {
 // Update handles one message: a WindowSizeMsg records the terminal width and height
 // that bound the scroll window; a keypress moves or acts. Keys: arrow/jk move the
 // cursor (clamped at the ends), space toggles the row under it, 'a' toggles the
-// whole list (all↔none), Enter accepts the selection and quits, and Ctrl-C/Esc/q
-// cancel — quitting without accepting. After a move or resize the scroll offset is
+// whole list (all↔none), Enter accepts the selection and quits, and Ctrl-C
+// cancels — quitting without accepting. After a move or resize the scroll offset is
 // re-settled so the window follows the cursor to its edges. Other messages pass
 // through untouched.
 func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -131,7 +131,7 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.accepted = true
 			return m, tea.Quit
-		case "ctrl+c", "esc", "q":
+		case "ctrl+c":
 			return m, tea.Quit
 		}
 		m.offset = m.scrollOffset()

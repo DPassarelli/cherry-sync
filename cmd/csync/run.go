@@ -238,7 +238,7 @@ func run() (code int) {
 		// the empty-selection stop below — so even a cancelled run records that nothing
 		// was taken. Declining the large-set gate lands here too, as an empty selection.
 		_ = runLog.Selected(logActions(picked))
-		// Nothing chosen — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection,
+		// Nothing chosen — a cancel (Ctrl-C) or a confirmed empty selection,
 		// which amount to the same thing: report it and stop before running a no-op
 		// transfer that would print "Sync complete! (0 files)".
 		if len(picked) == 0 {
