@@ -52,7 +52,7 @@ func pluralFiles(n int) string {
 }
 
 // Canceled returns the notice shown when the user dismisses the picker without
-// syncing — a cancel (Ctrl-C/Esc/q) or a confirmed empty selection. A leading
+// syncing — a cancel (Ctrl-C) or a confirmed empty selection. A leading
 // blank line and a red ✗ set it off as the final word, ready to print.
 func Canceled() string {
 	cross := lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render("✗")

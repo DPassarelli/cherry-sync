@@ -178,19 +178,3 @@ func TestUpdate_CtrlC_CancelsAndQuits(t *testing.T) {
 		t.Errorf("Ctrl-C did not return the quit command")
 	}
 }
-
-// Esc and q also cancel, mirroring Ctrl-C.
-func TestUpdate_EscAndQ_AlsoCancel(t *testing.T) {
-	for _, key := range []tea.KeyMsg{{Type: tea.KeyEsc}, runeKey('q')} {
-		m := newModel(sampleActions())
-
-		updated, cmd := m.Update(key)
-
-		if updated.(pickerModel).accepted {
-			t.Errorf("%s: accepted = true, want false", key.String())
-		}
-		if !isQuit(cmd) {
-			t.Errorf("%s: did not return the quit command", key.String())
-		}
-	}
-}
