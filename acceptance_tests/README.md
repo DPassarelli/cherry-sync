@@ -10,7 +10,7 @@ The `.feature` files in this folder are csync's specification. This page puts th
    - [explained](explain-differences.feature) by how the two copies differ,
    - free of [files git ignores](honor-gitignore.feature) and of [tooling metadata](withhold-tooling-metadata.feature) such as `.git`,
    - followed by a note of [what was held back](disclose-withheld-changes.feature).
-3. [Select and sync](select-and-sync.feature) some or all of the changes, including deletions.
+3. [Select and sync](select-and-sync.feature) some or all of the changes, including deletions, after [viewing a file's diff](show-file-diff.feature) if needed. The diff is specified but not yet implemented.
 4. [Log the run](log-each-run.feature) to a file, and [prune old logs](prune-run-logs.feature).
 
 ## Sync with a saved remote
