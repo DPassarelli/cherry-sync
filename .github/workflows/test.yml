@@ -108,10 +108,9 @@ jobs:
 
   # Static security analysis. Kept out of the matrix: gosec analyzes source and
   # is platform-independent, so it runs once rather than per-leg (unlike go vet,
-  # which is per-GOOS and stays in the matrix). Pinned to the same version and
-  # invocation as the lefthook pre-push hook (lefthook.yml) so the local gate and
-  # CI can't drift — CI is the authoritative backstop for when the local hook
-  # isn't installed or gets bypassed.
+  # which is per-GOOS and stays in the matrix). It shares its script with the
+  # pre-push hook; CI is the authoritative backstop for when the local hook isn't
+  # installed or gets bypassed.
   gosec:
     runs-on: ubuntu-latest
     steps:
@@ -123,7 +122,7 @@ jobs:
           cache: true
 
       - name: gosec
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -quiet ./...
+        run: ./_scripts/gosec.sh
 
   # Formatting gate — the gofmt rule from CLAUDE.md. Like gosec it's
   # platform-independent and runs once, and is the CI backstop for a local check
