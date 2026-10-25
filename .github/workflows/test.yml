@@ -123,7 +123,7 @@ jobs:
           cache: true
 
       - name: gosec
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -quiet ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -quiet ./...
 
   # Formatting gate — the gofmt rule from CLAUDE.md. Like gosec it's
   # platform-independent and runs once, and is the CI backstop for a local check
