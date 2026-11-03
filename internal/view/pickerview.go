@@ -26,6 +26,9 @@ var cursorBG = lipgloss.AdaptiveColor{Light: "252", Dark: "236"}
 // contentLines; the scroll math and the cursor-line mapping are pinned by tests, so
 // only the styling is untested.
 func (m pickerModel) View() string {
+	if m.overlay != nil {
+		return m.overlayView()
+	}
 	prompt := lipgloss.NewStyle().Bold(true)
 	dim := lipgloss.NewStyle().Faint(true)
 
@@ -45,6 +48,9 @@ func (m pickerModel) View() string {
 	out = append(out, scrollIndicator(dim, "▲ more above", vp.HiddenAbove))
 	out = append(out, vp.Lines...)
 	out = append(out, scrollIndicator(dim, "▼ more below", vp.HiddenBelow))
+	if m.notice != "" {
+		out = append(out, m.wrappedNotice())
+	}
 	return strings.Join(out, "\n") + "\n"
 }
 

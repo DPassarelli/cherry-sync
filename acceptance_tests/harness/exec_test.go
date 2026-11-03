@@ -161,23 +161,22 @@ func withoutVars(env []string, names ...string) []string {
 	return kept
 }
 
-// runCsync splits the command, substitutes the Gherkin placeholders
-// (`./project`, `user@host:/project`, `<empty>`) with the scenario's real
-// tempdir paths, runs the csync binary with the given stdin, and stashes the
-// captured streams and exit code in the context.
-func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) (context.Context, error) {
+// resolveCsyncArgs splits a scenario's command and substitutes the Gherkin
+// placeholders (`./project`, `user@host:/project`, `<empty>`) with the scenario's
+// real tempdir paths, returning the arguments for the csync binary.
+func resolveCsyncArgs(ctx context.Context, command string) (context.Context, []string, error) {
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
-		return ctx, fmt.Errorf("empty command")
+		return ctx, nil, fmt.Errorf("empty command")
 	}
 	if parts[0] != "csync" {
-		return ctx, fmt.Errorf("expected command to start with %q, got %q", "csync", parts[0])
+		return ctx, nil, fmt.Errorf("expected command to start with %q, got %q", "csync", parts[0])
 	}
 
 	args := parts[1:]
 	ctx, err := mirrorRemote(ctx)
 	if err != nil {
-		return ctx, err
+		return ctx, nil, err
 	}
 
 	// <empty> is a sentinel for an empty-string argument: the step regex and
@@ -197,6 +196,16 @@ func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) 
 		if ok {
 			args[i] = replacement
 		}
+	}
+	return ctx, args, nil
+}
+
+// runCsync runs the csync binary for a scenario's command with the given stdin, and
+// stashes the captured streams and exit code in the context.
+func runCsync(ctx context.Context, command string, stdin io.Reader, dir string) (context.Context, error) {
+	ctx, args, err := resolveCsyncArgs(ctx, command)
+	if err != nil {
+		return ctx, err
 	}
 
 	runCtx, cancelRun := context.WithTimeout(ctx, runWait)

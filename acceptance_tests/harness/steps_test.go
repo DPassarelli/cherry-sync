@@ -127,6 +127,13 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the files should end up:$`, theFilesShouldEndUp)
 	ctx.Step(`^the reported removed count should be (\d+)$`, theReportedRemovedCountShouldBe)
 
+	ctx.Step(`^that the file "([^"]*)" has been changed locally from "([^"]*)" to "([^"]*)"$`, theFileHasBeenChangedLocallyFromTo)
+	ctx.Step(`^that I have run "([^"]*)" in a terminal$`, thatIHaveRunInATerminal)
+	ctx.Step(`^I press "([^"]*)" on the row for "([^"]*)"$`, iPressOnTheRowFor)
+	ctx.Step(`^the diff overlay should include:$`, theDiffOverlayShouldInclude)
+	ctx.Step(`^the diff overlay should begin with:$`, theDiffOverlayShouldBeginWith)
+	ctx.Step(`^the picker should show a notice containing "([^"]*)"$`, thePickerShouldShowANoticeContaining)
+
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		home, err := os.MkdirTemp("", "csync-home-*")
 		if err != nil {
@@ -152,6 +159,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			run.stdin.Close()
 			run.cmd.Process.Kill()
 			<-run.done
+		}
+		session, _ := ctx.Value(terminalSessionKey{}).(*terminalSession)
+		if session != nil {
+			session.close()
 		}
 		localPath, _ := ctx.Value(localPathKey{}).(string)
 		if localPath != "" {

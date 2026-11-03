@@ -1,5 +1,3 @@
-# Every scenario here is @wip until the acceptance suite can drive the picker
-# through a real terminal; the picker's unit tests gate this behavior meanwhile.
 @remote
 Feature: Show a file's diff from the picker
 
@@ -13,8 +11,17 @@ Feature: Show a file's diff from the picker
       README.md
       """
 
-  @wip
-  Scenario: Pressing "d" on a changed file shows its diff
+  Scenario: Pressing "d" on a changed file shows what changed
+    Given that the file "README.md" has been changed locally from "old line" to "new line"
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should include:
+      """
+      -old line
+      +new line
+      """
+
+  Scenario: The diff labels each side by its role in the sync
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
@@ -24,71 +31,121 @@ Feature: Show a file's diff from the picker
       +++ source: README.md
       """
 
-  @wip
-  Scenario: A file on only one side has no diff
+  Scenario: A file only on the source has no diff
     Given that the file "src/adder.go" has been added locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "src/adder.go"
-    Then  the picker should show the notice "no diff: file exists on one side only"
+    Then  the picker should show a notice containing "will be created on the destination"
+
+  Scenario: A file only on the destination has no diff
+    Given that the file "README.md" has been deleted locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the picker should show a notice containing "will be deleted from the destination"
 
   @wip
   Scenario: A file over 200 KiB is too large to diff
     Given that the file "README.md" has been changed locally to 204,801 bytes
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show the notice "too large to diff"
+    Then  the picker should show a notice containing "over the 200 KiB limit"
 
   @wip
   Scenario: A file with a NUL byte is treated as binary
     Given that the file "README.md" has been changed locally to contain a NUL byte
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show the notice "binary files differ"
+    Then  the picker should show a notice containing "binary files are not diffed"
 
   @wip
   Scenario: A file whose contents match shows no empty diff
     Given that the file "README.md" has been touched locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show the notice "contents identical (only the timestamp differs)"
+    Then  the picker should show a notice containing "contents are identical"
 
   @wip
-  Scenario: The next keypress clears a notice and still takes effect
-    Given that the file "src/adder.go" has been added locally
+  Scenario: The next keypress clears a notice
+    Given that the file "adder.go" has been added locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "adder.go"
+    When  I press "down"
+    Then  the notice should no longer be visible
+
+  @wip
+  Scenario: The keypress that clears a notice still takes effect
+    # Rows are in tree order: adder.go, then README.md.
+    Given that the file "adder.go" has been added locally
     And   that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
-    And   that I have pressed "d" on the row for "src/adder.go"
+    And   that I have pressed "d" on the row for "adder.go"
     When  I press "down"
-    Then  the picker should show no notice
-    And   the cursor should be on the row for "README.md"
+    Then  the cursor should be on the row for "README.md"
 
   @wip
-  Scenario: The diff scrolls and stops at its end
-    Given that the file "README.md" has been changed locally on every line of 200
+  Scenario: Scrolling the diff reveals its last line
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
     And   that I have pressed "d" on the row for "README.md"
-    When  I press "down" 500 times
+    And   that the diff overlay does not show its last line
+    When  I press "down" more times than the diff has lines
     Then  the diff overlay should show its last line
 
   @wip
-  Scenario: Closing the diff returns to the picker unchanged
-    Given that the file "README.md" has been changed locally
-    And   that the file "src/adder.go" has been added locally
+  Scenario: Scrolling the diff stops at its last line
+    # Had scrolling run past the end, one "up" would leave the last line on screen.
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
-    And   that I have pressed "space" on the row for "src/adder.go"
     And   that I have pressed "d" on the row for "README.md"
-    When  I press "esc"
-    Then  the cursor should be on the row for "README.md"
-    And   the row for "src/adder.go" should be unchecked
+    And   that I have pressed "down" more times than the diff has lines
+    When  I press "up"
+    Then  the diff overlay should not show its last line
 
   @wip
-  Scenario: Picker keys do nothing while the diff is open
+  Scenario: The escape key closes the diff
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    When  I press "esc"
+    Then  the diff overlay should no longer be visible
+
+  @wip
+  Scenario Outline: Pressing "<key>" leaves the diff open
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    When  I press "<key>"
+    Then  the diff overlay should still be open
+
+    Examples:
+      | key   |
+      | enter |
+      | space |
+      | a     |
+      | d     |
+
+  @wip
+  Scenario: Pressing "enter" in the diff transfers nothing
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     And   that I have pressed "d" on the row for "README.md"
     When  I press "enter"
-    Then  the diff overlay should still be open
-    And   no files should have been transferred
+    Then  no files should have been transferred
+
+  @wip
+  Scenario Outline: Pressing "<key>" in the diff leaves the checkboxes alone
+    # The picker starts all-checked, and the checkboxes are hidden behind the overlay.
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    And   that I have pressed "<key>"
+    When  I press "esc"
+    Then  the row for "README.md" should be checked
+
+    Examples:
+      | key   |
+      | space |
+      | a     |
 
   @wip
   Scenario: Ctrl-C in the diff cancels the run
@@ -96,9 +153,7 @@ Feature: Show a file's diff from the picker
     And   that I have run "csync ./project user@host:/project" in a terminal
     And   that I have pressed "d" on the row for "README.md"
     When  I press "ctrl-c"
-    Then  the files should end up:
-      | path      | state       |
-      | README.md | out of sync |
+    Then  csync should have exited
 
   @wip
   Scenario: A failed fetch is reported inside the diff
