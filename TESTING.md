@@ -111,7 +111,7 @@ Deliberately absent: an inventory of the files themselves. This section listed t
 | `./_scripts/test-report.sh`  | Run the suite and print the same dashboard panel CI publishes (needs [`gotestsum`](https://github.com/gotestyourself/gotestsum); see below) |
 | `gofmt -l .`                | List files needing formatting (silent = all clean)                  |
 | `go vet ./...`              | Part of the verify gate; also enforced by lefthook pre-push and CI  |
-| `gosec ./...`               | Static security analysis (pinned: `go run github.com/securego/gosec/v2/cmd/gosec@v2.26.1 -quiet ./...`); part of the verify gate, also lefthook pre-push and CI |
+| `./_scripts/gosec.sh`       | Static security analysis at the pinned gosec version; part of the verify gate, also lefthook pre-push and CI |
 
 `_scripts/test-report.sh` is the single source of the dashboard panel shown in the GitHub Actions job summary, so running it locally previews exactly what CI will show: the environment (which rsync implementation, Go, host), a Gherkin-scenario-vs-unit-test breakdown, any failures by name, and per-package detail. It streams gotestsum's live output and then prints the panel as raw Markdown (pipe to a renderer such as `glow` if you want it formatted). The panel is rendered by `cmd/testreport` from gotestsum's `--jsonfile`; that summarizing logic lives in `internal/testreport` and is unit-tested like any other code. The script needs `gotestsum` on `PATH` (or installed in your Go bin dir); install the version CI pins with `go install gotest.tools/gotestsum@v1.13.0`. Extra arguments are forwarded to `go test` (e.g. `./_scripts/test-report.sh -run TestParse`).
 
