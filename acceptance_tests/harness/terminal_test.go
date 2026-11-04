@@ -103,6 +103,25 @@ func (s *terminalSession) waitFor(want string, ok func(TerminalScreen) bool) (Te
 	}
 }
 
+// cursorRow returns the cells of the row carrying the picker's caret, or nil while
+// no such row is on screen.
+func (s *terminalSession) cursorRow() []vt10x.Glyph {
+	s.screen.Lock()
+	defer s.screen.Unlock()
+	for y := 0; y < terminalRows; y++ {
+		row := make([]vt10x.Glyph, terminalCols)
+		found := false
+		for x := range row {
+			row[x] = s.screen.Cell(x, y)
+			found = found || row[x].Char == '❯'
+		}
+		if found {
+			return row
+		}
+	}
+	return nil
+}
+
 // close stops csync and releases the terminal, so a failed scenario can't leave a
 // child waiting for keys that will never come.
 func (s *terminalSession) close() {

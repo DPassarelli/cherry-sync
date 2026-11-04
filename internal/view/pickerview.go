@@ -117,11 +117,7 @@ func (m pickerModel) contentLines() ([]string, int) {
 			// bury the filenames the list exists to be scanned by — so it reads as a
 			// detail pane attached to the selection rather than as a column.
 			if cursorRow {
-				detailStyle := lipgloss.NewStyle().Background(cursorBG)
-				detail := fitDetail(actionDetail(a, m.now), lipgloss.Width(row), m.width)
-				if detail != "" {
-					row += detailStyle.Render(detailGap + detail)
-				}
+				row += renderDetail(fitDetail(detailSegments(a, m.now), lipgloss.Width(row), m.width))
 			}
 			lines = append(lines, row)
 			if cursorRow {
@@ -131,6 +127,27 @@ func (m pickerModel) contentLines() ([]string, int) {
 		}
 	}
 	return lines, cursorLine
+}
+
+// renderDetail styles a fitted annotation for the cursor's row, or returns nothing
+// when none fits. Each segment is rendered on its own rather than nested inside one
+// styled string, because an inner style's reset would strip the cursor bar from all
+// the text after it.
+func renderDetail(segments []detailSegment) string {
+	if len(segments) == 0 {
+		return ""
+	}
+	plain := lipgloss.NewStyle().Background(cursorBG)
+	emphasized := plain.Bold(true)
+	rendered := plain.Render(detailGap)
+	for _, s := range segments {
+		style := plain
+		if s.emphasized {
+			style = emphasized
+		}
+		rendered += style.Render(s.text)
+	}
+	return rendered
 }
 
 // pickerPrompt returns the picker's question line for a list of count files. It

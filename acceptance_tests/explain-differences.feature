@@ -61,3 +61,32 @@ Feature: Explain how each file differs
       | action | path      |
       | update | README.md |
     And   the reported detail for "README.md" should be "size and mtime"
+
+  Scenario Outline: The newer copy's "last updated" phrase stands out in the picker
+    # Bold answers "which copy is the live one?" at a glance. The last row's ages both
+    # read "2d ago", so there the bold is the only thing that says which is newer.
+    Given that the two copies of "README.md" differ in content but not in size
+    And   that the local copy of "README.md" was last modified <local> ago
+    And   that the remote copy of "README.md" was last modified <remote> ago
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    Then  only the <newer> "last updated" phrase in the detail should be bold
+
+    Examples:
+      | local    | remote   | newer  |
+      | 3 hours  | 17 days  | source |
+      | 17 days  | 3 hours  | dest   |
+      | 49 hours | 50 hours | source |
+
+  Scenario: Copies with the same timestamp have no newer phrase to highlight
+    # The sizes differ so that both copies are measured: copies agreeing on size and
+    # time fall back to "contents only" and would never reach the comparison.
+    Given that the local copy of "README.md" is 2 KB larger than the remote copy
+    And   that both copies of "README.md" carry the same modification time
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    Then  no part of the detail should be bold
+
+  Scenario: A destination that cannot be measured has no phrase to highlight
+    Given that the file "README.md" has been changed locally
+    And   a remote that answers the comparison but fails the measurement
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    Then  no part of the detail should be bold
