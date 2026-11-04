@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 )
 
@@ -35,7 +36,7 @@ type pickerModel struct {
 	accepted bool
 	// fetchDiff gets a row's diff, fetching marks one in progress, notice explains a
 	// row with no diff to show, and overlay holds the lines of an open diff.
-	fetchDiff func(path string) (string, error)
+	fetchDiff func(path string) (filediff.Result, error)
 	notice    string
 	fetching  bool
 	overlay   []string
@@ -85,7 +86,7 @@ func newModel(actions []compare.Action) pickerModel {
 // of its scroll region so the preamble stays on screen. It drives a Bubble Tea
 // program and so needs a terminal: main selects it only when stdin and stdout are
 // TTYs.
-func RunPicker(actions []compare.Action, preamble string, fetchDiff func(path string) (string, error)) ([]compare.Action, error) {
+func RunPicker(actions []compare.Action, preamble string, fetchDiff func(path string) (filediff.Result, error)) ([]compare.Action, error) {
 	m := newModel(actions)
 	m.preamble = preamble
 	m.fetchDiff = fetchDiff

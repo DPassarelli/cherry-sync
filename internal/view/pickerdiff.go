@@ -4,15 +4,19 @@
 package view
 
 import (
+	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 )
 
-// diffFetchedMsg delivers a finished fetch's text to the picker.
+// diffFetchedMsg delivers a finished fetch to the picker: a notice to show in place,
+// or text for the overlay.
 type diffFetchedMsg struct {
-	text string
+	notice string
+	text   string
 }
 
 // noDiffNotice returns what to say about a change with only one copy to look at, or
@@ -26,6 +30,31 @@ func noDiffNotice(verb string) string {
 		return "no diff: missing from the source, will be deleted from the destination if selected"
 	default:
 		return ""
+	}
+}
+
+// fetchedNotice returns what to say about a fetched file that can't be diffed, or ""
+// when it can. Naming the copy matters because the one that tripped the check may be
+// on the far side, while the file in front of the user looks fine.
+func fetchedNotice(r filediff.Result) string {
+	if r.Oversized != filediff.NoCopies {
+		return fmt.Sprintf("no diff: %s over the %d KiB limit", copiesLabel(r.Oversized), filediff.SizeLimit/1024)
+	}
+	if r.Binary != filediff.NoCopies {
+		return fmt.Sprintf("no diff: %s binary, and binary files are not diffed", copiesLabel(r.Binary))
+	}
+	return ""
+}
+
+// copiesLabel names copies as the start of a sentence about them.
+func copiesLabel(c filediff.Copies) string {
+	switch c {
+	case filediff.SourceCopy:
+		return "source copy is"
+	case filediff.DestinationCopy:
+		return "destination copy is"
+	default:
+		return "both copies are"
 	}
 }
 
@@ -46,18 +75,24 @@ func (m pickerModel) pressDiff() (pickerModel, tea.Cmd) {
 	m.fetching = true
 	fetch := m.fetchDiff
 	return m, func() tea.Msg {
-		text, err := fetch(action.Path)
+		result, err := fetch(action.Path)
 		if err != nil {
-			text = "couldn't fetch for diff: " + err.Error()
+			return diffFetchedMsg{text: "couldn't fetch for diff: " + err.Error()}
 		}
-		return diffFetchedMsg{text: text}
+		return diffFetchedMsg{notice: fetchedNotice(result), text: result.Text}
 	}
 }
 
-// openOverlay shows a finished fetch. The alternate screen is what lets the picker
+// openOverlay shows a finished fetch, as a notice when there is nothing to diff. The
+// alternate screen is what lets the picker
 // come back exactly as it was, preamble included, when the overlay closes.
 func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 	m.fetching = false
+	if msg.notice != "" {
+		m.notice = msg.notice
+		m.offset = m.scrollOffset()
+		return m, nil
+	}
 	m.overlay = strings.Split(strings.TrimRight(msg.text, "\n"), "\n")
 	return m, tea.EnterAltScreen
 }

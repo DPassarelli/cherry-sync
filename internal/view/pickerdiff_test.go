@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 )
 
 // A file with a copy on only one side has nothing to compare, and every such notice
@@ -54,7 +55,7 @@ func TestScrollHeight_ReservesTheNoticeRows(t *testing.T) {
 // log, and overlapping them would interleave its records.
 func TestUpdate_DWhileFetchingStartsNoSecondFetch(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.fetchDiff = func(string) (string, error) { return "", nil }
+	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
 	updated, first := m.Update(runeKey('d'))
 	if first == nil {
 		t.Fatal("first press started no fetch")
@@ -74,5 +75,36 @@ func TestView_OverlayFitsTheTerminal(t *testing.T) {
 	got := countRows(updated.View(), 80)
 	if got > 5 {
 		t.Errorf("overlay is %d rows tall, want at most 5", got)
+	}
+}
+
+// Every notice about a fetched file shares the prefix too.
+func TestFetchedNotice_SharesThePrefix(t *testing.T) {
+	results := []filediff.Result{
+		{Oversized: filediff.SourceCopy},
+		{Binary: filediff.DestinationCopy},
+	}
+	for _, r := range results {
+		notice := fetchedNotice(r)
+		if !strings.HasPrefix(notice, "no diff: ") {
+			t.Errorf("fetchedNotice(%+v) = %q, want the \"no diff: \" prefix", r, notice)
+		}
+	}
+}
+
+// An oversized copy is never read, so whether it is binary is unknown, and the size
+// is the only thing that can be said for certain about the pair.
+func TestFetchedNotice_SizeOutranksBinary(t *testing.T) {
+	notice := fetchedNotice(filediff.Result{Oversized: filediff.SourceCopy, Binary: filediff.DestinationCopy})
+	if !strings.Contains(notice, "over the 200 KiB limit") {
+		t.Errorf("fetchedNotice = %q, want the size notice", notice)
+	}
+}
+
+// A result with something to show has no notice, so it opens the overlay instead.
+func TestFetchedNotice_NoneForADiff(t *testing.T) {
+	notice := fetchedNotice(filediff.Result{Text: "--- a\n+++ b\n"})
+	if notice != "" {
+		t.Errorf("fetchedNotice = %q, want none", notice)
 	}
 }

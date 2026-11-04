@@ -3,6 +3,7 @@
 package acceptance_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -31,6 +32,45 @@ func theFileHasBeenChangedLocallyFromTo(ctx context.Context, relPath, before, af
 		return ctx, fmt.Errorf("write local %s: %w", relPath, err)
 	}
 	return ctx, nil
+}
+
+// theCopiesHaveBeenChangedTo rewrites the named copies of relPath. Each copy gets its
+// own content from fill, so that "both copies" still differ and the file keeps its row.
+func theCopiesHaveBeenChangedTo(ctx context.Context, which, relPath string, fill func(side string) []byte) (context.Context, error) {
+	ctx, err := mirrorRemote(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	local, _ := ctx.Value(localPathKey{}).(string)
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+	if which != "the remote copy" {
+		err = os.WriteFile(filepath.Join(local, relPath), fill("local"), 0o644)
+		if err != nil {
+			return ctx, fmt.Errorf("write local %s: %w", relPath, err)
+		}
+	}
+	if which != "the local copy" {
+		err = os.WriteFile(filepath.Join(remote, relPath), fill("remote"), 0o644)
+		if err != nil {
+			return ctx, fmt.Errorf("write remote %s: %w", relPath, err)
+		}
+	}
+	return ctx, nil
+}
+
+// theCopiesHaveBeenChangedToOverTheLimit makes the named copies one byte larger
+// than a diff allows.
+func theCopiesHaveBeenChangedToOverTheLimit(ctx context.Context, which, relPath string) (context.Context, error) {
+	return theCopiesHaveBeenChangedTo(ctx, which, relPath, func(side string) []byte {
+		return bytes.Repeat([]byte(side[:1]), 204_801)
+	})
+}
+
+// theCopiesHaveBeenChangedToContainANulByte puts a NUL byte in the named copies.
+func theCopiesHaveBeenChangedToContainANulByte(ctx context.Context, which, relPath string) (context.Context, error) {
+	return theCopiesHaveBeenChangedTo(ctx, which, relPath, func(side string) []byte {
+		return []byte(side + "\x00\n")
+	})
 }
 
 // thatIHaveRunInATerminal starts csync under a pseudo-terminal and waits for the

@@ -43,22 +43,35 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the picker should show a notice containing "will be deleted from the destination"
 
-  @wip
-  Scenario: A file over 200 KiB is too large to diff
-    Given that the file "README.md" has been changed locally to 204,801 bytes
+  Scenario Outline: A copy over 200 KiB is too large to diff
+    Given that <which> of "README.md" has been changed to 204,801 bytes
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "over the 200 KiB limit"
+    Then  the picker should show a notice containing "<named> over the 200 KiB limit"
 
-  @wip
-  Scenario: A file with a NUL byte is treated as binary
-    Given that the file "README.md" has been changed locally to contain a NUL byte
+    Examples:
+      | which           | named               |
+      | the local copy  | source copy is      |
+      | the remote copy | destination copy is |
+      | both copies     | both copies are     |
+
+  Scenario Outline: A copy with a NUL byte is treated as binary
+    Given that <which> of "README.md" has been changed to contain a NUL byte
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "binary files are not diffed"
+    Then  the picker should show a notice containing "<named> binary, and binary files are not diffed"
+
+    Examples:
+      | which           | named               |
+      | the local copy  | source copy is      |
+      | the remote copy | destination copy is |
+      | both copies     | both copies are     |
 
   @wip
   Scenario: A file whose contents match shows no empty diff
+    # Not reachable as written: a file that was only touched isn't reported as a
+    # change, so it has no row. Identical contents can only arise if the copies come
+    # to match after the comparison.
     Given that the file "README.md" has been touched locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"

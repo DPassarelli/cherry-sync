@@ -228,7 +228,7 @@ func run() (code int) {
 				picked = result.Actions
 			}
 		} else {
-			chosen, pickErr := view.RunPicker(result.Actions, preamble.String(), func(path string) (string, error) {
+			chosen, pickErr := view.RunPicker(result.Actions, preamble.String(), func(path string) (filediff.Result, error) {
 				return filediff.Between(ctx, runner, source, destination, path)
 			})
 			if pickErr != nil {
