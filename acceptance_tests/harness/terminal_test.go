@@ -50,7 +50,11 @@ type terminalSession struct {
 // feeding its output to the emulated screen.
 func startTerminalSession(ctx context.Context, args []string) (*terminalSession, error) {
 	cmd := exec.Command(csyncBinary, args...)
-	cmd.Env = append(csyncEnv(ctx), "TERM=xterm-256color")
+	// The styling library disables all text attributes when these are set, even
+	// under a real terminal, and CI runners set CI. Scenarios that read attributes
+	// back from the screen must not depend on who runs the suite.
+	env := withoutVars(csyncEnv(ctx), "CI", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE")
+	cmd.Env = append(env, "TERM=xterm-256color")
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: terminalRows, Cols: terminalCols})
 	if err != nil {
 		return nil, fmt.Errorf("start under a pty: %w", err)
