@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -58,11 +59,15 @@ func theCopiesHaveBeenChangedTo(ctx context.Context, which, relPath string, fill
 	return ctx, nil
 }
 
-// theCopiesHaveBeenChangedToOverTheLimit makes the named copies one byte larger
-// than a diff allows.
-func theCopiesHaveBeenChangedToOverTheLimit(ctx context.Context, which, relPath string) (context.Context, error) {
+// theCopiesHaveBeenChangedToSize makes the named copies the given size, written as
+// the scenarios write it, with a thousands separator.
+func theCopiesHaveBeenChangedToSize(ctx context.Context, which, relPath, size string) (context.Context, error) {
+	byteCount, err := strconv.Atoi(strings.ReplaceAll(size, ",", ""))
+	if err != nil {
+		return ctx, fmt.Errorf("size %q: %w", size, err)
+	}
 	return theCopiesHaveBeenChangedTo(ctx, which, relPath, func(side string) []byte {
-		return bytes.Repeat([]byte(side[:1]), 204_801)
+		return bytes.Repeat([]byte(side[:1]), byteCount)
 	})
 }
 

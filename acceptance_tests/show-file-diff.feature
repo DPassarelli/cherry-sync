@@ -55,6 +55,16 @@ Feature: Show a file's diff from the picker
       | the remote copy | destination copy is |
       | both copies     | both copies are     |
 
+  Scenario: A file of exactly 200 KiB still gets a diff
+    Given that the local copy of "README.md" has been changed to 204,800 bytes
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should begin with:
+      """
+      --- destination: README.md
+      +++ source: README.md
+      """
+
   Scenario Outline: A copy with a NUL byte is treated as binary
     Given that <which> of "README.md" has been changed to contain a NUL byte
     And   that I have run "csync ./project user@host:/project" in a terminal
