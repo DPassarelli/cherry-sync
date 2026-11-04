@@ -2,7 +2,6 @@ package view
 
 import (
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -213,8 +212,8 @@ func emphasizedText(segments []detailSegment) []string {
 	return out
 }
 
-// Behavior: the newer copy's whole "last updated" phrase is marked to stand out, and
-// only when the two timestamps can honestly be ranked. Comparison is at whole-second
+// Behavior: the newer copy's name and whole "last updated" phrase are marked to stand
+// out, and only when the two timestamps can honestly be ranked. Comparison is at whole-second
 // precision because rsync reports the source in whole seconds while a stat of a local
 // destination carries nanoseconds, so a finer comparison would call a copy written in
 // the same second "newer" on the strength of that mismatch alone.
@@ -226,10 +225,10 @@ func TestDetailSegments_EmphasizesTheNewerCopy(t *testing.T) {
 		known  bool
 		want   []string
 	}{
-		{"source newer", now.Add(-time.Minute), now.Add(-time.Hour), true, []string{"last updated 1m ago"}},
-		{"dest newer", now.Add(-time.Hour), now.Add(-time.Minute), true, []string{"last updated 1m ago"}},
-		{"same render, source newer", now.Add(-49 * time.Hour), now.Add(-50 * time.Hour), true, []string{"last updated 2d ago"}},
-		{"both ahead of now, source newer", now.Add(2 * time.Hour), now.Add(time.Hour), true, []string{"last updated just now"}},
+		{"source newer", now.Add(-time.Minute), now.Add(-time.Hour), true, []string{"source last updated 1m ago"}},
+		{"dest newer", now.Add(-time.Hour), now.Add(-time.Minute), true, []string{"dest last updated 1m ago"}},
+		{"same render, source newer", now.Add(-49 * time.Hour), now.Add(-50 * time.Hour), true, []string{"source last updated 2d ago"}},
+		{"both ahead of now, source newer", now.Add(2 * time.Hour), now.Add(time.Hour), true, []string{"source last updated just now"}},
 		{"identical", now.Add(-time.Hour), now.Add(-time.Hour), true, nil},
 		{"same second, dest carries nanoseconds", now.Add(-time.Hour), now.Add(-time.Hour + 500*time.Millisecond), true, nil},
 		{"source unreadable", time.Time{}, now.Add(-time.Hour), true, nil},
@@ -252,24 +251,32 @@ func TestDetailSegments_EmphasizesTheNewerCopy(t *testing.T) {
 	}
 }
 
-// Behavior: the emphasis lands on the newer copy's own side of the annotation. The
-// phrases read alike, so the rank alone doesn't say whose age is being pointed at.
-func TestDetailSegments_EmphasisFollowsTheNewerSide(t *testing.T) {
-	a := compare.Action{
-		Verb: "update", Path: "a.go", Size: 512, ModTime: now.Add(-time.Hour),
-		Dest: compare.Counterpart{Known: true, Size: 512, ModTime: now.Add(-time.Minute)},
+// Behavior: a size gap stays out of the emphasis, whichever copy is newer. It says
+// nothing about which copy is live, so a newer source is marked around it, and it stays
+// plain when the destination is the newer copy.
+func TestDetailSegments_SizeGapIsNeverEmphasized(t *testing.T) {
+	cases := []struct {
+		name   string
+		source time.Time
+		dest   time.Time
+		want   []string
+	}{
+		{"source newer", now.Add(-time.Minute), now.Add(-time.Hour), []string{"source", "last updated 1m ago"}},
+		{"dest newer", now.Add(-time.Hour), now.Add(-time.Minute), []string{"dest last updated 1m ago"}},
 	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := compare.Action{
+				Verb: "update", Path: "a.go", Size: 2048, ModTime: c.source,
+				Dest: compare.Counterpart{Known: true, Size: 1024, ModTime: c.dest},
+			}
 
-	var before strings.Builder
-	for _, s := range detailSegments(a, now) {
-		if s.emphasized {
-			break
-		}
-		before.WriteString(s.text)
-	}
+			got := emphasizedText(detailSegments(a, now))
 
-	if !strings.HasSuffix(before.String(), "dest ") {
-		t.Errorf("text before the emphasis was %q, want it to end by naming dest", before.String())
+			if !slices.Equal(got, c.want) {
+				t.Errorf("emphasized %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

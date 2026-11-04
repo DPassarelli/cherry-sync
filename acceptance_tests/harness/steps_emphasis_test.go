@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,36 +17,27 @@ import (
 // glyphBold is vt10x's bold attribute bit, which the package keeps unexported.
 const glyphBold = 1 << 2
 
-// lastUpdatedPhrase is the whole phrase a highlighted copy must carry in bold.
-var lastUpdatedPhrase = regexp.MustCompile(`^last updated \d+[smhd] ago$`)
-
 // detailComplete recognizes a row whose detail has finished drawing, so a check for
 // the absence of bold can't pass against a half-painted frame.
 var detailComplete = regexp.MustCompile(`update\s+.*(ago|mtime)\s*$`)
 
-// detailBold holds the bold text in each half of a row's detail.
-type detailBold struct {
-	source string
-	dest   string
-}
-
-// awaitDetailBold waits for the cursor row's detail to draw and reports what it
-// shows in bold. Only cells after the verb count, since the caret is bold on every
-// row and is not part of the detail.
-func awaitDetailBold(ctx context.Context) (detailBold, error) {
+// awaitDetailBold waits for the cursor row's detail to draw and reports each unbroken
+// run of bold text in it. Only cells after the verb count, since the caret is bold on
+// every row and is not part of the detail.
+func awaitDetailBold(ctx context.Context) ([]string, error) {
 	session, err := runningTerminal(ctx)
 	if err != nil {
-		return detailBold{}, err
+		return nil, err
 	}
 	deadline := time.Now().Add(terminalWait)
 	for {
 		row := session.cursorRow()
 		text := glyphText(row)
 		if detailComplete.MatchString(text) {
-			return boldInDetail(row, text), nil
+			return boldRuns(row, text), nil
 		}
 		if time.Now().After(deadline) {
-			return detailBold{}, fmt.Errorf("cursor row never showed a complete detail; row was %q", text)
+			return nil, fmt.Errorf("cursor row never showed a complete detail; row was %q", text)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -60,48 +52,47 @@ func glyphText(row []vt10x.Glyph) string {
 	return b.String()
 }
 
-// boldInDetail splits a row at the middot that divides the two copies and collects
-// the bold characters on each side of it.
-func boldInDetail(row []vt10x.Glyph, text string) detailBold {
+// boldRuns collects the unbroken runs of bold characters following a row's verb.
+func boldRuns(row []vt10x.Glyph, text string) []string {
 	verbEnd := len([]rune(text[:strings.Index(text, "update")+len("update")]))
-	var bold detailBold
-	half := &bold.source
+	var runs []string
+	run := ""
 	for _, cell := range row[verbEnd:] {
-		if cell.Char == '·' {
-			half = &bold.dest
-		}
 		if cell.Mode&glyphBold != 0 {
-			*half += string(cell.Char)
+			run += string(cell.Char)
+			continue
+		}
+		if run != "" {
+			runs = append(runs, run)
+			run = ""
 		}
 	}
-	return bold
+	return runs
 }
 
-// onlyThePhraseInTheDetailShouldBeBold checks that the named copy's "last updated"
-// phrase is bold in full and that nothing else in the detail is.
-func onlyThePhraseInTheDetailShouldBeBold(ctx context.Context, side string) error {
-	bold, err := awaitDetailBold(ctx)
+// assertBoldRuns checks that the detail shows exactly the wanted runs in bold.
+func assertBoldRuns(ctx context.Context, want ...string) error {
+	got, err := awaitDetailBold(ctx)
 	if err != nil {
 		return err
 	}
-	phrase, other := bold.source, bold.dest
-	if side == "dest" {
-		phrase, other = bold.dest, bold.source
-	}
-	if !lastUpdatedPhrase.MatchString(phrase) || other != "" {
-		return fmt.Errorf("bold text was %+v, want only the %s phrase", bold, side)
+	if !slices.Equal(got, want) {
+		return fmt.Errorf("bold text was %q, want %q", got, want)
 	}
 	return nil
+}
+
+// theBoldTextInTheDetailShouldBe checks for a single unbroken run of bold text.
+func theBoldTextInTheDetailShouldBe(ctx context.Context, want string) error {
+	return assertBoldRuns(ctx, want)
+}
+
+// theBoldTextInTheDetailShouldBeBoth checks for two separate runs of bold text.
+func theBoldTextInTheDetailShouldBeBoth(ctx context.Context, first, second string) error {
+	return assertBoldRuns(ctx, first, second)
 }
 
 // noPartOfTheDetailShouldBeBold checks that the detail draws with no bold at all.
 func noPartOfTheDetailShouldBeBold(ctx context.Context) error {
-	bold, err := awaitDetailBold(ctx)
-	if err != nil {
-		return err
-	}
-	if bold != (detailBold{}) {
-		return fmt.Errorf("bold text was %+v, want none", bold)
-	}
-	return nil
+	return assertBoldRuns(ctx)
 }

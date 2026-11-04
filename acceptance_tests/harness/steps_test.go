@@ -135,7 +135,8 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the diff overlay should include:$`, theDiffOverlayShouldInclude)
 	ctx.Step(`^the diff overlay should begin with:$`, theDiffOverlayShouldBeginWith)
 	ctx.Step(`^the picker should show a notice containing "([^"]*)"$`, thePickerShouldShowANoticeContaining)
-	ctx.Step(`^only the (source|dest) "last updated" phrase in the detail should be bold$`, onlyThePhraseInTheDetailShouldBeBold)
+	ctx.Step(`^the bold text in the detail should be "([^"]*)"$`, theBoldTextInTheDetailShouldBe)
+	ctx.Step(`^the bold text in the detail should be "([^"]*)" and "([^"]*)"$`, theBoldTextInTheDetailShouldBeBoth)
 	ctx.Step(`^no part of the detail should be bold$`, noPartOfTheDetailShouldBeBold)
 
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {

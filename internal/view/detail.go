@@ -45,8 +45,8 @@ func actionDetail(a compare.Action, now time.Time) string {
 // own age, rather than the gap between their timestamps. Two ages answer "is this
 // the copy I was just working on?" directly, where a single interval between them
 // leaves the reader to work out whether either is recent at all. The newer copy's
-// phrase is emphasized because which copy is the live one is what a reader most needs
-// from the row before deciding to overwrite it.
+// name and phrase are emphasized because which copy is the live one is what a reader
+// most needs from the row before deciding to overwrite it.
 //
 // An update whose destination could not be measured falls back to the itemize
 // labels, which say which attributes differ without needing the far side.
@@ -57,24 +57,32 @@ func detailSegments(a compare.Action, now time.Time) []detailSegment {
 	if !a.Dest.Known {
 		return []detailSegment{{text: differenceLabel(a.Diff)}}
 	}
-	return []detailSegment{
-		{text: sourceLead(a)},
-		{text: "last updated " + age(a.ModTime, now), emphasized: isNewer(a.ModTime, a.Dest.ModTime)},
-		{text: detailSeparator + "dest "},
-		{text: "last updated " + age(a.Dest.ModTime, now), emphasized: isNewer(a.Dest.ModTime, a.ModTime)},
+	source := sourceSegments(a, now)
+	dest := detailSegment{
+		text:       "dest last updated " + age(a.Dest.ModTime, now),
+		emphasized: isNewer(a.Dest.ModTime, a.ModTime),
 	}
+	return append(source, detailSegment{text: detailSeparator}, dest)
 }
 
-// sourceLead opens the annotation by naming the incoming copy and how its size
-// compares with the one it would replace. The size half is omitted when the two
+// sourceSegments describes the incoming copy: how its size compares with the one it
+// would replace, and when it was last written. The size half is omitted when the two
 // copies are the same size, leaving "source" to attach to the timestamp so the clause
-// always names whose age it is reporting.
-func sourceLead(a compare.Action) string {
+// always names whose age it is reporting. When present it stays out of the emphasis,
+// because a size gap says nothing about which copy is newer.
+func sourceSegments(a compare.Action, now time.Time) []detailSegment {
+	updated := "last updated " + age(a.ModTime, now)
+	newer := isNewer(a.ModTime, a.Dest.ModTime)
 	gap := a.Size - a.Dest.Size
 	if gap == 0 {
-		return "source "
+		return []detailSegment{{text: "source " + updated, emphasized: newer}}
 	}
-	return "source is " + formatBytes(abs64(gap)) + " " + comparative(gap > 0, "larger", "smaller") + ", "
+	size := " is " + formatBytes(abs64(gap)) + " " + comparative(gap > 0, "larger", "smaller") + ", "
+	return []detailSegment{
+		{text: "source", emphasized: newer},
+		{text: size},
+		{text: updated, emphasized: newer},
+	}
 }
 
 // isNewer reports whether one copy's timestamp is later than the other's. An unreadable

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- The picker now shows the newer copy's "last updated" phrase in bold in the highlighted row's comparison, so you can see at a glance which copy is the live one. Nothing is bold when the timestamps match or can't be read.
+- The picker now shows the newer copy's name and "last updated" phrase in bold in the highlighted row's comparison, so you can see at a glance which copy is the live one. Nothing is bold when the timestamps match or can't be read.
 
 ## [1.3.0] - 2026-10-06
 
