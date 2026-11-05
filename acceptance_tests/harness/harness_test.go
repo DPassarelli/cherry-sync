@@ -83,6 +83,36 @@ shift
 exec "$@"
 `
 
+// failSendRsh is the path to a test-only remote shell that answers the comparison
+// and refuses to send a file. See failSendRshScript.
+var failSendRsh string
+
+// failSendMessage is what the refusing remote writes, so a scenario can check that
+// csync passed rsync's account of the failure on rather than a bare exit status.
+const failSendMessage = "send refused by the test remote"
+
+// failSendRshScript is the body of the refusing remote shell. As with the slow
+// remote, a real send is the one pass running --sender without -n.
+const failSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then
+	echo "` + failSendMessage + `" >&2
+	exit 13
+fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
 // slowSendRsh is the path to a test-only remote shell that answers the comparison
 // promptly and is slow to send a file. See slowSendRshScript.
 var slowSendRsh string
@@ -205,6 +235,10 @@ type failMeasureModeKey struct{}
 // slowSendModeKey flags a scenario as needing the remote that is slow to send files,
 // so csyncEnv points RSYNC_RSH at slowSendRsh.
 type slowSendModeKey struct{}
+
+// failSendModeKey flags a scenario as needing the remote that refuses to send files,
+// so csyncEnv points RSYNC_RSH at failSendRsh.
+type failSendModeKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and
@@ -346,6 +380,13 @@ func TestMain(m *testing.M) {
 	err = os.WriteFile(failMeasureRsh, []byte(failMeasureRshScript), 0o755)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "failmeasurersh:", err)
+		os.Exit(2)
+	}
+
+	failSendRsh = filepath.Join(tmpDir, "failsendrsh")
+	err = os.WriteFile(failSendRsh, []byte(failSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "failsendrsh:", err)
 		os.Exit(2)
 	}
 

@@ -86,6 +86,12 @@ func aRemoteThatIsSlowToSendFiles(ctx context.Context) (context.Context, error) 
 	return context.WithValue(ctx, slowSendModeKey{}, true), nil
 }
 
+// aRemoteThatFailsToSendFiles has the scenario's remote refuse every file it is asked
+// to send.
+func aRemoteThatFailsToSendFiles(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, failSendModeKey{}, true), nil
+}
+
 // thatIHaveRunInATerminal starts csync under a pseudo-terminal and waits for the
 // picker to be ready for keys.
 func thatIHaveRunInATerminal(ctx context.Context, command string) (context.Context, error) {
@@ -453,6 +459,31 @@ func theDiffOverlayShouldBeginWith(ctx context.Context, want *godog.DocString) e
 	}
 	_, err = session.waitFor("an overlay beginning:\n"+want.Content, func(s TerminalScreen) bool {
 		return strings.HasPrefix(s.String(), want.Content)
+	})
+	return err
+}
+
+// theDiffOverlayShouldBeginWithText asserts the screen opens with prefix.
+func theDiffOverlayShouldBeginWithText(ctx context.Context, prefix string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("an overlay beginning "+prefix, func(s TerminalScreen) bool {
+		return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], prefix)
+	})
+	return err
+}
+
+// theDiffOverlayShouldIncludeWhatTheRemoteSaid asserts the refusing remote's own
+// words reached the overlay.
+func theDiffOverlayShouldIncludeWhatTheRemoteSaid(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("what the remote said", func(s TerminalScreen) bool {
+		return !s.HasPicker() && strings.Contains(s.String(), failSendMessage)
 	})
 	return err
 }

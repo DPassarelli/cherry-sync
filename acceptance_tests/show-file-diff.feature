@@ -183,13 +183,19 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the picker should show a notice containing "fetching diff"
 
-  @wip
   Scenario: A failed fetch is reported inside the diff
     Given that the file "README.md" has been changed locally
+    And   a remote that answers the comparison but fails to send files
     And   that I have run "csync ./project user@host:/project" in a terminal
-    And   that the remote has become unreachable
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should begin with "couldn't fetch for diff:"
+
+  Scenario: A failed fetch repeats what rsync said
+    Given that the file "README.md" has been changed locally
+    And   a remote that answers the comparison but fails to send files
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should include what the remote said about the failure
 
   Scenario: The picker's hint line offers the diff
     Given that the file "README.md" has been changed locally
