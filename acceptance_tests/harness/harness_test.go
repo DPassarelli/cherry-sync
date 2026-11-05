@@ -106,7 +106,7 @@ for a in "$@"; do
 	esac
 done
 if [ "$sender" = yes ] && [ "$dry" = no ]; then
-	echo "` + failSendMessage + `" >&2
+	echo "${FAIL_SEND_MESSAGE:-` + failSendMessage + `}" >&2
 	exit 13
 fi
 if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
@@ -239,6 +239,10 @@ type slowSendModeKey struct{}
 // failSendModeKey flags a scenario as needing the remote that refuses to send files,
 // so csyncEnv points RSYNC_RSH at failSendRsh.
 type failSendModeKey struct{}
+
+// failSendMessageKey holds the sentence the refusing remote should write in place of
+// failSendMessage, for a scenario that needs a particular one.
+type failSendMessageKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and

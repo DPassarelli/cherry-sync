@@ -92,6 +92,93 @@ func aRemoteThatFailsToSendFiles(ctx context.Context) (context.Context, error) {
 	return context.WithValue(ctx, failSendModeKey{}, true), nil
 }
 
+// longFailMessage is a refusal too long for one row of the terminal.
+var longFailMessage = "the test remote refused to send this file, " + strings.Repeat("and it keeps explaining why ", terminalCols/20)
+
+// aRemoteThatFailsToSendFilesWithALongMessage has the scenario's remote refuse every
+// file with longFailMessage.
+func aRemoteThatFailsToSendFilesWithALongMessage(ctx context.Context) (context.Context, error) {
+	ctx = context.WithValue(ctx, failSendModeKey{}, true)
+	return context.WithValue(ctx, failSendMessageKey{}, longFailMessage), nil
+}
+
+// theDiffOverlayShouldIncludeAllOfWhatTheRemoteSaid asserts the whole refusal is on
+// screen, however many rows it takes.
+func theDiffOverlayShouldIncludeAllOfWhatTheRemoteSaid(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("all of what the remote said", func(s TerminalScreen) bool {
+		return !s.HasPicker() && strings.Contains(s.Unwrapped, strings.TrimSpace(longFailMessage))
+	})
+	return err
+}
+
+// wideLine is a line of content too wide for one row of the terminal, made of
+// distinct characters so a row lost or repeated in wrapping can't still match.
+var wideLine = func() string {
+	var b strings.Builder
+	for i := 0; b.Len() < terminalCols*5/2; i++ {
+		fmt.Fprintf(&b, "%03d.", i)
+	}
+	return b.String()
+}()
+
+// theFileHasBeenChangedLocallyToASingleWideLine replaces relPath's local content with
+// wideLine, so its diff adds a line that has to wrap.
+func theFileHasBeenChangedLocallyToASingleWideLine(ctx context.Context, relPath string) (context.Context, error) {
+	return theFileHasBeenChangedLocallyFromTo(ctx, relPath, "short line", wideLine)
+}
+
+// theFileHasBeenChangedLocallyToTheLine replaces relPath's local content with line,
+// reading "<tab>" as a tab, since a scenario can't easily hold a literal one.
+func theFileHasBeenChangedLocallyToTheLine(ctx context.Context, relPath, line string) (context.Context, error) {
+	return theFileHasBeenChangedLocallyFromTo(ctx, relPath, "short line", strings.ReplaceAll(line, "<tab>", "\t"))
+}
+
+// theDiffOverlayShouldIncludeTheLine asserts a row of the overlay is exactly want.
+func theDiffOverlayShouldIncludeTheLine(ctx context.Context, want string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the line "+want, func(s TerminalScreen) bool { return s.HasLine(want) })
+	return err
+}
+
+// theDiffOverlayShouldIncludeAllOfThatLine asserts the added wide line is on screen
+// in full, however many rows it takes.
+func theDiffOverlayShouldIncludeAllOfThatLine(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("all of the wide line", func(s TerminalScreen) bool {
+		return s.HasOverlay() && strings.Contains(s.Unwrapped, "+"+wideLine)
+	})
+	return err
+}
+
+// theRowAfterThatLinesFirstRowShouldBeginWith asserts how the wide line's second row
+// opens.
+func theRowAfterThatLinesFirstRowShouldBeginWith(ctx context.Context, prefix string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	first := "+" + wideLine[:10]
+	_, err = session.waitFor("a row beginning "+first+" followed by one beginning "+prefix, func(s TerminalScreen) bool {
+		for i, line := range s.Lines[:max(len(s.Lines)-1, 0)] {
+			if strings.HasPrefix(line, first) {
+				return strings.HasPrefix(s.Lines[i+1], prefix)
+			}
+		}
+		return false
+	})
+	return err
+}
+
 // thatIHaveRunInATerminal starts csync under a pseudo-terminal and waits for the
 // picker to be ready for keys.
 func thatIHaveRunInATerminal(ctx context.Context, command string) (context.Context, error) {

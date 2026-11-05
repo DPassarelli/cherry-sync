@@ -139,6 +139,10 @@ func csyncEnv(ctx context.Context) []string {
 		if failSend {
 			rsh = failSendRsh
 		}
+		message, _ := ctx.Value(failSendMessageKey{}).(string)
+		if message != "" {
+			env = append(env, "FAIL_SEND_MESSAGE="+message)
+		}
 		stallMode, _ := ctx.Value(stallModeKey{}).(bool)
 		if stallMode {
 			// Swap in the shell that stops answering after the comparison, and shorten

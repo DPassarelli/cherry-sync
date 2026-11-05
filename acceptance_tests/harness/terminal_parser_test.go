@@ -40,11 +40,16 @@ type PickerRow struct {
 	Checked bool
 }
 
+// wrapIndicator opens each row that continues a line too wide for the terminal.
+const wrapIndicator = "↪ "
+
 // TerminalScreen is what the terminal is showing: its lines with trailing padding
-// removed, and the picker's rows when any are on screen.
+// removed, the picker's rows when any are on screen, and Unwrapped, every row run
+// together without its wrap indicator, so a line wrapped across rows reads whole.
 type TerminalScreen struct {
-	Lines []string
-	Rows  []PickerRow
+	Lines     []string
+	Rows      []PickerRow
+	Unwrapped string
 }
 
 // String renders the screen for a failure message.
@@ -133,7 +138,9 @@ func (s TerminalScreen) RowIndex(relPath string) int {
 func parseTerminalScreen(raw string) TerminalScreen {
 	var screen TerminalScreen
 	dir := ""
+	var unwrapped strings.Builder
 	for line := range strings.SplitSeq(strings.TrimRight(raw, " \n"), "\n") {
+		unwrapped.WriteString(strings.TrimPrefix(line, wrapIndicator))
 		trimmed := strings.TrimRight(line, " ")
 		screen.Lines = append(screen.Lines, trimmed)
 		heading := pickerHeadingRE.FindStringSubmatch(trimmed)
@@ -146,5 +153,6 @@ func parseTerminalScreen(raw string) TerminalScreen {
 			screen.Rows = append(screen.Rows, PickerRow{Path: path.Join(dir, row[3]), Cursor: row[1] == "❯", Checked: row[2] == "x"})
 		}
 	}
+	screen.Unwrapped = unwrapped.String()
 	return screen
 }

@@ -197,6 +197,31 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should include what the remote said about the failure
 
+  Scenario: A long failure message wraps instead of being cut off
+    Given that the file "README.md" has been changed locally
+    And   a remote that fails to send files with a message wider than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should include all of what the remote said
+
+  Scenario: A long diff line is shown in full
+    Given that the file "README.md" has been changed locally to a single line wider than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should include all of that line
+
+  Scenario: A wrapped line continues behind the wrap indicator
+    Given that the file "README.md" has been changed locally to a single line wider than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the row after that line's first row should begin with "↪"
+
+  Scenario: Each tab is shown as a spaced arrow
+    Given that the file "README.md" has been changed locally to the line "a<tab><tab>b"
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should include the line "+a → →b"
+
   Scenario: The picker's hint line offers the diff
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" in a terminal

@@ -132,14 +132,14 @@ const overlayFooterRows = 2
 // the frame's trailing newline can't scroll its first line away.
 func (m pickerModel) overlayRows() int {
 	if m.height <= 0 {
-		return len(m.overlay)
+		return len(m.overlayRowsAll())
 	}
 	return max(m.height-1-overlayFooterRows, 1)
 }
 
 // lastOverlayOffset is the furthest the overlay can scroll while staying full.
 func (m pickerModel) lastOverlayOffset() int {
-	return max(len(m.overlay)-m.overlayRows(), 0)
+	return max(len(m.overlayRowsAll())-m.overlayRows(), 0)
 }
 
 // overlayView renders the part of the diff in view, then the footer. The offset is
@@ -149,9 +149,10 @@ func (m pickerModel) lastOverlayOffset() int {
 // line of the diff.
 func (m pickerModel) overlayView() string {
 	dim := lipgloss.NewStyle().Faint(true)
+	rows := m.overlayRowsAll()
 	first := min(m.overlayOffset, m.lastOverlayOffset())
-	last := min(first+m.overlayRows(), len(m.overlay))
-	lines := slices.Clone(m.overlay[first:last])
+	last := min(first+m.overlayRows(), len(rows))
+	lines := slices.Clone(rows[first:last])
 	if m.height > 0 {
 		for len(lines) < m.overlayRows() {
 			lines = append(lines, "")
