@@ -161,3 +161,33 @@ func TestOverlayView_KeepsTheHintOnTheBottomRow(t *testing.T) {
 		t.Errorf("overlay is %d rows tall, want 9", got)
 	}
 }
+
+// Opening the overlay clears the progress notice, or it would still be there after
+// the overlay closes.
+func TestOpenOverlay_ClearsTheProgressNotice(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
+	m, _ = m.pressDiff()
+	updated, _ := m.Update(fetchRevealMsg{fetch: m.fetchID})
+	updated, _ = updated.Update(diffFetchedMsg{text: "a\n"})
+	if updated.(pickerModel).notice != "" {
+		t.Errorf("notice = %q after the overlay opened, want none", updated.(pickerModel).notice)
+	}
+}
+
+// A reveal timed for a fetch that has already finished must not raise the indicator
+// over the next one before its own delay is up.
+func TestFetchReveal_IgnoresAFinishedFetch(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
+	m, _ = m.pressDiff()
+	stale := m.fetchID
+	updated, _ := m.Update(diffFetchedMsg{text: "a\n"})
+	m = updated.(pickerModel)
+	m.overlay = nil
+	m, _ = m.pressDiff()
+	updated, _ = m.Update(fetchRevealMsg{fetch: stale})
+	if updated.(pickerModel).notice != "" {
+		t.Errorf("notice = %q from a finished fetch's reveal, want none", updated.(pickerModel).notice)
+	}
+}

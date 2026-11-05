@@ -81,6 +81,11 @@ func theCopiesHaveBeenChangedToContainANulByte(ctx context.Context, which, relPa
 	})
 }
 
+// aRemoteThatIsSlowToSendFiles has the scenario's remote delay every file it sends.
+func aRemoteThatIsSlowToSendFiles(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, slowSendModeKey{}, true), nil
+}
+
 // thatIHaveRunInATerminal starts csync under a pseudo-terminal and waits for the
 // picker to be ready for keys.
 func thatIHaveRunInATerminal(ctx context.Context, command string) (context.Context, error) {

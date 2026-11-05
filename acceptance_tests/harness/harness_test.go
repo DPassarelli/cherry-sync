@@ -83,6 +83,30 @@ shift
 exec "$@"
 `
 
+// slowSendRsh is the path to a test-only remote shell that answers the comparison
+// promptly and is slow to send a file. See slowSendRshScript.
+var slowSendRsh string
+
+// slowSendRshScript is the body of the slow remote shell. A real file is sent by an
+// rsync running with --sender and without -n; the comparison's passes are all dry
+// runs, so only fetching a copy is delayed, and long enough for an indicator to show.
+const slowSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then sleep 2; fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
 // stallRsh is the path to a test-only remote shell that answers every rsync the
 // comparison runs and goes silent once the transfer starts. Scenarios that need a
 // stalled transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
@@ -177,6 +201,10 @@ type stallModeKey struct{}
 // comparison but fails the measurement` step) as needing the refusing remote shell
 // rather than the plain one.
 type failMeasureModeKey struct{}
+
+// slowSendModeKey flags a scenario as needing the remote that is slow to send files,
+// so csyncEnv points RSYNC_RSH at slowSendRsh.
+type slowSendModeKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and
@@ -318,6 +346,13 @@ func TestMain(m *testing.M) {
 	err = os.WriteFile(failMeasureRsh, []byte(failMeasureRshScript), 0o755)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "failmeasurersh:", err)
+		os.Exit(2)
+	}
+
+	slowSendRsh = filepath.Join(tmpDir, "slowsendrsh")
+	err = os.WriteFile(slowSendRsh, []byte(slowSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "slowsendrsh:", err)
 		os.Exit(2)
 	}
 

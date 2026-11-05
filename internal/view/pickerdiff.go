@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -74,14 +75,17 @@ func (m pickerModel) pressDiff() (pickerModel, tea.Cmd) {
 		return m, nil
 	}
 	m.fetching = true
+	m.fetchID++
+	id := m.fetchID
 	fetch := m.fetchDiff
-	return m, func() tea.Msg {
+	reveal := tea.Tick(spinnerDelay, func(time.Time) tea.Msg { return fetchRevealMsg{fetch: id} })
+	return m, tea.Batch(reveal, func() tea.Msg {
 		result, err := fetch(action.Path)
 		if err != nil {
 			return diffFetchedMsg{text: "couldn't fetch for diff: " + err.Error()}
 		}
 		return diffFetchedMsg{notice: fetchedNotice(result), text: result.Text}
-	}
+	})
 }
 
 // openOverlay shows a finished fetch, as a notice when there is nothing to diff. The
@@ -89,6 +93,7 @@ func (m pickerModel) pressDiff() (pickerModel, tea.Cmd) {
 // come back exactly as it was, preamble included, when the overlay closes.
 func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 	m.fetching = false
+	m.notice = ""
 	if msg.notice != "" {
 		m.notice = msg.notice
 		m.offset = m.scrollOffset()

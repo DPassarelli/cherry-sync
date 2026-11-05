@@ -176,6 +176,13 @@ Feature: Show a file's diff from the picker
     When  I press "ctrl-c"
     Then  csync should have exited
 
+  Scenario: A slow fetch shows that the diff is on its way
+    Given that the file "README.md" has been changed locally
+    And   a remote that answers the comparison but is slow to send files
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the picker should show a notice containing "fetching diff"
+
   @wip
   Scenario: A failed fetch is reported inside the diff
     Given that the file "README.md" has been changed locally

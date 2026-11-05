@@ -131,6 +131,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^that (the local copy|the remote copy|both copies) of "([^"]*)" has been changed to (\d{3},\d{3}) bytes$`, theCopiesHaveBeenChangedToSize)
 	ctx.Step(`^that (the local copy|the remote copy|both copies) of "([^"]*)" has been changed to contain a NUL byte$`, theCopiesHaveBeenChangedToContainANulByte)
 	ctx.Step(`^that I have run "([^"]*)" in a terminal$`, thatIHaveRunInATerminal)
+	ctx.Step(`^a remote that answers the comparison but is slow to send files$`, aRemoteThatIsSlowToSendFiles)
 	ctx.Step(`^I run "([^"]*)" in a terminal$`, thatIHaveRunInATerminal)
 	ctx.Step(`^the hint line should read "([^"]*)"$`, theHintLineShouldRead)
 	ctx.Step(`^I press "([^"]*)" on the row for "([^"]*)"$`, iPressOnTheRowFor)
