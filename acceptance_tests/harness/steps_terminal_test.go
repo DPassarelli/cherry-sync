@@ -214,6 +214,27 @@ func theDiffOverlayShouldNoLongerBeVisible(ctx context.Context) error {
 	return err
 }
 
+// theSourceAndDestinationShouldBeOnScreen asserts the picker came back on the screen
+// it started on, the one holding what csync printed above it.
+func theSourceAndDestinationShouldBeOnScreen(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the picker", TerminalScreen.HasPicker)
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	if !screen.HasEndpoints() {
+		return fmt.Errorf("the source and destination lines are gone; screen was:\n%s", screen)
+	}
+	return nil
+}
+
 // theDiffOverlayShouldStillBeOpen asserts the last key changed nothing visible.
 func theDiffOverlayShouldStillBeOpen(ctx context.Context) error {
 	session, err := runningTerminal(ctx)

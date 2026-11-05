@@ -52,6 +52,17 @@ func (s TerminalScreen) HasOverlay() bool {
 	return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], diffHeaderPrefix)
 }
 
+// HasEndpoints reports whether the source and destination lines printed above the
+// picker are on screen.
+func (s TerminalScreen) HasEndpoints() bool {
+	var source, destination bool
+	for _, line := range s.Lines {
+		source = source || strings.HasPrefix(line, "Source:")
+		destination = destination || strings.HasPrefix(line, "Destination:")
+	}
+	return source && destination
+}
+
 // CursorIndex returns the position in Rows of the row under the cursor, or -1 when
 // no row has it.
 func (s TerminalScreen) CursorIndex() int {

@@ -72,14 +72,36 @@ func Between(ctx context.Context, r *command.Runner, source, destination, relPat
 	if result.Oversized != NoCopies || result.Binary != NoCopies {
 		return result, nil
 	}
-	result.Text, err = difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-		A:        difflib.SplitLines(string(destinationCopy.content)),
-		B:        difflib.SplitLines(string(sourceCopy.content)),
+	result.Text, err = unified(relPath, destinationCopy.content, sourceCopy.content)
+	return result, err
+}
+
+// unified renders the diff from the destination copy to the source copy.
+func unified(relPath string, destinationCopy, sourceCopy []byte) (string, error) {
+	return difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+		A:        splitLines(destinationCopy),
+		B:        splitLines(sourceCopy),
 		FromFile: "destination: " + relPath,
 		ToFile:   "source: " + relPath,
 		Context:  3,
 	})
-	return result, err
+}
+
+// splitLines splits content into the lines a diff compares. difflib's own splitter
+// adds a line that isn't in the file, which throws off the hunk header. A last line
+// with no newline carries the standard marker, so it compares as different from the
+// same text with one and still prints on a line of its own.
+func splitLines(content []byte) []string {
+	if len(content) == 0 {
+		return nil
+	}
+	lines := strings.SplitAfter(string(content), "\n")
+	last := len(lines) - 1
+	if lines[last] == "" {
+		return lines[:last]
+	}
+	lines[last] += "\n\\ No newline at end of file\n"
+	return lines
 }
 
 // whichCopies combines a check's answer for each copy.

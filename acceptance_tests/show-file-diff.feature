@@ -131,6 +131,13 @@ Feature: Show a file's diff from the picker
     When  I press "esc"
     Then  the diff overlay should no longer be visible
 
+  Scenario: Closing the diff brings back what was above the picker
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    When  I press "esc"
+    Then  the source and destination should be on screen
+
   Scenario Outline: Pressing "<key>" leaves the diff open
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal

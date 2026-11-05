@@ -136,6 +136,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I press "([^"]*)"$`, iPress)
 	ctx.Step(`^that I have pressed "([^"]*)"$`, thatIHavePressed)
 	ctx.Step(`^the diff overlay should no longer be visible$`, theDiffOverlayShouldNoLongerBeVisible)
+	ctx.Step(`^the source and destination should be on screen$`, theSourceAndDestinationShouldBeOnScreen)
 	ctx.Step(`^the diff overlay should still be open$`, theDiffOverlayShouldStillBeOpen)
 	ctx.Step(`^no files should have been transferred$`, noFilesShouldHaveBeenTransferred)
 	ctx.Step(`^the row for "([^"]*)" should be checked$`, theRowShouldBeChecked)
