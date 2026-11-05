@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 )
 
@@ -33,6 +34,18 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
+	// fetchDiff gets a row's diff, fetching marks one in progress, notice explains a
+	// row with no diff to show, and overlay holds the lines of an open diff.
+	fetchDiff func(path string) (filediff.Result, error)
+	notice    string
+	fetching  bool
+	overlay   []string
+	// overlayOffset is the first overlay line on screen.
+	overlayOffset int
+	// fetchID tells one fetch's progress messages from a later one's, and fetchFrame
+	// is its spinner's current frame.
+	fetchID    int
+	fetchFrame int
 	// now is the moment each row's ages are measured against, fixed when the picker
 	// is built rather than read per frame: the list does not re-render on a timer,
 	// and an age that crept forward between two repaints of the same unchanged list
@@ -79,9 +92,10 @@ func newModel(actions []compare.Action) pickerModel {
 // of its scroll region so the preamble stays on screen. It drives a Bubble Tea
 // program and so needs a terminal: main selects it only when stdin and stdout are
 // TTYs.
-func RunPicker(actions []compare.Action, preamble string) ([]compare.Action, error) {
+func RunPicker(actions []compare.Action, preamble string, fetchDiff func(path string) (filediff.Result, error)) ([]compare.Action, error) {
 	m := newModel(actions)
 	m.preamble = preamble
+	m.fetchDiff = fetchDiff
 	final, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return nil, err
@@ -101,7 +115,7 @@ func (m pickerModel) Init() tea.Cmd {
 // Update handles one message: a WindowSizeMsg records the terminal width and height
 // that bound the scroll window; a keypress moves or acts. Keys: arrow/jk move the
 // cursor (clamped at the ends), space toggles the row under it, 'a' toggles the
-// whole list (all↔none), Enter accepts the selection and quits, and Ctrl-C
+// whole list (all↔none), 'd' asks for the row's diff, Enter accepts the selection and quits, and Ctrl-C
 // cancels — quitting without accepting. After a move or resize the scroll offset is
 // re-settled so the window follows the cursor to its edges. Other messages pass
 // through untouched.
@@ -112,7 +126,17 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.offset = m.scrollOffset()
 		return m, nil
+	case diffFetchedMsg:
+		return m.openOverlay(msg)
+	case fetchRevealMsg:
+		return m.showFetchProgress(msg.fetch)
+	case fetchFrameMsg:
+		return m.advanceFetchProgress(msg.fetch)
 	case tea.KeyMsg:
+		if m.overlay != nil {
+			return m.overlayKey(msg)
+		}
+		m.notice = ""
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
@@ -128,6 +152,12 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle the whole list: clear it if every row is checked, otherwise check
 			// every row.
 			m.sel.SetAll(!m.sel.AllChecked())
+		case "d":
+			var fetch tea.Cmd
+			m, fetch = m.pressDiff()
+			if fetch != nil {
+				return m, fetch
+			}
 		case "enter":
 			m.accepted = true
 			return m, tea.Quit
@@ -158,10 +188,10 @@ func (m pickerModel) scrollOffset() int {
 // scrollHeight is the number of terminal rows the picker's list region may occupy:
 // the terminal height less the preamble's on-screen rows (measured at the current
 // width, so wrapped lines count for all the rows they take), the fixed header rows,
-// and the one-row bottom margin. Keeping the list within it is what stops the
+// any notice, and the one-row bottom margin. Keeping the list within it is what stops the
 // preamble from scrolling off the top.
 func (m pickerModel) scrollHeight() int {
-	return m.height - countRows(m.preamble, m.width) - pickerHeaderLines - scrollMargin
+	return m.height - countRows(m.preamble, m.width) - pickerHeaderLines - scrollMargin - countRows(m.wrappedNotice(), m.width)
 }
 
 // visible is the scroll window over the current change list for the settled offset:

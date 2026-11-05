@@ -3,19 +3,20 @@ module github.com/dpassarelli/cherry-sync
 go 1.26.3
 
 require (
-  github.com/BurntSushi/toml v1.6.0
+	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/charmbracelet/x/ansi v0.10.1
 	github.com/creack/pty v1.1.24
 	github.com/cucumber/godog v0.15.1
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
+	github.com/pmezard/go-difflib v1.0.0
 	golang.org/x/term v0.44.0
 )
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
-	github.com/charmbracelet/x/ansi v0.10.1 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/cucumber/gherkin/go/v26 v26.2.0 // indirect

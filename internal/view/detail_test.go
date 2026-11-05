@@ -1,6 +1,7 @@
 package view
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -197,5 +198,115 @@ func TestAge_Zero_ReadsAsUnknown(t *testing.T) {
 	got := age(time.Time{}, now)
 	if got != "unknown" {
 		t.Errorf("got %q, want %q", got, "unknown")
+	}
+}
+
+// emphasizedText returns the parts of a row's annotation marked to stand out.
+func emphasizedText(segments []detailSegment) []string {
+	var out []string
+	for _, s := range segments {
+		if s.emphasized {
+			out = append(out, s.text)
+		}
+	}
+	return out
+}
+
+// Behavior: the newer copy's name and whole "last updated" phrase are marked to stand
+// out, and only when the two timestamps can honestly be ranked. Comparison is at whole-second
+// precision because rsync reports the source in whole seconds while a stat of a local
+// destination carries nanoseconds, so a finer comparison would call a copy written in
+// the same second "newer" on the strength of that mismatch alone.
+func TestDetailSegments_EmphasizesTheNewerCopy(t *testing.T) {
+	cases := []struct {
+		name   string
+		source time.Time
+		dest   time.Time
+		known  bool
+		want   []string
+	}{
+		{"source newer", now.Add(-time.Minute), now.Add(-time.Hour), true, []string{"source last updated 1m ago"}},
+		{"dest newer", now.Add(-time.Hour), now.Add(-time.Minute), true, []string{"dest last updated 1m ago"}},
+		{"same render, source newer", now.Add(-49 * time.Hour), now.Add(-50 * time.Hour), true, []string{"source last updated 2d ago"}},
+		{"both ahead of now, source newer", now.Add(2 * time.Hour), now.Add(time.Hour), true, []string{"source last updated just now"}},
+		{"identical", now.Add(-time.Hour), now.Add(-time.Hour), true, nil},
+		{"same second, dest carries nanoseconds", now.Add(-time.Hour), now.Add(-time.Hour + 500*time.Millisecond), true, nil},
+		{"source unreadable", time.Time{}, now.Add(-time.Hour), true, nil},
+		{"dest unreadable", now.Add(-time.Hour), time.Time{}, true, nil},
+		{"dest unmeasured", now.Add(-time.Hour), time.Time{}, false, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := compare.Action{
+				Verb: "update", Path: "a.go", Size: 512, ModTime: c.source,
+				Dest: compare.Counterpart{Known: c.known, Size: 512, ModTime: c.dest},
+			}
+
+			got := emphasizedText(detailSegments(a, now))
+
+			if !slices.Equal(got, c.want) {
+				t.Errorf("emphasized %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// Behavior: a size gap stays out of the emphasis, whichever copy is newer. It says
+// nothing about which copy is live, so a newer source is marked around it, and it stays
+// plain when the destination is the newer copy.
+func TestDetailSegments_SizeGapIsNeverEmphasized(t *testing.T) {
+	cases := []struct {
+		name   string
+		source time.Time
+		dest   time.Time
+		want   []string
+	}{
+		{"source newer", now.Add(-time.Minute), now.Add(-time.Hour), []string{"source", "last updated 1m ago"}},
+		{"dest newer", now.Add(-time.Hour), now.Add(-time.Minute), []string{"dest last updated 1m ago"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := compare.Action{
+				Verb: "update", Path: "a.go", Size: 2048, ModTime: c.source,
+				Dest: compare.Counterpart{Known: true, Size: 1024, ModTime: c.dest},
+			}
+
+			got := emphasizedText(detailSegments(a, now))
+
+			if !slices.Equal(got, c.want) {
+				t.Errorf("emphasized %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// Behavior: trimming an annotation to the terminal keeps each surviving character's
+// emphasis, and adds the ellipsis without emphasis so it doesn't read as part of the
+// highlighted phrase. Trimming that lost track of the segments would either cut through
+// an escape sequence or leave the highlight on the wrong text.
+func TestFitDetail_TrimsAcrossSegmentsKeepingEmphasis(t *testing.T) {
+	segments := []detailSegment{
+		{text: "source "},
+		{text: "last updated 3m ago", emphasized: true},
+		{text: " · dest "},
+		{text: "last updated 17d ago"},
+	}
+
+	got := fitDetail(segments, 0, len(detailGap)+18)
+
+	want := []detailSegment{{text: "source "}, {text: "last updat", emphasized: true}, {text: "…"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: an annotation with too little room to say anything is dropped whole.
+func TestFitDetail_DropsAnAnnotationBelowTheMinimum(t *testing.T) {
+	segments := []detailSegment{{text: "last updated 3m ago", emphasized: true}}
+
+	got := fitDetail(segments, 0, len(detailGap)+minDetailWidth-1)
+
+	if len(got) != 0 {
+		t.Errorf("got %+v, want nothing", got)
 	}
 }

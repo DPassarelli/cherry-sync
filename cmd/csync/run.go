@@ -15,6 +15,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/cli"
 	"github.com/dpassarelli/cherry-sync/internal/command"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 	"github.com/dpassarelli/cherry-sync/internal/runlog"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
@@ -227,7 +228,9 @@ func run() (code int) {
 				picked = result.Actions
 			}
 		} else {
-			chosen, pickErr := view.RunPicker(result.Actions, preamble.String())
+			chosen, pickErr := view.RunPicker(result.Actions, preamble.String(), func(path string) (filediff.Result, error) {
+				return filediff.Between(ctx, runner, source, destination, path)
+			})
 			if pickErr != nil {
 				fmt.Fprintln(os.Stderr, pickErr)
 				return 1
