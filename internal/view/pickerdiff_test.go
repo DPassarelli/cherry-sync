@@ -149,3 +149,15 @@ func TestOverlayView_ClampsAfterAResize(t *testing.T) {
 		t.Errorf("overlay is %d rows tall, want 7", got)
 	}
 }
+
+// A short diff still puts the hint on the bottom row, where a full one leaves it, so
+// it doesn't jump between diffs.
+func TestOverlayView_KeepsTheHintOnTheBottomRow(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.width, m.height = 80, 10
+	updated, _ := m.Update(diffFetchedMsg{text: "a\nb\n"})
+	got := countRows(updated.View(), 80)
+	if got != 9 {
+		t.Errorf("overlay is %d rows tall, want 9", got)
+	}
+}

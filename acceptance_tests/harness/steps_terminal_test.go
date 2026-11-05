@@ -342,6 +342,16 @@ func theDiffOverlayShouldNotShowItsLastLine(ctx context.Context) error {
 	return nil
 }
 
+// theHintLineShouldRead asserts the key hint on screen is exactly want.
+func theHintLineShouldRead(ctx context.Context, want string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the hint line "+want, func(s TerminalScreen) bool { return s.HintLine() == want })
+	return err
+}
+
 // theDiffOverlayShouldStillBeOpen asserts the last key changed nothing visible.
 func theDiffOverlayShouldStillBeOpen(ctx context.Context) error {
 	session, err := runningTerminal(ctx)

@@ -184,13 +184,11 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should begin with "couldn't fetch for diff:"
 
-  @wip
   Scenario: The picker's hint line offers the diff
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" in a terminal
     Then  the hint line should read "↑/↓ move · space toggle · a all/none · d diff · enter sync · ctrl-c cancel"
 
-  @wip
   Scenario: The diff's hint line offers scrolling and going back
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal

@@ -17,6 +17,12 @@ const pickerHintFragment = "enter sync"
 // diffHeaderPrefix opens the first line of a diff overlay.
 const diffHeaderPrefix = "--- destination: "
 
+// pickerPromptPrefix opens the picker's question, which the hint line follows.
+const pickerPromptPrefix = "? "
+
+// overlayRule is the character the overlay's rule above its hint line is drawn with.
+const overlayRule = "─"
+
 // noticePrefix opens every notice the picker shows in place of a diff.
 const noticePrefix = "no diff: "
 
@@ -69,6 +75,23 @@ func (s TerminalScreen) HasNotice() bool {
 // HasLine reports whether a line on screen is exactly want.
 func (s TerminalScreen) HasLine(want string) bool {
 	return slices.Contains(s.Lines, want)
+}
+
+// HintLine returns the key hint on screen, without its indent: in the overlay, the
+// line under its rule; in the picker, the line under its question.
+func (s TerminalScreen) HintLine() string {
+	for i := len(s.Lines) - 2; i >= 0; i-- {
+		line := s.Lines[i]
+		if line != "" && strings.Trim(line, overlayRule) == "" {
+			return strings.TrimSpace(s.Lines[i+1])
+		}
+	}
+	for i, line := range s.Lines[:max(len(s.Lines)-1, 0)] {
+		if strings.HasPrefix(line, pickerPromptPrefix) {
+			return strings.TrimSpace(s.Lines[i+1])
+		}
+	}
+	return ""
 }
 
 // HasEndpoints reports whether the source and destination lines printed above the

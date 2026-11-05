@@ -39,7 +39,7 @@ func (m pickerModel) View() string {
 	out := []string{
 		"",
 		"? " + prompt.Render(pickerPrompt(len(m.actions))),
-		"   " + dim.Render("↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"),
+		"   " + dim.Render("↑/↓ move · space toggle · a all/none · d diff · enter sync · ctrl-c cancel"),
 	}
 
 	vp := m.visible()

@@ -5,6 +5,7 @@ package view
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -119,13 +120,16 @@ func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// overlayRows is how many overlay lines fit, leaving one row spare so the frame's
-// trailing newline can't scroll its first line away.
+// overlayFooterRows is the rule and the key hint drawn under the diff.
+const overlayFooterRows = 2
+
+// overlayRows is how many diff lines fit above the footer, leaving one row spare so
+// the frame's trailing newline can't scroll its first line away.
 func (m pickerModel) overlayRows() int {
 	if m.height <= 0 {
 		return len(m.overlay)
 	}
-	return m.height - 1
+	return max(m.height-1-overlayFooterRows, 1)
 }
 
 // lastOverlayOffset is the furthest the overlay can scroll while staying full.
@@ -133,12 +137,23 @@ func (m pickerModel) lastOverlayOffset() int {
 	return max(len(m.overlay)-m.overlayRows(), 0)
 }
 
-// overlayView renders the part of the overlay in view. The offset is limited again
-// here because a resize can move the end of the diff after it was stored.
+// overlayView renders the part of the diff in view, then the footer. The offset is
+// limited again here because a resize can move the end of the diff after it was
+// stored. A short diff is padded so the footer stays on the bottom row, and the rule
+// sets the hint apart, because an indented hint would otherwise read as a context
+// line of the diff.
 func (m pickerModel) overlayView() string {
+	dim := lipgloss.NewStyle().Faint(true)
 	first := min(m.overlayOffset, m.lastOverlayOffset())
 	last := min(first+m.overlayRows(), len(m.overlay))
-	return strings.Join(m.overlay[first:last], "\n") + "\n"
+	lines := slices.Clone(m.overlay[first:last])
+	if m.height > 0 {
+		for len(lines) < m.overlayRows() {
+			lines = append(lines, "")
+		}
+	}
+	lines = append(lines, dim.Render(strings.Repeat("─", max(m.width, 1))), "   "+dim.Render("↑/↓ scroll · esc back"))
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // wrappedNotice returns the notice wrapped to the terminal's width, since the
