@@ -97,6 +97,21 @@ func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 	return m, tea.EnterAltScreen
 }
 
+// overlayKey handles a keypress while the overlay is open. Every picker key is
+// ignored, because its effect would be hidden behind the overlay and "enter" would
+// start a sync the user can't see they asked for.
+func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.overlay = nil
+		return m, tea.ExitAltScreen
+	case "ctrl+c":
+		return m, tea.Quit
+	default:
+		return m, nil
+	}
+}
+
 // overlayView renders as much of the overlay as fits, leaving one row spare so the
 // frame's trailing newline can't scroll its first line away.
 func (m pickerModel) overlayView() string {

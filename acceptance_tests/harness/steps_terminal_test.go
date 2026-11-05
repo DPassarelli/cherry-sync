@@ -6,10 +6,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -90,6 +93,12 @@ func thatIHaveRunInATerminal(ctx context.Context, command string) (context.Conte
 		return ctx, err
 	}
 	ctx = context.WithValue(ctx, terminalSessionKey{}, session)
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+	before, err := treeContents(remote)
+	if err != nil {
+		return ctx, err
+	}
+	ctx = context.WithValue(ctx, remoteBeforeKey{}, before)
 	_, err = session.waitFor("the picker", TerminalScreen.HasPicker)
 	return ctx, err
 }
@@ -132,6 +141,152 @@ func iPressOnTheRowFor(ctx context.Context, key, relPath string) error {
 		}
 	}
 	return session.press(key)
+}
+
+// remoteBeforeKey stashes the remote tree's contents from when csync started, so a
+// step can tell whether anything has been written to it since.
+type remoteBeforeKey struct{}
+
+// treeContents reads every file under root, keyed by its path relative to root.
+func treeContents(root string) (map[string]string, error) {
+	contents := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return walkErr
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		contents[rel] = string(data)
+		return err
+	})
+	return contents, err
+}
+
+// thatIHavePressedOnTheRowFor presses key on relPath's row and waits for the overlay,
+// since the fetch behind it finishes in its own time and a later key mustn't overtake it.
+func thatIHavePressedOnTheRowFor(ctx context.Context, key, relPath string) error {
+	err := iPressOnTheRowFor(ctx, key, relPath)
+	if err != nil {
+		return err
+	}
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the diff overlay", TerminalScreen.HasOverlay)
+	return err
+}
+
+// iPress presses key.
+func iPress(ctx context.Context, key string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	return session.press(key)
+}
+
+// thatIHavePressed presses key and waits for csync to finish handling it, so the next
+// key can't overtake it.
+func thatIHavePressed(ctx context.Context, key string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	err = session.press(key)
+	if err != nil {
+		return err
+	}
+	_, err = session.settle()
+	return err
+}
+
+// theDiffOverlayShouldNoLongerBeVisible asserts the picker has come back.
+func theDiffOverlayShouldNoLongerBeVisible(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the picker", func(s TerminalScreen) bool { return s.HasPicker() && !s.HasOverlay() })
+	return err
+}
+
+// theDiffOverlayShouldStillBeOpen asserts the last key changed nothing visible.
+func theDiffOverlayShouldStillBeOpen(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	if !screen.HasOverlay() {
+		return fmt.Errorf("the diff overlay closed; screen was:\n%s", screen)
+	}
+	return nil
+}
+
+// noFilesShouldHaveBeenTransferred compares the remote's bytes with what they were
+// when csync started, because those are what a real sync would change.
+func noFilesShouldHaveBeenTransferred(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.settle()
+	if err != nil {
+		return err
+	}
+	remote, _ := ctx.Value(remotePathKey{}).(string)
+	after, err := treeContents(remote)
+	if err != nil {
+		return err
+	}
+	before, _ := ctx.Value(remoteBeforeKey{}).(map[string]string)
+	if !maps.Equal(before, after) {
+		return fmt.Errorf("the remote changed: had %d files, now %d, or their contents differ", len(before), len(after))
+	}
+	return nil
+}
+
+// theRowShouldBeChecked asserts relPath's checkbox is ticked once the picker is back.
+func theRowShouldBeChecked(ctx context.Context, relPath string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the row for "+relPath, func(s TerminalScreen) bool { return s.RowIndex(relPath) >= 0 })
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	index := screen.RowIndex(relPath)
+	if index < 0 || !screen.Rows[index].Checked {
+		return fmt.Errorf("row for %s isn't checked; screen was:\n%s", relPath, screen)
+	}
+	return nil
+}
+
+// csyncShouldHaveExited asserts the process ended, as opposed to only leaving no sign
+// of itself on screen.
+func csyncShouldHaveExited(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	select {
+	case <-session.exited:
+		return nil
+	case <-time.After(terminalWait):
+		return fmt.Errorf("csync was still running after %s", terminalWait)
+	}
 }
 
 // theDiffOverlayShouldInclude asserts the expected lines appear together on screen.

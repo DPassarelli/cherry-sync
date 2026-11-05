@@ -27,23 +27,35 @@ const (
 // screen matches, so a slow machine costs nothing.
 const terminalWait = 20 * time.Second
 
+// settleWindow is how long the screen must stay unchanged before a step treats a
+// keypress as fully handled. Checking that something did not happen has no event to
+// wait for, so a quiet screen is the only signal available.
+const settleWindow = 100 * time.Millisecond
+
 // terminalKeys maps the key names scenarios use to the bytes a terminal sends.
 var terminalKeys = map[string]string{
-	"d":    "d",
-	"down": "\x1b[B",
-	"up":   "\x1b[A",
+	"a":      "a",
+	"ctrl-c": "\x03",
+	"d":      "d",
+	"down":   "\x1b[B",
+	"enter":  "\r",
+	"esc":    "\x1b",
+	"space":  " ",
+	"up":     "\x1b[A",
 }
 
 // terminalSessionKey stashes the scenario's running terminalSession.
 type terminalSessionKey struct{}
 
 // terminalSession is a csync child attached to a pseudo-terminal, with the screen
-// it has drawn so far. readerDone closes once the child's output is exhausted.
+// it has drawn so far. readerDone closes once the child's output is exhausted, and
+// exited once the child has been reaped.
 type terminalSession struct {
 	cmd        *exec.Cmd
 	ptmx       *os.File
 	screen     vt10x.Terminal
 	readerDone chan struct{}
+	exited     chan struct{}
 }
 
 // startTerminalSession starts csync with args under a pseudo-terminal and begins
@@ -64,7 +76,12 @@ func startTerminalSession(ctx context.Context, args []string) (*terminalSession,
 		ptmx:       ptmx,
 		screen:     vt10x.New(vt10x.WithSize(terminalCols, terminalRows), vt10x.WithWriter(ptmx)),
 		readerDone: make(chan struct{}),
+		exited:     make(chan struct{}),
 	}
+	go func() {
+		defer close(session.exited)
+		_ = cmd.Wait()
+	}()
 	go func() {
 		defer close(session.readerDone)
 		buf := make([]byte, 4096)
@@ -126,11 +143,30 @@ func (s *terminalSession) cursorRow() []vt10x.Glyph {
 	return nil
 }
 
+// settle waits for the screen to stop changing, and returns it.
+func (s *terminalSession) settle() (TerminalScreen, error) {
+	deadline := time.Now().Add(terminalWait)
+	last := s.screen.String()
+	quietSince := time.Now()
+	for time.Since(quietSince) < settleWindow {
+		if time.Now().After(deadline) {
+			return parseTerminalScreen(last), fmt.Errorf("screen never settled within %s", terminalWait)
+		}
+		time.Sleep(10 * time.Millisecond)
+		current := s.screen.String()
+		if current != last {
+			last = current
+			quietSince = time.Now()
+		}
+	}
+	return parseTerminalScreen(last), nil
+}
+
 // close stops csync and releases the terminal, so a failed scenario can't leave a
 // child waiting for keys that will never come.
 func (s *terminalSession) close() {
 	_ = s.cmd.Process.Kill()
-	_ = s.cmd.Wait()
+	<-s.exited
 	_ = s.ptmx.Close()
 	<-s.readerDone
 }

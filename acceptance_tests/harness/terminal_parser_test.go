@@ -13,17 +13,21 @@ import (
 // on screen and ready for keys.
 const pickerHintFragment = "enter sync"
 
+// diffHeaderPrefix opens the first line of a diff overlay.
+const diffHeaderPrefix = "--- destination: "
+
 // pickerRowRE matches a change row: the cursor marker, the checkbox, and the
 // basename, which runs up to the two spaces before the verb.
-var pickerRowRE = regexp.MustCompile(`^(❯| ) \[[ x]\] (.+?)  +(?:create|update|delete)\b`)
+var pickerRowRE = regexp.MustCompile(`^(❯| ) \[([ x])\] (.+?)  +(?:create|update|delete)\b`)
 
 // pickerHeadingRE matches the directory heading printed above a group of rows.
 var pickerHeadingRE = regexp.MustCompile(`^\./(.*)$`)
 
 // PickerRow is one change row on screen.
 type PickerRow struct {
-	Path   string
-	Cursor bool
+	Path    string
+	Cursor  bool
+	Checked bool
 }
 
 // TerminalScreen is what the terminal is showing: its lines with trailing padding
@@ -41,6 +45,11 @@ func (s TerminalScreen) String() string {
 // HasPicker reports whether the picker is on screen.
 func (s TerminalScreen) HasPicker() bool {
 	return strings.Contains(s.String(), pickerHintFragment)
+}
+
+// HasOverlay reports whether a diff overlay is on screen.
+func (s TerminalScreen) HasOverlay() bool {
+	return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], diffHeaderPrefix)
 }
 
 // CursorIndex returns the position in Rows of the row under the cursor, or -1 when
@@ -81,7 +90,7 @@ func parseTerminalScreen(raw string) TerminalScreen {
 		}
 		row := pickerRowRE.FindStringSubmatch(trimmed)
 		if row != nil {
-			screen.Rows = append(screen.Rows, PickerRow{Path: path.Join(dir, row[2]), Cursor: row[1] == "❯"})
+			screen.Rows = append(screen.Rows, PickerRow{Path: path.Join(dir, row[3]), Cursor: row[1] == "❯", Checked: row[2] == "x"})
 		}
 	}
 	return screen

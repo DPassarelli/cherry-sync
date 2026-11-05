@@ -124,7 +124,6 @@ Feature: Show a file's diff from the picker
     When  I press "up"
     Then  the diff overlay should not show its last line
 
-  @wip
   Scenario: The escape key closes the diff
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -132,7 +131,6 @@ Feature: Show a file's diff from the picker
     When  I press "esc"
     Then  the diff overlay should no longer be visible
 
-  @wip
   Scenario Outline: Pressing "<key>" leaves the diff open
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -147,7 +145,6 @@ Feature: Show a file's diff from the picker
       | a     |
       | d     |
 
-  @wip
   Scenario: Pressing "enter" in the diff transfers nothing
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -155,7 +152,6 @@ Feature: Show a file's diff from the picker
     When  I press "enter"
     Then  no files should have been transferred
 
-  @wip
   Scenario Outline: Pressing "<key>" in the diff leaves the checkboxes alone
     # The picker starts all-checked, and the checkboxes are hidden behind the overlay.
     Given that the file "README.md" has been changed locally
@@ -170,7 +166,6 @@ Feature: Show a file's diff from the picker
       | space |
       | a     |
 
-  @wip
   Scenario: Ctrl-C in the diff cancels the run
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
