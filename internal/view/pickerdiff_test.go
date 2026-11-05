@@ -108,3 +108,44 @@ func TestFetchedNotice_NoneForADiff(t *testing.T) {
 		t.Errorf("fetchedNotice = %q, want none", notice)
 	}
 }
+
+// "j" and "k" move the picker's cursor, so they scroll the diff the same way the
+// arrows do rather than doing something different on this one screen.
+func TestOverlayKey_JAndKScroll(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.width, m.height = 80, 5
+	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 50)})
+	updated, _ = updated.Update(runeKey('j'))
+	if updated.(pickerModel).overlayOffset != 1 {
+		t.Fatalf("offset after j = %d, want 1", updated.(pickerModel).overlayOffset)
+	}
+	updated, _ = updated.Update(runeKey('k'))
+	if updated.(pickerModel).overlayOffset != 0 {
+		t.Errorf("offset after k = %d, want 0", updated.(pickerModel).overlayOffset)
+	}
+}
+
+// A second diff starts at its own top, not where the last one was left.
+func TestOpenOverlay_StartsAtTheTop(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.width, m.height = 80, 5
+	m.overlayOffset = 7
+	updated, _ := m.Update(diffFetchedMsg{text: "a\nb\n"})
+	if updated.(pickerModel).overlayOffset != 0 {
+		t.Errorf("offset = %d, want 0", updated.(pickerModel).overlayOffset)
+	}
+}
+
+// Growing the terminal while scrolled to the end can't leave blank rows under the diff.
+func TestOverlayView_ClampsAfterAResize(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
+	m.width, m.height = 80, 5
+	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 10)})
+	m = updated.(pickerModel)
+	m.overlayOffset = 6
+	m.height = 8
+	got := countRows(m.overlayView(), 80)
+	if got != 7 {
+		t.Errorf("overlay is %d rows tall, want 7", got)
+	}
+}

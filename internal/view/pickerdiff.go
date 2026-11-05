@@ -93,18 +93,25 @@ func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 		m.offset = m.scrollOffset()
 		return m, nil
 	}
+	m.overlayOffset = 0
 	m.overlay = strings.Split(strings.TrimRight(msg.text, "\n"), "\n")
 	return m, tea.EnterAltScreen
 }
 
-// overlayKey handles a keypress while the overlay is open. Every picker key is
-// ignored, because its effect would be hidden behind the overlay and "enter" would
+// overlayKey handles a keypress while the overlay is open. Movement keys scroll
+// rather than move the cursor, and every other picker key is ignored, because its effect would be hidden behind the overlay and "enter" would
 // start a sync the user can't see they asked for.
 func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.overlay = nil
 		return m, tea.ExitAltScreen
+	case "up", "k":
+		m.overlayOffset = max(m.overlayOffset-1, 0)
+		return m, nil
+	case "down", "j":
+		m.overlayOffset = min(m.overlayOffset+1, m.lastOverlayOffset())
+		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
 	default:
@@ -112,14 +119,26 @@ func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// overlayView renders as much of the overlay as fits, leaving one row spare so the
-// frame's trailing newline can't scroll its first line away.
-func (m pickerModel) overlayView() string {
-	lines := m.overlay
-	if m.height > 0 && len(lines) > m.height-1 {
-		lines = lines[:m.height-1]
+// overlayRows is how many overlay lines fit, leaving one row spare so the frame's
+// trailing newline can't scroll its first line away.
+func (m pickerModel) overlayRows() int {
+	if m.height <= 0 {
+		return len(m.overlay)
 	}
-	return strings.Join(lines, "\n") + "\n"
+	return m.height - 1
+}
+
+// lastOverlayOffset is the furthest the overlay can scroll while staying full.
+func (m pickerModel) lastOverlayOffset() int {
+	return max(len(m.overlay)-m.overlayRows(), 0)
+}
+
+// overlayView renders the part of the overlay in view. The offset is limited again
+// here because a resize can move the end of the diff after it was stored.
+func (m pickerModel) overlayView() string {
+	first := min(m.overlayOffset, m.lastOverlayOffset())
+	last := min(first+m.overlayRows(), len(m.overlay))
+	return strings.Join(m.overlay[first:last], "\n") + "\n"
 }
 
 // wrappedNotice returns the notice wrapped to the terminal's width, since the

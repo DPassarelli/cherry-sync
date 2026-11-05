@@ -87,7 +87,6 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the picker should show a notice containing "contents are identical"
 
-  @wip
   Scenario: The next keypress clears a notice
     Given that the file "adder.go" has been added locally
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -95,7 +94,6 @@ Feature: Show a file's diff from the picker
     When  I press "down"
     Then  the notice should no longer be visible
 
-  @wip
   Scenario: The keypress that clears a notice still takes effect
     # Rows are in tree order: adder.go, then README.md.
     Given that the file "adder.go" has been added locally
@@ -105,7 +103,6 @@ Feature: Show a file's diff from the picker
     When  I press "down"
     Then  the cursor should be on the row for "README.md"
 
-  @wip
   Scenario: Scrolling the diff reveals its last line
     Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -114,7 +111,6 @@ Feature: Show a file's diff from the picker
     When  I press "down" more times than the diff has lines
     Then  the diff overlay should show its last line
 
-  @wip
   Scenario: Scrolling the diff stops at its last line
     # Had scrolling run past the end, one "up" would leave the last line on screen.
     Given that the file "README.md" has been changed locally so that its diff is taller than the terminal

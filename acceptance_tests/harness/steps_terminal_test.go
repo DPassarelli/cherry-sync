@@ -165,8 +165,8 @@ func treeContents(root string) (map[string]string, error) {
 	return contents, err
 }
 
-// thatIHavePressedOnTheRowFor presses key on relPath's row and waits for the overlay,
-// since the fetch behind it finishes in its own time and a later key mustn't overtake it.
+// thatIHavePressedOnTheRowFor presses key on relPath's row and waits for the overlay
+// or a notice, since a fetch finishes in its own time and a later key mustn't overtake it.
 func thatIHavePressedOnTheRowFor(ctx context.Context, key, relPath string) error {
 	err := iPressOnTheRowFor(ctx, key, relPath)
 	if err != nil {
@@ -176,7 +176,9 @@ func thatIHavePressedOnTheRowFor(ctx context.Context, key, relPath string) error
 	if err != nil {
 		return err
 	}
-	_, err = session.waitFor("the diff overlay", TerminalScreen.HasOverlay)
+	_, err = session.waitFor("the diff overlay or a notice", func(s TerminalScreen) bool {
+		return s.HasOverlay() || s.HasNotice()
+	})
 	return err
 }
 
@@ -231,6 +233,111 @@ func theSourceAndDestinationShouldBeOnScreen(ctx context.Context) error {
 	}
 	if !screen.HasEndpoints() {
 		return fmt.Errorf("the source and destination lines are gone; screen was:\n%s", screen)
+	}
+	return nil
+}
+
+// theNoticeShouldNoLongerBeVisible asserts the notice has gone from the picker.
+func theNoticeShouldNoLongerBeVisible(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the picker without a notice", func(s TerminalScreen) bool {
+		return s.HasPicker() && !s.HasNotice()
+	})
+	return err
+}
+
+// theCursorShouldBeOnTheRowFor asserts the cursor has reached relPath's row.
+func theCursorShouldBeOnTheRowFor(ctx context.Context, relPath string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the cursor on the row for "+relPath, func(s TerminalScreen) bool {
+		return s.RowIndex(relPath) >= 0 && s.CursorIndex() == s.RowIndex(relPath)
+	})
+	return err
+}
+
+// tallDiffPairs is how many lines differ in a diff taller than the terminal: each
+// shows once removed and once added, so half this count would already overflow it.
+const tallDiffPairs = terminalRows * 2
+
+// tallDiffLength is an upper bound on the lines in that diff, headers included.
+const tallDiffLength = tallDiffPairs*2 + 3
+
+// tallDiffLastLine is the last line of that diff, since its additions follow its
+// removals.
+var tallDiffLastLine = fmt.Sprintf("+new line %d", tallDiffPairs)
+
+// theFileHasBeenChangedSoThatItsDiffIsTaller makes every line differ between the two
+// copies, sized from the terminal so the overflow doesn't depend on a magic number.
+func theFileHasBeenChangedSoThatItsDiffIsTaller(ctx context.Context, relPath string) (context.Context, error) {
+	var before, after strings.Builder
+	for i := 1; i <= tallDiffPairs; i++ {
+		fmt.Fprintf(&before, "old line %d\n", i)
+		fmt.Fprintf(&after, "new line %d\n", i)
+	}
+	return theFileHasBeenChangedLocallyFromTo(ctx, relPath, strings.TrimSuffix(before.String(), "\n"), strings.TrimSuffix(after.String(), "\n"))
+}
+
+// iPressMoreTimesThanTheDiffHasLines presses key enough to pass the diff's end.
+func iPressMoreTimesThanTheDiffHasLines(ctx context.Context, key string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	for range tallDiffLength + 1 {
+		err = session.press(key)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// thatIHavePressedMoreTimesThanTheDiffHasLines presses key past the diff's end and
+// waits for csync to finish handling every press.
+func thatIHavePressedMoreTimesThanTheDiffHasLines(ctx context.Context, key string) error {
+	err := iPressMoreTimesThanTheDiffHasLines(ctx, key)
+	if err != nil {
+		return err
+	}
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.settle()
+	return err
+}
+
+// theDiffOverlayShouldShowItsLastLine asserts the end of the diff has come into view.
+func theDiffOverlayShouldShowItsLastLine(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the diff's last line", func(s TerminalScreen) bool { return s.HasLine(tallDiffLastLine) })
+	return err
+}
+
+// theDiffOverlayShouldNotShowItsLastLine asserts the end of the diff is out of view.
+func theDiffOverlayShouldNotShowItsLastLine(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	if screen.HasPicker() {
+		return fmt.Errorf("the diff overlay isn't open; screen was:\n%s", screen)
+	}
+	if screen.HasLine(tallDiffLastLine) {
+		return fmt.Errorf("the diff's last line is on screen:\n%s", screen)
 	}
 	return nil
 }

@@ -40,6 +40,8 @@ type pickerModel struct {
 	notice    string
 	fetching  bool
 	overlay   []string
+	// overlayOffset is the first overlay line on screen.
+	overlayOffset int
 	// now is the moment each row's ages are measured against, fixed when the picker
 	// is built rather than read per frame: the list does not re-render on a timer,
 	// and an age that crept forward between two repaints of the same unchanged list
@@ -126,6 +128,7 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay != nil {
 			return m.overlayKey(msg)
 		}
+		m.notice = ""
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {

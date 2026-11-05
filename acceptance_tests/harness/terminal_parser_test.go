@@ -6,6 +6,7 @@ package acceptance_test
 import (
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -15,6 +16,9 @@ const pickerHintFragment = "enter sync"
 
 // diffHeaderPrefix opens the first line of a diff overlay.
 const diffHeaderPrefix = "--- destination: "
+
+// noticePrefix opens every notice the picker shows in place of a diff.
+const noticePrefix = "no diff: "
 
 // pickerRowRE matches a change row: the cursor marker, the checkbox, and the
 // basename, which runs up to the two spaces before the verb.
@@ -50,6 +54,21 @@ func (s TerminalScreen) HasPicker() bool {
 // HasOverlay reports whether a diff overlay is on screen.
 func (s TerminalScreen) HasOverlay() bool {
 	return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], diffHeaderPrefix)
+}
+
+// HasNotice reports whether the picker is showing a notice.
+func (s TerminalScreen) HasNotice() bool {
+	for _, line := range s.Lines {
+		if strings.HasPrefix(line, noticePrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasLine reports whether a line on screen is exactly want.
+func (s TerminalScreen) HasLine(want string) bool {
+	return slices.Contains(s.Lines, want)
 }
 
 // HasEndpoints reports whether the source and destination lines printed above the
