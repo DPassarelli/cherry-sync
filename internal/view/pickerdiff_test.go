@@ -55,7 +55,7 @@ func TestScrollHeight_ReservesTheNoticeRows(t *testing.T) {
 // log, and overlapping them would interleave its records.
 func TestUpdate_DWhileFetchingStartsNoSecondFetch(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
+	m.differ.Fetch = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
 	updated, first := m.Update(runeKey('d'))
 	if first == nil {
 		t.Fatal("first press started no fetch")
@@ -67,14 +67,14 @@ func TestUpdate_DWhileFetchingStartsNoSecondFetch(t *testing.T) {
 }
 
 // A taller diff than the terminal must be cut to fit, or the renderer scrolls its
-// top off screen and the overlay no longer begins with its header.
+// top off screen and the overlay no longer begins with its title.
 func TestView_OverlayFitsTheTerminal(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.width, m.height = 80, 5
+	m.width, m.height = 80, 8
 	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 50)})
 	got := countRows(updated.View(), 80)
-	if got > 5 {
-		t.Errorf("overlay is %d rows tall, want at most 5", got)
+	if got > 8 {
+		t.Errorf("overlay is %d rows tall, want at most 8", got)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestOverlayView_KeepsTheHintOnTheBottomRow(t *testing.T) {
 // the overlay closes.
 func TestOpenOverlay_ClearsTheProgressNotice(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
+	m.differ.Fetch = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
 	m, _ = m.pressDiff()
 	updated, _ := m.Update(fetchRevealMsg{fetch: m.fetchID})
 	updated, _ = updated.Update(diffFetchedMsg{text: "a\n"})
@@ -179,7 +179,7 @@ func TestOpenOverlay_ClearsTheProgressNotice(t *testing.T) {
 // over the next one before its own delay is up.
 func TestFetchReveal_IgnoresAFinishedFetch(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.fetchDiff = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
+	m.differ.Fetch = func(string) (filediff.Result, error) { return filediff.Result{}, nil }
 	m, _ = m.pressDiff()
 	stale := m.fetchID
 	updated, _ := m.Update(diffFetchedMsg{text: "a\n"})

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing it would change. A header that stays put while you scroll names the file and each side's full path, and its lines are colored to match the diff's: red for the destination, green for the source. A file on only one side, a copy over 200 KiB, or a binary copy gets a one-line notice instead, naming the copy responsible. Long lines wrap behind `↪`, tabs show as `→`, and a fetch that fails repeats what rsync said. (#119)
+
 ### Changed
 
 - The picker now shows the newer copy's name and "last updated" phrase in bold in the highlighted row's comparison, so you can see at a glance which copy is the live one. Nothing is bold when the timestamps match or can't be read.

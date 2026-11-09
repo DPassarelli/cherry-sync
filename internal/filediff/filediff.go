@@ -33,7 +33,7 @@ const (
 	BothCopies
 )
 
-// Result is what comparing a file's two copies found: the unified diff, or which
+// Result is what comparing a file's two copies found: the unified diff's hunks, or which
 // copies stopped one from being made. Oversized copies are never read, so Binary
 // can only speak for the copies under the limit.
 type Result struct {
@@ -72,18 +72,18 @@ func Between(ctx context.Context, r *command.Runner, source, destination, relPat
 	if result.Oversized != NoCopies || result.Binary != NoCopies {
 		return result, nil
 	}
-	result.Text, err = unified(relPath, destinationCopy.content, sourceCopy.content)
+	result.Text, err = unified(destinationCopy.content, sourceCopy.content)
 	return result, err
 }
 
-// unified renders the diff from the destination copy to the source copy.
-func unified(relPath string, destinationCopy, sourceCopy []byte) (string, error) {
+// unified renders the diff from the destination copy to the source copy as hunks
+// alone. The copies are left unnamed because whoever shows the diff knows each
+// side's full path, which a name here could only repeat.
+func unified(destinationCopy, sourceCopy []byte) (string, error) {
 	return difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-		A:        splitLines(destinationCopy),
-		B:        splitLines(sourceCopy),
-		FromFile: "destination: " + relPath,
-		ToFile:   "source: " + relPath,
-		Context:  3,
+		A:       splitLines(destinationCopy),
+		B:       splitLines(sourceCopy),
+		Context: 3,
 	})
 }
 

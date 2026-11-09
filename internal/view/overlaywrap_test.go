@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
@@ -65,7 +66,7 @@ func TestOverlayKey_ScrollsThroughWrappedRows(t *testing.T) {
 // A tab is drawn at a fixed two columns, so wrapping measures the row as the
 // terminal will show it.
 func TestShowTabs_FixedWidth(t *testing.T) {
-	got := showTabs("a\t\tb")
+	got := showTabs("a\t\tb", lipgloss.NewStyle())
 	if ansi.Strip(got) != "a → →b" {
 		t.Errorf("showTabs = %q, want %q", ansi.Strip(got), "a → →b")
 	}

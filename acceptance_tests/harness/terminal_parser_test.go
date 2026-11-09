@@ -14,8 +14,9 @@ import (
 // on screen and ready for keys.
 const pickerHintFragment = "enter sync"
 
-// diffHeaderPrefix opens the first line of a diff overlay.
-const diffHeaderPrefix = "--- destination: "
+// overlayTitlePrefix opens the title on the first line of a diff overlay. It stops
+// short of the file's name, so an overlay missing that name still reads as open.
+const overlayTitlePrefix = "Diff of"
 
 // pickerPromptPrefix opens the picker's question, which the hint line follows.
 const pickerPromptPrefix = "? "
@@ -64,7 +65,50 @@ func (s TerminalScreen) HasPicker() bool {
 
 // HasOverlay reports whether a diff overlay is on screen.
 func (s TerminalScreen) HasOverlay() bool {
-	return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], diffHeaderPrefix)
+	return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], overlayTitlePrefix)
+}
+
+// OverlayTitle returns the diff overlay's title, or "" when no overlay is on screen.
+func (s TerminalScreen) OverlayTitle() string {
+	if !s.HasOverlay() {
+		return ""
+	}
+	return s.Lines[0]
+}
+
+// OverlayHeader returns the lines between the overlay's title and the rule that
+// closes its header, or nil when no overlay is on screen.
+func (s TerminalScreen) OverlayHeader() []string {
+	if !s.HasOverlay() {
+		return nil
+	}
+	end := s.firstRule()
+	return s.Lines[1:end]
+}
+
+// OverlayBody returns the lines below the rule that closes the overlay's header,
+// or nil when no overlay is on screen.
+func (s TerminalScreen) OverlayBody() []string {
+	if !s.HasOverlay() {
+		return nil
+	}
+	return s.Lines[min(s.firstRule()+1, len(s.Lines)):]
+}
+
+// firstRule returns the index of the first line drawn entirely in the overlay's
+// rule, or the number of lines when there is none.
+func (s TerminalScreen) firstRule() int {
+	for i, line := range s.Lines {
+		if isRule(line) {
+			return i
+		}
+	}
+	return len(s.Lines)
+}
+
+// isRule reports whether line is drawn entirely in the overlay's rule.
+func isRule(line string) bool {
+	return line != "" && strings.Trim(line, overlayRule) == ""
 }
 
 // HasNotice reports whether the picker is showing a notice.
@@ -86,8 +130,7 @@ func (s TerminalScreen) HasLine(want string) bool {
 // line under its rule; in the picker, the line under its question.
 func (s TerminalScreen) HintLine() string {
 	for i := len(s.Lines) - 2; i >= 0; i-- {
-		line := s.Lines[i]
-		if line != "" && strings.Trim(line, overlayRule) == "" {
+		if isRule(s.Lines[i]) {
 			return strings.TrimSpace(s.Lines[i+1])
 		}
 	}

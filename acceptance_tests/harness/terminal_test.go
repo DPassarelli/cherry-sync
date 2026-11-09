@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/creack/pty"
@@ -137,6 +138,23 @@ func (s *terminalSession) cursorRow() []vt10x.Glyph {
 			found = found || row[x].Char == '❯'
 		}
 		if found {
+			return row
+		}
+	}
+	return nil
+}
+
+// rowBeginning returns the cells of the first row whose text opens with prefix, or
+// nil while no such row is on screen.
+func (s *terminalSession) rowBeginning(prefix string) []vt10x.Glyph {
+	s.screen.Lock()
+	defer s.screen.Unlock()
+	for y := 0; y < terminalRows; y++ {
+		row := make([]vt10x.Glyph, terminalCols)
+		for x := range row {
+			row[x] = s.screen.Cell(x, y)
+		}
+		if strings.HasPrefix(glyphText(row), prefix) {
 			return row
 		}
 	}

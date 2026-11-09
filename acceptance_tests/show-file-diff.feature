@@ -21,15 +21,39 @@ Feature: Show a file's diff from the picker
       +new line
       """
 
-  Scenario: The diff labels each side by its role in the sync
+  Scenario: The diff is titled with the file it shows
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the diff overlay should begin with:
+    Then  the diff overlay's title should read "Diff of README.md"
+
+  Scenario: The diff names each side by its full path
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay's header should read:
       """
-      --- destination: README.md
-      +++ source: README.md
+      - Destination: user@host:/project/README.md
+      + Source:      ./project/README.md
       """
+
+  Scenario: The title and header stay put while the diff scrolls
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    When  I press "down" more times than the diff has lines
+    Then  the diff overlay's title should read "Diff of README.md"
+
+  Scenario Outline: The <side> is shown in <color>, in the header and in the diff
+    Given that the file "README.md" has been changed locally from "old line" to "new line"
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the lines beginning "<header>" and "<line>" should be <color>
+
+    Examples:
+      | side        | color | header         | line      |
+      | destination | red   | - Destination: | -old line |
+      | source      | green | + Source:      | +new line |
 
   Scenario: A file only on the source has no diff
     Given that the file "src/adder.go" has been added locally
@@ -59,11 +83,7 @@ Feature: Show a file's diff from the picker
     Given that the local copy of "README.md" has been changed to 204,800 bytes
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the diff overlay should begin with:
-      """
-      --- destination: README.md
-      +++ source: README.md
-      """
+    Then  the diff overlay's title should read "Diff of README.md"
 
   Scenario Outline: A copy with a NUL byte is treated as binary
     Given that <which> of "README.md" has been changed to contain a NUL byte
@@ -189,6 +209,13 @@ Feature: Show a file's diff from the picker
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should begin with "couldn't fetch for diff:"
+
+  Scenario: A failed fetch still says which file it was for
+    Given that the file "README.md" has been changed locally
+    And   a remote that answers the comparison but fails to send files
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay's title should read "Diff of README.md"
 
   Scenario: A failed fetch repeats what rsync said
     Given that the file "README.md" has been changed locally

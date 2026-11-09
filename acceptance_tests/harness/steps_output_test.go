@@ -24,6 +24,20 @@ func asPlaceholder(ctx context.Context, operand string) string {
 	return operand
 }
 
+// withPlaceholders rewrites every real operand path in text as the placeholder the
+// scenario wrote it as, for text that carries an operand inside a longer path.
+func withPlaceholders(ctx context.Context, text string) string {
+	remote := resolvedRemote(ctx)
+	if remote != "" {
+		text = strings.ReplaceAll(text, remote, "user@host:/project")
+	}
+	local, _ := ctx.Value(localPathKey{}).(string)
+	if local != "" {
+		text = strings.ReplaceAll(text, local, "./project")
+	}
+	return text
+}
+
 // theReportedSourceShouldBe asserts the parsed "Source:" line equals want.
 func theReportedSourceShouldBe(ctx context.Context, want string) error {
 	r := captured(ctx)

@@ -5,7 +5,6 @@ package view
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -14,11 +13,14 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/filediff"
 )
 
-// diffFetchedMsg delivers a finished fetch to the picker: a notice to show in place,
-// or text for the overlay.
+// diffFetchedMsg delivers a finished fetch of path to the picker: a notice to show
+// in place, or text for the overlay, which failed marks as an error message rather
+// than a diff.
 type diffFetchedMsg struct {
+	path   string
 	notice string
 	text   string
+	failed bool
 }
 
 // noDiffNotice returns what to say about a change with only one copy to look at, or
@@ -77,14 +79,14 @@ func (m pickerModel) pressDiff() (pickerModel, tea.Cmd) {
 	m.fetching = true
 	m.fetchID++
 	id := m.fetchID
-	fetch := m.fetchDiff
+	fetch := m.differ.Fetch
 	reveal := tea.Tick(spinnerDelay, func(time.Time) tea.Msg { return fetchRevealMsg{fetch: id} })
 	return m, tea.Batch(reveal, func() tea.Msg {
 		result, err := fetch(action.Path)
 		if err != nil {
-			return diffFetchedMsg{text: "couldn't fetch for diff: " + err.Error()}
+			return diffFetchedMsg{path: action.Path, text: "couldn't fetch for diff: " + err.Error(), failed: true}
 		}
-		return diffFetchedMsg{notice: fetchedNotice(result), text: result.Text}
+		return diffFetchedMsg{path: action.Path, notice: fetchedNotice(result), text: result.Text}
 	})
 }
 
@@ -100,6 +102,8 @@ func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.overlayOffset = 0
+	m.overlayPath = msg.path
+	m.overlayIsDiff = !msg.failed
 	m.overlay = strings.Split(strings.TrimRight(msg.text, "\n"), "\n")
 	return m, tea.EnterAltScreen
 }
@@ -128,13 +132,13 @@ func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // overlayFooterRows is the rule and the key hint drawn under the diff.
 const overlayFooterRows = 2
 
-// overlayRows is how many diff lines fit above the footer, leaving one row spare so
-// the frame's trailing newline can't scroll its first line away.
+// overlayRows is how many diff lines fit between the header and the footer, leaving
+// one row spare so the frame's trailing newline can't scroll its title away.
 func (m pickerModel) overlayRows() int {
 	if m.height <= 0 {
 		return len(m.overlayRowsAll())
 	}
-	return max(m.height-1-overlayFooterRows, 1)
+	return max(m.height-1-len(m.overlayHeaderRows())-overlayFooterRows, 1)
 }
 
 // lastOverlayOffset is the furthest the overlay can scroll while staying full.
@@ -142,7 +146,7 @@ func (m pickerModel) lastOverlayOffset() int {
 	return max(len(m.overlayRowsAll())-m.overlayRows(), 0)
 }
 
-// overlayView renders the part of the diff in view, then the footer. The offset is
+// overlayView renders the header, the part of the diff in view, then the footer. The offset is
 // limited again here because a resize can move the end of the diff after it was
 // stored. A short diff is padded so the footer stays on the bottom row, and the rule
 // sets the hint apart, because an indented hint would otherwise read as a context
@@ -152,9 +156,9 @@ func (m pickerModel) overlayView() string {
 	rows := m.overlayRowsAll()
 	first := min(m.overlayOffset, m.lastOverlayOffset())
 	last := min(first+m.overlayRows(), len(rows))
-	lines := slices.Clone(rows[first:last])
+	lines := append(m.overlayHeaderRows(), rows[first:last]...)
 	if m.height > 0 {
-		for len(lines) < m.overlayRows() {
+		for len(lines)-len(m.overlayHeaderRows()) < m.overlayRows() {
 			lines = append(lines, "")
 		}
 	}

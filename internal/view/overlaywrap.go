@@ -19,9 +19,15 @@ const wrapIndicator = "↪ "
 // tab's width depends on where it falls, and visibly not text a file could contain.
 const tabMark = " →"
 
-// showTabs replaces each tab in line with a dimmed tabMark.
-func showTabs(line string) string {
-	return strings.ReplaceAll(line, "\t", lipgloss.NewStyle().Faint(true).Render(tabMark))
+// showTabs renders line in style with each tab replaced by a dimmed tabMark. The
+// text between tabs is styled piece by piece, since the reset that ends a tabMark
+// would otherwise end the line's style with it.
+func showTabs(line string, style lipgloss.Style) string {
+	pieces := strings.Split(line, "\t")
+	for i, piece := range pieces {
+		pieces[i] = style.Render(piece)
+	}
+	return strings.Join(pieces, style.Faint(true).Render(tabMark))
 }
 
 // wrapRows breaks line into rows of at most width columns. It breaks at the exact
@@ -44,7 +50,11 @@ func wrapRows(line string, width int) []string {
 func (m pickerModel) overlayRowsAll() []string {
 	var rows []string
 	for _, line := range m.overlay {
-		rows = append(rows, wrapRows(showTabs(line), m.width)...)
+		style := lipgloss.NewStyle()
+		if m.overlayIsDiff {
+			style = diffLineStyle(line)
+		}
+		rows = append(rows, wrapRows(showTabs(line, style), m.width)...)
 	}
 	return rows
 }

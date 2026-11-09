@@ -37,7 +37,7 @@ func TestIsBinary(t *testing.T) {
 // The hunk header counts the lines in each copy, so a one-line file must not be
 // reported as two.
 func TestUnified_CountsLinesExactly(t *testing.T) {
-	got, err := unified("f", []byte("old\n"), []byte("new\n"))
+	got, err := unified([]byte("old\n"), []byte("new\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,10 +46,22 @@ func TestUnified_CountsLinesExactly(t *testing.T) {
 	}
 }
 
+// The diff opens with its first hunk, since a header naming each copy would only
+// repeat the full paths the overlay already shows above it.
+func TestUnified_OpensWithTheHunk(t *testing.T) {
+	got, err := unified([]byte("old\n"), []byte("new\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(got, "@@ ") {
+		t.Errorf("diff opens with something before its hunk:\n%s", got)
+	}
+}
+
 // A newline added at the end of a file is a real difference, and the diff has to say
 // so in the form diff readers expect, rather than running the two lines together.
 func TestUnified_ShowsAMissingFinalNewline(t *testing.T) {
-	got, err := unified("f", []byte("same"), []byte("same\n"))
+	got, err := unified([]byte("same"), []byte("same\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

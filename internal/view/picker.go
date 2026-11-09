@@ -12,7 +12,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
-	"github.com/dpassarelli/cherry-sync/internal/filediff"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 )
 
@@ -34,12 +33,16 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
-	// fetchDiff gets a row's diff, fetching marks one in progress, notice explains a
-	// row with no diff to show, and overlay holds the lines of an open diff.
-	fetchDiff func(path string) (filediff.Result, error)
-	notice    string
-	fetching  bool
-	overlay   []string
+	// differ names the sides and gets a row's diff, fetching marks one in progress,
+	// notice explains a row with no diff to show, overlay holds the lines of an open
+	// diff, overlayPath is the file they are about, and overlayIsDiff tells real
+	// diff lines, which are colored by side, from a failure message, which is not.
+	differ        Differ
+	notice        string
+	fetching      bool
+	overlay       []string
+	overlayPath   string
+	overlayIsDiff bool
 	// overlayOffset is the first overlay line on screen.
 	overlayOffset int
 	// fetchID tells one fetch's progress messages from a later one's, and fetchFrame
@@ -92,10 +95,10 @@ func newModel(actions []compare.Action) pickerModel {
 // of its scroll region so the preamble stays on screen. It drives a Bubble Tea
 // program and so needs a terminal: main selects it only when stdin and stdout are
 // TTYs.
-func RunPicker(actions []compare.Action, preamble string, fetchDiff func(path string) (filediff.Result, error)) ([]compare.Action, error) {
+func RunPicker(actions []compare.Action, preamble string, differ Differ) ([]compare.Action, error) {
 	m := newModel(actions)
 	m.preamble = preamble
-	m.fetchDiff = fetchDiff
+	m.differ = differ
 	final, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return nil, err

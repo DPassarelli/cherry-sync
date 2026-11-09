@@ -537,27 +537,50 @@ func theDiffOverlayShouldInclude(ctx context.Context, want *godog.DocString) err
 	return err
 }
 
-// theDiffOverlayShouldBeginWith asserts the screen opens with the expected lines,
-// since the overlay takes the whole terminal.
-func theDiffOverlayShouldBeginWith(ctx context.Context, want *godog.DocString) error {
+// theDiffOverlaysTitleShouldRead asserts the overlay's title is exactly want once
+// csync has handled every key sent, since the title is on screen before a scroll
+// that might wrongly take it away.
+func theDiffOverlaysTitleShouldRead(ctx context.Context, want string) error {
 	session, err := runningTerminal(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = session.waitFor("an overlay beginning:\n"+want.Content, func(s TerminalScreen) bool {
-		return strings.HasPrefix(s.String(), want.Content)
+	_, err = session.waitFor("the diff overlay", TerminalScreen.HasOverlay)
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	if screen.OverlayTitle() != want {
+		return fmt.Errorf("title was %q, want %q; screen was:\n%s", screen.OverlayTitle(), want, screen)
+	}
+	return nil
+}
+
+// theDiffOverlaysHeaderShouldRead asserts the overlay's header is exactly want once
+// the scenario's real paths are read back as the placeholders it was written with.
+func theDiffOverlaysHeaderShouldRead(ctx context.Context, want *godog.DocString) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the header:\n"+want.Content, func(s TerminalScreen) bool {
+		return withPlaceholders(ctx, strings.Join(s.OverlayHeader(), "\n")) == want.Content
 	})
 	return err
 }
 
-// theDiffOverlayShouldBeginWithText asserts the screen opens with prefix.
+// theDiffOverlayShouldBeginWithText asserts the overlay's body opens with prefix.
 func theDiffOverlayShouldBeginWithText(ctx context.Context, prefix string) error {
 	session, err := runningTerminal(ctx)
 	if err != nil {
 		return err
 	}
 	_, err = session.waitFor("an overlay beginning "+prefix, func(s TerminalScreen) bool {
-		return len(s.Lines) > 0 && strings.HasPrefix(s.Lines[0], prefix)
+		body := s.OverlayBody()
+		return len(body) > 0 && strings.HasPrefix(body[0], prefix)
 	})
 	return err
 }
