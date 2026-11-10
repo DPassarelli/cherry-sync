@@ -135,7 +135,7 @@ func run() (code int) {
 	}
 
 	if interactive {
-		printAbove(view.Banner(version))
+		printAbove(view.Banner(currentBuild()))
 	}
 	// The header discloses any operand csync rewrote inline: the From fields carry
 	// the original path portion when a remote "~" was resolved, which Header renders

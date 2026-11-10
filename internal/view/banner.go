@@ -20,36 +20,49 @@ const (
 	versionLicense = "MIT licensed. Run 'csync --license' to view the terms."
 )
 
+// Build identifies the binary that is running. Version is main.version, the
+// release version injected at build time or "dev" when none was. Commit is the
+// abbreviated revision Go recorded from the source checkout, empty when it
+// recorded none; only a dev build shows it, since a release is already named by
+// its version.
+type Build struct {
+	Version string
+	Commit  string
+}
+
 // Banner returns csync's title banner — the project name and version on one line
 // (e.g. "cherry-sync v1.2.3"), then a blank line — ready to print above the
 // header. main shows it only on an interactive run, where decoration belongs;
-// piped output skips it. raw is the build version (main.version).
-func Banner(raw string) string {
-	return versionLine(raw) + "\n\n"
+// piped output skips it.
+func Banner(b Build) string {
+	return versionLine(b) + "\n\n"
 }
 
 // VersionReport returns the full text the --version flag prints: the version
 // line, a one-line description of what csync does, the project URL, and a
 // pointer to --license. The interactive banner shows only the version line, so a
 // normal run stays terse.
-func VersionReport(raw string) string {
-	return versionLine(raw) + "\n" + versionDescription + "\n" + versionURL + "\n" + versionLicense
+func VersionReport(b Build) string {
+	return versionLine(b) + "\n" + versionDescription + "\n" + versionURL + "\n" + versionLicense
 }
 
 // versionLine renders the project name and version, e.g. "cherry-sync v1.2.3" or
-// "cherry-sync (dev build)". It is the one line the banner and the --version
-// report share.
-func versionLine(raw string) string {
-	return projectName + " " + versionSuffix(raw)
+// "cherry-sync (dev build: e608fd7)". It is the one line the banner and the
+// --version report share.
+func versionLine(b Build) string {
+	return projectName + " " + versionSuffix(b)
 }
 
-// versionSuffix renders a raw build version as the suffix that follows the
-// project name: a real injected version (e.g. "1.2.3") becomes "v1.2.3", while
-// the un-injected "dev" default becomes "(dev build)" rather than a nonsensical
-// "vdev".
-func versionSuffix(raw string) string {
-	if raw == "dev" {
+// versionSuffix renders a build as the suffix that follows the project name: a
+// real injected version (e.g. "1.2.3") becomes "v1.2.3", while the un-injected
+// "dev" default becomes "(dev build)" rather than a nonsensical "vdev", naming
+// the commit when one was recorded.
+func versionSuffix(b Build) string {
+	if b.Version != "dev" {
+		return "v" + b.Version
+	}
+	if b.Commit == "" {
 		return "(dev build)"
 	}
-	return "v" + raw
+	return "(dev build: " + b.Commit + ")"
 }

@@ -22,9 +22,9 @@ import (
 func infoMode(a cli.Args) (int, bool) {
 	switch a.Mode {
 	case cli.Help:
-		fmt.Println(view.Usage(version))
+		fmt.Println(view.Usage(currentBuild()))
 	case cli.Version:
-		fmt.Println(view.VersionReport(version))
+		fmt.Println(view.VersionReport(currentBuild()))
 	case cli.License:
 		// The embedded text ends in a newline, so Print — not Println — avoids a
 		// trailing blank line. A distributed bare binary carries its own notice this

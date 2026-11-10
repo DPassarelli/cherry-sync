@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing it would change. The diff is drawn inside a box, under a header that stays put while you scroll and names the file and both the source and the destination, and its lines are colored to match the diff's: red for the destination, green for the source. A new hint line says diffs are only available for text files of 200 KiB or less, and a file that can't be diffed (one side missing, too big, or binary) gets a short bold note on that line instead. The local copy is checked first, so one that can't be diffed never costs a trip to the remote. Long lines wrap behind `↪`, tabs show as `→`, and a fetch that fails repeats what rsync said. (#119)
+- A build from source now names the commit it was built from in its version line, e.g. `cherry-sync (dev build: e608fd7)`, so two dev builds can be told apart.
 
 ### Changed
 
