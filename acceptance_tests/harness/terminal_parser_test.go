@@ -62,6 +62,7 @@ type TerminalScreen struct {
 // rule once its ends are removed, and the box's top and bottom are dropped.
 const (
 	frameSide       = "│"
+	frameThumb      = "┃"
 	frameDividerL   = "├"
 	frameDividerR   = "┤"
 	frameTopLeft    = "┌"
@@ -79,6 +80,8 @@ func unframe(line string) (string, bool) {
 		return strings.TrimSuffix(strings.TrimPrefix(trimmed, frameDividerL), frameDividerR), true
 	case strings.HasPrefix(trimmed, frameSide+" ") && strings.HasSuffix(trimmed, " "+frameSide):
 		return strings.TrimSuffix(strings.TrimPrefix(trimmed, frameSide+" "), " "+frameSide), true
+	case strings.HasPrefix(trimmed, frameSide+" ") && strings.HasSuffix(trimmed, " "+frameThumb):
+		return strings.TrimSuffix(strings.TrimPrefix(trimmed, frameSide+" "), " "+frameThumb), true
 	default:
 		return line, true
 	}
@@ -250,7 +253,7 @@ func parseTerminalScreen(raw string) TerminalScreen {
 	for drawn := range strings.SplitSeq(strings.TrimRight(raw, " \n"), "\n") {
 		screen.Framed = append(screen.Framed, strings.TrimRight(drawn, " "))
 		line, inside := unframe(drawn)
-		if !inside {
+		if !inside || (len(screen.Lines) == 0 && strings.TrimSpace(line) == "") {
 			continue
 		}
 		unwrapped.WriteString(strings.TrimPrefix(line, wrapIndicator))
@@ -268,4 +271,25 @@ func parseTerminalScreen(raw string) TerminalScreen {
 	}
 	screen.Unwrapped = unwrapped.String()
 	return screen
+}
+
+// ScrollbarRows returns, for each row of the overlay's diff, whether the scrollbar's
+// thumb is drawn beside it, or nil when no overlay is on screen. The diff's rows are
+// the ones between the box's second and third dividers.
+func (s TerminalScreen) ScrollbarRows() []bool {
+	if !s.HasOverlay() {
+		return nil
+	}
+	var rows []bool
+	dividers := 0
+	for _, line := range s.Framed {
+		if strings.HasPrefix(line, frameDividerL) {
+			dividers++
+			continue
+		}
+		if dividers == 2 {
+			rows = append(rows, strings.HasSuffix(line, frameThumb))
+		}
+	}
+	return rows
 }

@@ -122,3 +122,26 @@ func theNoteShouldBeBold(ctx context.Context, note string) error {
 	}
 	return nil
 }
+
+// theDiffOverlaysScrollbarThumbShouldBeBold asserts every cell of the thumb on screen
+// is bold, and that there is a thumb to check.
+func theDiffOverlaysScrollbarThumbShouldBeBold(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = settledOverlay(ctx)
+	if err != nil {
+		return err
+	}
+	cells := session.cellsOf([]rune(frameThumb)[0])
+	if len(cells) == 0 {
+		return fmt.Errorf("no scrollbar thumb is on screen")
+	}
+	for _, cell := range cells {
+		if cell.Mode&glyphBold == 0 {
+			return fmt.Errorf("a cell of the scrollbar thumb isn't bold")
+		}
+	}
+	return nil
+}

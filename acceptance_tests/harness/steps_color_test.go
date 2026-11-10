@@ -50,14 +50,14 @@ func hasLineBeginning(s TerminalScreen, prefix string) bool {
 }
 
 // assertRowColor checks that the row opening with prefix draws every non-blank
-// character in want, apart from the overlay's box around it.
+// character in want, apart from the overlay's box and scrollbar around it.
 func assertRowColor(session *terminalSession, prefix string, want vt10x.Color) error {
 	row := session.rowBeginning(prefix)
 	if row == nil {
 		return fmt.Errorf("no row begins with %q", prefix)
 	}
 	for _, cell := range row {
-		if cell.Char != ' ' && cell.Char != 0 && string(cell.Char) != frameSide && cell.FG != want {
+		if cell.Char != ' ' && cell.Char != 0 && string(cell.Char) != frameSide && string(cell.Char) != frameThumb && cell.FG != want {
 			return fmt.Errorf("in the row beginning %q, %q is color %d, want %d", prefix, cell.Char, cell.FG, want)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -682,7 +683,7 @@ func theDiffOverlayShouldBeDrawnInsideABox(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !isBox(screen.Framed) {
+	if !isBox(withoutLeadingBlanks(screen.Framed)) {
 		return fmt.Errorf("the overlay isn't drawn inside a box; screen was:\n%s", strings.Join(screen.Framed, "\n"))
 	}
 	return nil
@@ -710,10 +711,76 @@ func isBox(lines []string) bool {
 				return false
 			}
 		default:
-			if !(left == "│" && right == "│") && !(left == "├" && right == "┤") {
+			if !(left == "│" && (right == "│" || right == "┃")) && !(left == "├" && right == "┤") {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// withoutLeadingBlanks drops the blank lines that open lines.
+func withoutLeadingBlanks(lines []string) []string {
+	for len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
+	}
+	return lines
+}
+
+// settledOverlay waits for the overlay, then for csync to finish handling every key
+// sent, and returns the screen it settles on.
+func settledOverlay(ctx context.Context) (TerminalScreen, error) {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return TerminalScreen{}, err
+	}
+	_, err = session.waitFor("the diff overlay", TerminalScreen.HasOverlay)
+	if err != nil {
+		return TerminalScreen{}, err
+	}
+	return session.settle()
+}
+
+// theDiffOverlaysBoxShouldHaveABlankRowAboveIt asserts the screen opens with one
+// blank row and then the box's top.
+func theDiffOverlaysBoxShouldHaveABlankRowAboveIt(ctx context.Context) error {
+	screen, err := settledOverlay(ctx)
+	if err != nil {
+		return err
+	}
+	f := screen.Framed
+	if len(f) < 2 || f[0] != "" || !strings.HasPrefix(f[1], frameTopLeft) {
+		return fmt.Errorf("the box doesn't sit under one blank row; screen was:\n%s", strings.Join(f, "\n"))
+	}
+	return nil
+}
+
+// theDiffOverlaysScrollbarShouldBeAt asserts the thumb touches the named end of the
+// diff's rows and not the other.
+func theDiffOverlaysScrollbarShouldBeAt(ctx context.Context, end string) error {
+	screen, err := settledOverlay(ctx)
+	if err != nil {
+		return err
+	}
+	rows := screen.ScrollbarRows()
+	if len(rows) < 2 {
+		return fmt.Errorf("the diff has %d rows, too few to place a scrollbar", len(rows))
+	}
+	top, bottom := rows[0], rows[len(rows)-1]
+	if (end == "top" && (!top || bottom)) || (end == "bottom" && (top || !bottom)) {
+		return fmt.Errorf("scrollbar isn't at the %s (thumb by row: %v); screen was:\n%s", end, rows, strings.Join(screen.Framed, "\n"))
+	}
+	return nil
+}
+
+// theDiffOverlayShouldShowNoScrollbar asserts no row of the diff has the thumb.
+func theDiffOverlayShouldShowNoScrollbar(ctx context.Context) error {
+	screen, err := settledOverlay(ctx)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(screen.ScrollbarRows(), true) {
+		return fmt.Errorf("a scrollbar is showing; screen was:\n%s", strings.Join(screen.Framed, "\n"))
+	}
+	return nil
 }

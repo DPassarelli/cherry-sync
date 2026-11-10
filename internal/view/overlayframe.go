@@ -13,6 +13,10 @@ import (
 // frameStyle draws the box and its dividers, faint so they recede behind the diff.
 var frameStyle = lipgloss.NewStyle().Faint(true)
 
+// thumbStyle draws the scrollbar's thumb at full brightness and bold, since in the
+// box's faint style it barely stood out from the border it sits in.
+var thumbStyle = lipgloss.NewStyle().Bold(true)
+
 // frameMargin is the columns the box takes from each row: a side and a space of
 // padding at each end.
 const frameMargin = 4
@@ -34,9 +38,14 @@ func frameEdge(left, right string, width int) string {
 // framed places one row of content between the box's sides, padded so the right
 // side lines up whatever the row's width.
 func (m pickerModel) framed(row string) string {
+	return m.framedBeside(row, frameStyle.Render("│"))
+}
+
+// framedBeside is framed with right, already styled, as the box's right side, which
+// is where the scrollbar's thumb is drawn so it costs the diff no width.
+func (m pickerModel) framedBeside(row, right string) string {
 	pad := strings.Repeat(" ", max(m.innerWidth()-ansi.StringWidth(row), 0))
-	side := frameStyle.Render("│")
-	return side + " " + row + pad + " " + side
+	return frameStyle.Render("│") + " " + row + pad + " " + right
 }
 
 // framedRows wraps line to the box's inner width and frames each row.
@@ -76,14 +85,48 @@ func (m pickerModel) overlayView() string {
 			body = append(body, "")
 		}
 	}
+	bar := scrollThumb(m.overlayRows(), len(rows), first)
 	lines := m.overlayHeaderRows()
-	for _, row := range body {
-		lines = append(lines, m.framed(row))
+	for i, row := range body {
+		right := frameStyle.Render("│")
+		if i >= bar.start && i < bar.start+bar.size {
+			right = thumbStyle.Render("┃")
+		}
+		lines = append(lines, m.framedBeside(row, right))
 	}
 	lines = append(lines,
 		frameEdge("├", "┤", m.width),
-		m.framed(frameStyle.Render("↑/↓ scroll · esc back")),
+		m.framed(frameStyle.Render(m.overlayHint(len(rows)))),
 		frameEdge("└", "┘", m.width),
 	)
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// overlayHint offers scrolling only when the diff's total rows are more than fit,
+// since offering a key that does nothing would read as a sign something is hidden.
+func (m pickerModel) overlayHint(total int) string {
+	if total > m.overlayRows() {
+		return "↑/↓ scroll · esc back"
+	}
+	return "esc back"
+}
+
+// thumb is the run of the diff's rows the scrollbar marks: size rows from start.
+type thumb struct {
+	start int
+	size  int
+}
+
+// scrollThumb places the thumb for a view of rows rows, offset rows into a diff of
+// total rows: as tall as the share of the diff in view, but never so short it
+// vanishes, and moved through the rest of the track in step with the offset, so it
+// reaches the bottom exactly when the view does. A diff that fits has no thumb.
+func scrollThumb(rows, total, offset int) thumb {
+	if total <= rows {
+		return thumb{}
+	}
+	size := max(rows*rows/total, 1)
+	travel := total - rows
+	start := (offset*(rows-size)*2 + travel) / (2 * travel)
+	return thumb{start: start, size: size}
 }

@@ -179,6 +179,22 @@ func (s *terminalSession) rowContaining(text string) []vt10x.Glyph {
 	return nil
 }
 
+// cellsOf returns every cell on screen showing char.
+func (s *terminalSession) cellsOf(char rune) []vt10x.Glyph {
+	s.screen.Lock()
+	defer s.screen.Unlock()
+	var cells []vt10x.Glyph
+	for y := 0; y < terminalRows; y++ {
+		for x := 0; x < terminalCols; x++ {
+			cell := s.screen.Cell(x, y)
+			if cell.Char == char {
+				cells = append(cells, cell)
+			}
+		}
+	}
+	return cells
+}
+
 // settle waits for the screen to stop changing, and returns it.
 func (s *terminalSession) settle() (TerminalScreen, error) {
 	deadline := time.Now().Add(terminalWait)

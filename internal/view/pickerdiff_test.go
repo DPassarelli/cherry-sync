@@ -148,10 +148,10 @@ func TestOverlayView_ClampsAfterAResize(t *testing.T) {
 	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 10)})
 	m = updated.(pickerModel)
 	m.overlayOffset = 6
-	m.height = 15
+	m.height = 16
 	got := countRows(m.overlayView(), 80)
-	if got != 14 {
-		t.Errorf("overlay is %d rows tall, want 14", got)
+	if got != 15 {
+		t.Errorf("overlay is %d rows tall, want 15", got)
 	}
 }
 

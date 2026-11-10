@@ -28,12 +28,12 @@ var (
 	hunkStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )
 
-// overlayHeaderRows is every framed row of the overlay's pinned header at the
-// terminal's current width: the box's top, the title naming the file, then each
-// side's operand between dividers. The file's path is left to the title so the
+// overlayHeaderRows is every row of the overlay's pinned header at the terminal's
+// current width: a blank row matching the spare one under the box, the box's top,
+// the title naming the file, then each side's operand between dividers. The file's path is left to the title so the
 // endpoint lines stay short.
 func (m pickerModel) overlayHeaderRows() []string {
-	rows := []string{frameEdge("┌", "┐", m.width)}
+	rows := []string{"", frameEdge("┌", "┐", m.width)}
 	rows = append(rows, m.framedRows(lipgloss.NewStyle().Bold(true).Render("Diff of "+m.overlayPath))...)
 	rows = append(rows, frameEdge("├", "┤", m.width))
 	rows = append(rows, m.framedRows(destinationStyle.Render(endpointLine("-", "Destination:", m.differ.Destination)))...)

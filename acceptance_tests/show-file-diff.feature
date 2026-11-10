@@ -43,6 +43,39 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should be drawn inside a box
 
+  Scenario: The box has a blank row above it
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay's box should have a blank row above it
+
+  Scenario: A diff taller than the screen shows a scrollbar
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay's scrollbar should be at the top
+
+  Scenario: The scrollbar's thumb is bold
+    # The box is faint, so the thumb is drawn at full brightness and bold to stand
+    # out from it. The emulator records bold but not faint, so bold is what's checked.
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay's scrollbar thumb should be bold
+
+  Scenario: Scrolling to the end moves the scrollbar to the bottom
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have pressed "d" on the row for "README.md"
+    When  I press "down" more times than the diff has lines
+    Then  the diff overlay's scrollbar should be at the bottom
+
+  Scenario: A diff that fits shows no scrollbar
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should show no scrollbar
+
   Scenario: The title and header stay put while the diff scrolls
     Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
@@ -287,7 +320,13 @@ Feature: Show a file's diff from the picker
     Then  the diff hint should read "d diff (text files ≤ 200 KiB only)"
 
   Scenario: The diff's hint line offers scrolling and going back
-    Given that the file "README.md" has been changed locally
+    Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
     Then  the hint line should read "↑/↓ scroll · esc back"
+
+  Scenario: A diff that fits offers only going back
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the hint line should read "esc back"
