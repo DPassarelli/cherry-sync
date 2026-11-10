@@ -77,13 +77,23 @@ func (s TerminalScreen) OverlayTitle() string {
 }
 
 // OverlayHeader returns the lines between the overlay's title and the rule that
-// closes its header, or nil when no overlay is on screen.
+// closes its header, or nil when no overlay is on screen. A line wrapped across rows
+// is joined back into one, since how far a path wraps depends on where the
+// scenario's directories happen to live.
 func (s TerminalScreen) OverlayHeader() []string {
 	if !s.HasOverlay() {
 		return nil
 	}
-	end := s.firstRule()
-	return s.Lines[1:end]
+	var lines []string
+	for _, row := range s.Lines[1:s.firstRule()] {
+		continued, wrapped := strings.CutPrefix(row, wrapIndicator)
+		if wrapped && len(lines) > 0 {
+			lines[len(lines)-1] += continued
+			continue
+		}
+		lines = append(lines, row)
+	}
+	return lines
 }
 
 // OverlayBody returns the lines below the rule that closes the overlay's header,
