@@ -187,3 +187,20 @@ func TestNormalize_Dot_Unchanged(t *testing.T) {
 		t.Errorf("Path: got %q, want %q", got.Path, ".")
 	}
 }
+
+// An operand is remote by rsync's rule: a colon before any slash.
+func TestIsRemote(t *testing.T) {
+	cases := map[string]bool{
+		"user@host:/project": true,
+		"host:":              true,
+		"./project":          false,
+		"./a:b":              false,
+		"/abs/path":          false,
+	}
+	for op, want := range cases {
+		got := operand.IsRemote(op)
+		if got != want {
+			t.Errorf("IsRemote(%q) = %v, want %v", op, got, want)
+		}
+	}
+}

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing it would change. A header that stays put while you scroll names the file and each side's full path, and its lines are colored to match the diff's: red for the destination, green for the source. A file on only one side, a copy over 200 KiB, or a binary copy gets a one-line notice instead, naming the copy responsible. Long lines wrap behind `↪`, tabs show as `→`, and a fetch that fails repeats what rsync said. (#119)
+- Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing it would change. The diff is drawn inside a box, under a header that stays put while you scroll and names the file and both the source and the destination, and its lines are colored to match the diff's: red for the destination, green for the source. A new hint line says diffs are only available for text files of 200 KiB or less, and a file that can't be diffed (one side missing, too big, or binary) gets a short bold note on that line instead. The local copy is checked first, so one that can't be diffed never costs a trip to the remote. Long lines wrap behind `↪`, tabs show as `→`, and a fetch that fails repeats what rsync said. (#119)
 
 ### Changed
 

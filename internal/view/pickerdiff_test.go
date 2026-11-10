@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 	"github.com/dpassarelli/cherry-sync/internal/filediff"
 )
@@ -13,8 +14,8 @@ import (
 func TestNoDiffNotice_SharesItsPrefix(t *testing.T) {
 	for _, verb := range []string{"create", "delete"} {
 		notice := noDiffNotice(verb)
-		if !strings.HasPrefix(notice, "no diff: ") {
-			t.Errorf("noDiffNotice(%q) = %q, want the \"no diff: \" prefix", verb, notice)
+		if !strings.HasPrefix(notice, "cannot diff: ") {
+			t.Errorf("noDiffNotice(%q) = %q, want the \"cannot diff: \" prefix", verb, notice)
 		}
 	}
 }
@@ -27,27 +28,39 @@ func TestNoDiffNotice_UpdateHasNone(t *testing.T) {
 	}
 }
 
-// The renderer cuts off any line wider than the terminal, so a long notice must wrap
-// rather than lose the words at its end.
-func TestView_LongNoticeWrapsWithinTheTerminal(t *testing.T) {
+// The renderer cuts off any line wider than the terminal, so the diff hint and its
+// note are cut to fit rather than left to the renderer, which would wrap them onto
+// a row the list doesn't leave room for.
+func TestDiffHintLine_FitsTheTerminal(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "delete", Path: "README.md"}})
 	m.width, m.height = 40, 24
 	m = applyKey(m, runeKey('d'))
-	flat := strings.Join(strings.Fields(m.View()), " ")
-	if !strings.Contains(flat, "if selected") {
-		t.Errorf("notice lost its ending at width 40:\n%s", m.View())
+	got := ansi.StringWidth(m.diffHintLine())
+	if got > 40 {
+		t.Errorf("diff hint line is %d columns wide, want at most 40", got)
 	}
 }
 
-// The rows a wrapped notice takes come out of the list, or the frame would outgrow
-// the terminal and push the preamble off the top.
-func TestScrollHeight_ReservesTheNoticeRows(t *testing.T) {
+// csync assumes a terminal at least 80 columns wide, and at that width even the
+// longest note has to be read in full.
+func TestDiffHintLine_LongestNoteFitsEightyColumns(t *testing.T) {
+	m := newModel([]compare.Action{{Verb: "create", Path: "README.md"}})
+	m.width, m.height = 80, 24
+	m = applyKey(m, runeKey('d'))
+	if !strings.HasSuffix(ansi.Strip(m.diffHintLine()), noDiffNotice("create")) {
+		t.Errorf("note cut short at 80 columns: %q", ansi.Strip(m.diffHintLine()))
+	}
+}
+
+// A note sits on the diff hint's own row, so it takes no rows from the list and the
+// list doesn't jump when one comes and goes.
+func TestScrollHeight_UnchangedByANote(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "delete", Path: "README.md"}})
 	m.width, m.height = 40, 24
 	without := m.scrollHeight()
 	m = applyKey(m, runeKey('d'))
-	if m.scrollHeight() >= without {
-		t.Errorf("scrollHeight = %d with a notice, want less than %d", m.scrollHeight(), without)
+	if m.notice == "" || m.scrollHeight() != without {
+		t.Errorf("scrollHeight = %d with note %q, want %d", m.scrollHeight(), m.notice, without)
 	}
 }
 
@@ -70,11 +83,11 @@ func TestUpdate_DWhileFetchingStartsNoSecondFetch(t *testing.T) {
 // top off screen and the overlay no longer begins with its title.
 func TestView_OverlayFitsTheTerminal(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.width, m.height = 80, 8
+	m.width, m.height = 80, 12
 	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 50)})
 	got := countRows(updated.View(), 80)
-	if got > 8 {
-		t.Errorf("overlay is %d rows tall, want at most 8", got)
+	if got > 12 {
+		t.Errorf("overlay is %d rows tall, want at most 12", got)
 	}
 }
 
@@ -82,22 +95,14 @@ func TestView_OverlayFitsTheTerminal(t *testing.T) {
 func TestFetchedNotice_SharesThePrefix(t *testing.T) {
 	results := []filediff.Result{
 		{Oversized: filediff.SourceCopy},
+		{Oversized: filediff.DestinationCopy},
 		{Binary: filediff.DestinationCopy},
 	}
 	for _, r := range results {
 		notice := fetchedNotice(r)
-		if !strings.HasPrefix(notice, "no diff: ") {
-			t.Errorf("fetchedNotice(%+v) = %q, want the \"no diff: \" prefix", r, notice)
+		if !strings.HasPrefix(notice, "cannot diff: ") {
+			t.Errorf("fetchedNotice(%+v) = %q, want the \"cannot diff: \" prefix", r, notice)
 		}
-	}
-}
-
-// An oversized copy is never read, so whether it is binary is unknown, and the size
-// is the only thing that can be said for certain about the pair.
-func TestFetchedNotice_SizeOutranksBinary(t *testing.T) {
-	notice := fetchedNotice(filediff.Result{Oversized: filediff.SourceCopy, Binary: filediff.DestinationCopy})
-	if !strings.Contains(notice, "over the 200 KiB limit") {
-		t.Errorf("fetchedNotice = %q, want the size notice", notice)
 	}
 }
 
@@ -143,10 +148,10 @@ func TestOverlayView_ClampsAfterAResize(t *testing.T) {
 	updated, _ := m.Update(diffFetchedMsg{text: strings.Repeat("line\n", 10)})
 	m = updated.(pickerModel)
 	m.overlayOffset = 6
-	m.height = 8
+	m.height = 15
 	got := countRows(m.overlayView(), 80)
-	if got != 7 {
-		t.Errorf("overlay is %d rows tall, want 7", got)
+	if got != 14 {
+		t.Errorf("overlay is %d rows tall, want 14", got)
 	}
 }
 
@@ -154,15 +159,15 @@ func TestOverlayView_ClampsAfterAResize(t *testing.T) {
 // it doesn't jump between diffs.
 func TestOverlayView_KeepsTheHintOnTheBottomRow(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
-	m.width, m.height = 80, 10
+	m.width, m.height = 80, 12
 	updated, _ := m.Update(diffFetchedMsg{text: "a\nb\n"})
 	got := countRows(updated.View(), 80)
-	if got != 9 {
-		t.Errorf("overlay is %d rows tall, want 9", got)
+	if got != 11 {
+		t.Errorf("overlay is %d rows tall, want 11", got)
 	}
 }
 
-// Opening the overlay clears the progress notice, or it would still be there after
+// Opening the overlay clears the progress, or it would still be there after
 // the overlay closes.
 func TestOpenOverlay_ClearsTheProgressNotice(t *testing.T) {
 	m := newModel([]compare.Action{{Verb: "update", Path: "README.md"}})
@@ -170,8 +175,8 @@ func TestOpenOverlay_ClearsTheProgressNotice(t *testing.T) {
 	m, _ = m.pressDiff()
 	updated, _ := m.Update(fetchRevealMsg{fetch: m.fetchID})
 	updated, _ = updated.Update(diffFetchedMsg{text: "a\n"})
-	if updated.(pickerModel).notice != "" {
-		t.Errorf("notice = %q after the overlay opened, want none", updated.(pickerModel).notice)
+	if updated.(pickerModel).progress != "" {
+		t.Errorf("progress = %q after the overlay opened, want none", updated.(pickerModel).progress)
 	}
 }
 
@@ -187,7 +192,7 @@ func TestFetchReveal_IgnoresAFinishedFetch(t *testing.T) {
 	m.overlay = nil
 	m, _ = m.pressDiff()
 	updated, _ = m.Update(fetchRevealMsg{fetch: stale})
-	if updated.(pickerModel).notice != "" {
-		t.Errorf("notice = %q from a finished fetch's reveal, want none", updated.(pickerModel).notice)
+	if updated.(pickerModel).progress != "" {
+		t.Errorf("progress = %q from a finished fetch's reveal, want none", updated.(pickerModel).progress)
 	}
 }

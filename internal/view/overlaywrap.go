@@ -54,7 +54,7 @@ func (m pickerModel) overlayRowsAll() []string {
 		if m.overlayIsDiff {
 			style = diffLineStyle(line)
 		}
-		rows = append(rows, wrapRows(showTabs(line, style), m.width)...)
+		rows = append(rows, wrapRows(showTabs(line, style), m.innerWidth())...)
 	}
 	return rows
 }

@@ -39,7 +39,8 @@ func (m pickerModel) View() string {
 	out := []string{
 		"",
 		"? " + prompt.Render(pickerPrompt(len(m.actions))),
-		"   " + dim.Render("↑/↓ move · space toggle · a all/none · d diff · enter sync · ctrl-c cancel"),
+		"   " + dim.Render("↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"),
+		m.diffHintLine(),
 	}
 
 	vp := m.visible()
@@ -48,9 +49,6 @@ func (m pickerModel) View() string {
 	out = append(out, scrollIndicator(dim, "▲ more above", vp.HiddenAbove))
 	out = append(out, vp.Lines...)
 	out = append(out, scrollIndicator(dim, "▼ more below", vp.HiddenBelow))
-	if m.notice != "" {
-		out = append(out, m.wrappedNotice())
-	}
 	return strings.Join(out, "\n") + "\n"
 }
 

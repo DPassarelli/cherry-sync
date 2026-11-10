@@ -96,3 +96,29 @@ func theBoldTextInTheDetailShouldBeBoth(ctx context.Context, first, second strin
 func noPartOfTheDetailShouldBeBold(ctx context.Context) error {
 	return assertBoldRuns(ctx)
 }
+
+// theNoteShouldBeBold asserts every character of the note after the picker's diff
+// hint is drawn bold.
+func theNoteShouldBeBold(ctx context.Context, note string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the note "+note, func(s TerminalScreen) bool { return s.Note() == note })
+	if err != nil {
+		return err
+	}
+	row := session.rowContaining(note)
+	text := []rune(glyphText(row))
+	start := strings.Index(glyphText(row), note)
+	if start < 0 {
+		return fmt.Errorf("no row contains the note %q", note)
+	}
+	first := len([]rune(glyphText(row)[:start]))
+	for i := first; i < first+len([]rune(note)); i++ {
+		if row[i].Mode&glyphBold == 0 {
+			return fmt.Errorf("%q in the note %q isn't bold", text[i], note)
+		}
+	}
+	return nil
+}

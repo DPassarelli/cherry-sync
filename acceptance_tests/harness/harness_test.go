@@ -113,6 +113,32 @@ if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
 exec "$@"
 `
 
+// recordSendRsh is the path to a test-only remote shell that notes each time it is
+// asked to send a file. See recordSendRshScript.
+var recordSendRsh string
+
+// recordSendRshScript is the body of the recording remote shell. As with the slow
+// remote, a real send is the one pass running --sender without -n; each appends a
+// line to SEND_LOG and then runs as the plain fake remote does. The file names
+// travel over rsync's own protocol rather than its arguments, so only the send
+// itself can be recorded.
+const recordSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then echo send >> "$SEND_LOG"; fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
 // slowSendRsh is the path to a test-only remote shell that answers the comparison
 // promptly and is slow to send a file. See slowSendRshScript.
 var slowSendRsh string
@@ -235,6 +261,10 @@ type failMeasureModeKey struct{}
 // slowSendModeKey flags a scenario as needing the remote that is slow to send files,
 // so csyncEnv points RSYNC_RSH at slowSendRsh.
 type slowSendModeKey struct{}
+
+// sendLogKey stashes the file the recording remote appends to for each send, and so
+// also flags a scenario as needing that remote.
+type sendLogKey struct{}
 
 // failSendModeKey flags a scenario as needing the remote that refuses to send files,
 // so csyncEnv points RSYNC_RSH at failSendRsh.
@@ -391,6 +421,13 @@ func TestMain(m *testing.M) {
 	err = os.WriteFile(failSendRsh, []byte(failSendRshScript), 0o755)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "failsendrsh:", err)
+		os.Exit(2)
+	}
+
+	recordSendRsh = filepath.Join(tmpDir, "recordsendrsh")
+	err = os.WriteFile(recordSendRsh, []byte(recordSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "recordsendrsh:", err)
 		os.Exit(2)
 	}
 

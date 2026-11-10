@@ -28,32 +28,22 @@ var (
 	hunkStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )
 
-// overlayHeaderRows is every row of the overlay's pinned header at the terminal's
-// current width: the title, each side's full path, and a rule setting them apart
-// from the diff.
+// overlayHeaderRows is every framed row of the overlay's pinned header at the
+// terminal's current width: the box's top, the title naming the file, then each
+// side's operand between dividers. The file's path is left to the title so the
+// endpoint lines stay short.
 func (m pickerModel) overlayHeaderRows() []string {
-	lines := []string{
-		lipgloss.NewStyle().Bold(true).Render("Diff of " + m.overlayPath),
-		destinationStyle.Render(endpointLine("-", "Destination:", endpointPath(m.differ.Destination, m.overlayPath))),
-		sourceStyle.Render(endpointLine("+", "Source:", endpointPath(m.differ.Source, m.overlayPath))),
-	}
-	var rows []string
-	for _, line := range lines {
-		rows = append(rows, wrapRows(line, m.width)...)
-	}
-	rule := lipgloss.NewStyle().Faint(true).Render(strings.Repeat("─", max(m.width, 1)))
-	return append(rows, rule)
+	rows := []string{frameEdge("┌", "┐", m.width)}
+	rows = append(rows, m.framedRows(lipgloss.NewStyle().Bold(true).Render("Diff of "+m.overlayPath))...)
+	rows = append(rows, frameEdge("├", "┤", m.width))
+	rows = append(rows, m.framedRows(destinationStyle.Render(endpointLine("-", "Destination:", m.differ.Destination)))...)
+	rows = append(rows, m.framedRows(sourceStyle.Render(endpointLine("+", "Source:", m.differ.Source)))...)
+	return append(rows, frameEdge("├", "┤", m.width))
 }
 
 // endpointLine names one side of the diff, marked the way its lines are marked.
 func endpointLine(marker, label, path string) string {
 	return fmt.Sprintf("%s %-13s%s", marker, label, path)
-}
-
-// endpointPath is where relPath lives under operand, written the way csync names
-// the operand elsewhere. A root operand already ends in the separator.
-func endpointPath(operand, relPath string) string {
-	return strings.TrimSuffix(operand, "/") + "/" + relPath
 }
 
 // diffLineStyle is the style for one line of a unified diff, chosen by its marker.

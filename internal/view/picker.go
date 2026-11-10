@@ -33,13 +33,15 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
-	// differ names the sides and gets a row's diff, fetching marks one in progress,
-	// notice explains a row with no diff to show, overlay holds the lines of an open
-	// diff, overlayPath is the file they are about, and overlayIsDiff tells real
-	// diff lines, which are colored by side, from a failure message, which is not.
+	// differ names the sides and gets a row's diff, fetching marks one in progress
+	// and progress shows that it is, notice explains a row with no diff to show,
+	// overlay holds the lines of an open diff, overlayPath is the file they are
+	// about, and overlayIsDiff tells real diff lines, which are colored by side,
+	// from a failure message, which is not.
 	differ        Differ
 	notice        string
 	fetching      bool
+	progress      string
 	overlay       []string
 	overlayPath   string
 	overlayIsDiff bool
@@ -57,9 +59,10 @@ type pickerModel struct {
 }
 
 // pickerHeaderLines is how many rows View prints above the change list — a leading
-// blank, the "? Choose…" prompt, and the key hint — and so must be subtracted from
-// the terminal height to get the rows available for the scrolling list region.
-const pickerHeaderLines = 3
+// blank, the "? Choose…" prompt, the key hint, and the diff hint — and so must be
+// subtracted from the terminal height to get the rows available for the scrolling
+// list region.
+const pickerHeaderLines = 4
 
 // scrollMargin is one row left unused at the bottom of the picker's frame. View
 // ends its output with a trailing newline; without a spare row that newline scrolls
@@ -191,10 +194,10 @@ func (m pickerModel) scrollOffset() int {
 // scrollHeight is the number of terminal rows the picker's list region may occupy:
 // the terminal height less the preamble's on-screen rows (measured at the current
 // width, so wrapped lines count for all the rows they take), the fixed header rows,
-// any notice, and the one-row bottom margin. Keeping the list within it is what stops the
+// and the one-row bottom margin. Keeping the list within it is what stops the
 // preamble from scrolling off the top.
 func (m pickerModel) scrollHeight() int {
-	return m.height - countRows(m.preamble, m.width) - pickerHeaderLines - scrollMargin - countRows(m.wrappedNotice(), m.width)
+	return m.height - countRows(m.preamble, m.width) - pickerHeaderLines - scrollMargin
 }
 
 // visible is the scroll window over the current change list for the settled offset:

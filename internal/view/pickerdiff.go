@@ -1,15 +1,13 @@
-// pickerdiff.go holds the picker's diff view: the notice for a file with nothing to
+// pickerdiff.go holds the picker's diff view: the note for a file with nothing to
 // compare, the fetch behind the "d" key, and the overlay that shows the result.
 
 package view
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/filediff"
 )
 
@@ -24,41 +22,31 @@ type diffFetchedMsg struct {
 }
 
 // noDiffNotice returns what to say about a change with only one copy to look at, or
-// "" for a change with two. It says what syncing would do, because a file about to
-// be deleted is the case where someone most wants to look before choosing.
+// "" for a change with two.
 func noDiffNotice(verb string) string {
 	switch verb {
 	case "create":
-		return "no diff: new file, will be created on the destination if selected"
+		return "cannot diff: dest does not exist!"
 	case "delete":
-		return "no diff: missing from the source, will be deleted from the destination if selected"
+		return "cannot diff: src does not exist!"
 	default:
 		return ""
 	}
 }
 
 // fetchedNotice returns what to say about a fetched file that can't be diffed, or ""
-// when it can. Naming the copy matters because the one that tripped the check may be
-// on the far side, while the file in front of the user looks fine.
+// when it can. A copy too big is named because it may be the one on the far side,
+// while the file in front of the user looks fine.
 func fetchedNotice(r filediff.Result) string {
-	if r.Oversized != filediff.NoCopies {
-		return fmt.Sprintf("no diff: %s over the %d KiB limit", copiesLabel(r.Oversized), filediff.SizeLimit/1024)
-	}
-	if r.Binary != filediff.NoCopies {
-		return fmt.Sprintf("no diff: %s binary, and binary files are not diffed", copiesLabel(r.Binary))
-	}
-	return ""
-}
-
-// copiesLabel names copies as the start of a sentence about them.
-func copiesLabel(c filediff.Copies) string {
-	switch c {
-	case filediff.SourceCopy:
-		return "source copy is"
-	case filediff.DestinationCopy:
-		return "destination copy is"
+	switch {
+	case r.Oversized == filediff.SourceCopy:
+		return "cannot diff: src file too big!"
+	case r.Oversized == filediff.DestinationCopy:
+		return "cannot diff: dest file too big!"
+	case r.Binary != filediff.NoCopy:
+		return "cannot diff: binary files!"
 	default:
-		return "both copies are"
+		return ""
 	}
 }
 
@@ -90,15 +78,14 @@ func (m pickerModel) pressDiff() (pickerModel, tea.Cmd) {
 	})
 }
 
-// openOverlay shows a finished fetch, as a notice when there is nothing to diff. The
-// alternate screen is what lets the picker
-// come back exactly as it was, preamble included, when the overlay closes.
+// openOverlay shows a finished fetch, as a note when there is nothing to diff. The
+// alternate screen is what lets the picker come back exactly as it was, preamble
+// included, when the overlay closes.
 func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 	m.fetching = false
-	m.notice = ""
+	m.progress = ""
+	m.notice = msg.notice
 	if msg.notice != "" {
-		m.notice = msg.notice
-		m.offset = m.scrollOffset()
 		return m, nil
 	}
 	m.overlayOffset = 0
@@ -127,50 +114,4 @@ func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		return m, nil
 	}
-}
-
-// overlayFooterRows is the rule and the key hint drawn under the diff.
-const overlayFooterRows = 2
-
-// overlayRows is how many diff lines fit between the header and the footer, leaving
-// one row spare so the frame's trailing newline can't scroll its title away.
-func (m pickerModel) overlayRows() int {
-	if m.height <= 0 {
-		return len(m.overlayRowsAll())
-	}
-	return max(m.height-1-len(m.overlayHeaderRows())-overlayFooterRows, 1)
-}
-
-// lastOverlayOffset is the furthest the overlay can scroll while staying full.
-func (m pickerModel) lastOverlayOffset() int {
-	return max(len(m.overlayRowsAll())-m.overlayRows(), 0)
-}
-
-// overlayView renders the header, the part of the diff in view, then the footer. The offset is
-// limited again here because a resize can move the end of the diff after it was
-// stored. A short diff is padded so the footer stays on the bottom row, and the rule
-// sets the hint apart, because an indented hint would otherwise read as a context
-// line of the diff.
-func (m pickerModel) overlayView() string {
-	dim := lipgloss.NewStyle().Faint(true)
-	rows := m.overlayRowsAll()
-	first := min(m.overlayOffset, m.lastOverlayOffset())
-	last := min(first+m.overlayRows(), len(rows))
-	lines := append(m.overlayHeaderRows(), rows[first:last]...)
-	if m.height > 0 {
-		for len(lines)-len(m.overlayHeaderRows()) < m.overlayRows() {
-			lines = append(lines, "")
-		}
-	}
-	lines = append(lines, dim.Render(strings.Repeat("─", max(m.width, 1))), "   "+dim.Render("↑/↓ scroll · esc back"))
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// wrappedNotice returns the notice wrapped to the terminal's width, since the
-// renderer cuts off anything wider. The width is unknown until the first resize.
-func (m pickerModel) wrappedNotice() string {
-	if m.notice == "" || m.width <= 0 {
-		return m.notice
-	}
-	return lipgloss.NewStyle().Width(m.width).Render(m.notice)
 }

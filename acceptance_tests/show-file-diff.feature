@@ -27,15 +27,21 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the diff overlay's title should read "Diff of README.md"
 
-  Scenario: The diff names each side by its full path
+  Scenario: The diff names each side by its operand
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
     Then  the diff overlay's header should read:
       """
-      - Destination: user@host:/project/README.md
-      + Source:      ./project/README.md
+      - Destination: user@host:/project
+      + Source:      ./project
       """
+
+  Scenario: The diff is drawn inside a box
+    Given that the file "README.md" has been changed locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the diff overlay should be drawn inside a box
 
   Scenario: The title and header stay put while the diff scrolls
     Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
@@ -59,25 +65,28 @@ Feature: Show a file's diff from the picker
     Given that the file "src/adder.go" has been added locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "src/adder.go"
-    Then  the picker should show a notice containing "will be created on the destination"
+    Then  the picker should note "cannot diff: dest does not exist!"
 
   Scenario: A file only on the destination has no diff
     Given that the file "README.md" has been deleted locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "will be deleted from the destination"
+    Then  the picker should note "cannot diff: src does not exist!"
 
   Scenario Outline: A copy over 200 KiB is too large to diff
+    # The local copy is checked first, so when both are too large it is the one named.
     Given that <which> of "README.md" has been changed to 204,801 bytes
-    And   that I have run "csync ./project user@host:/project" in a terminal
+    And   that I have run "<command>" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "<named> over the 200 KiB limit"
+    Then  the picker should note "<note>"
 
     Examples:
-      | which           | named               |
-      | the local copy  | source copy is      |
-      | the remote copy | destination copy is |
-      | both copies     | both copies are     |
+      | which           | command                            | note                            |
+      | the local copy  | csync ./project user@host:/project | cannot diff: src file too big!  |
+      | the remote copy | csync ./project user@host:/project | cannot diff: dest file too big! |
+      | both copies     | csync ./project user@host:/project | cannot diff: src file too big!  |
+      | the local copy  | csync user@host:/project ./project | cannot diff: dest file too big! |
+      | both copies     | csync user@host:/project ./project | cannot diff: dest file too big! |
 
   Scenario: A file of exactly 200 KiB still gets a diff
     Given that the local copy of "README.md" has been changed to 204,800 bytes
@@ -89,13 +98,31 @@ Feature: Show a file's diff from the picker
     Given that <which> of "README.md" has been changed to contain a NUL byte
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "<named> binary, and binary files are not diffed"
+    Then  the picker should note "cannot diff: binary files!"
 
     Examples:
-      | which           | named               |
-      | the local copy  | source copy is      |
-      | the remote copy | destination copy is |
-      | both copies     | both copies are     |
+      | which           |
+      | the local copy  |
+      | the remote copy |
+      | both copies     |
+
+  Scenario Outline: A local copy that can't be diffed spares the remote
+    Given that the local copy of "README.md" has been changed to <content>
+    And   a remote that records each file it sends
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "README.md"
+    Then  the remote should not have been asked for a copy
+
+    Examples:
+      | content            |
+      | 204,801 bytes      |
+      | contain a NUL byte |
+
+  Scenario: A note about a file that can't be diffed is bold
+    Given that the file "adder.go" has been added locally
+    And   that I have run "csync ./project user@host:/project" in a terminal
+    When  I press "d" on the row for "adder.go"
+    Then  the note "cannot diff: dest does not exist!" should be bold
 
   @wip
   Scenario: A file whose contents match shows no empty diff
@@ -105,7 +132,7 @@ Feature: Show a file's diff from the picker
     Given that the file "README.md" has been touched locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "contents are identical"
+    Then  the picker should note "cannot diff: contents are identical!"
 
   Scenario: The next keypress clears a notice
     Given that the file "adder.go" has been added locally
@@ -201,7 +228,7 @@ Feature: Show a file's diff from the picker
     And   a remote that answers the comparison but is slow to send files
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the picker should show a notice containing "fetching diff"
+    Then  the picker's note should contain "fetching diff"
 
   Scenario: A failed fetch is reported inside the diff
     Given that the file "README.md" has been changed locally
@@ -249,10 +276,15 @@ Feature: Show a file's diff from the picker
     When  I press "d" on the row for "README.md"
     Then  the diff overlay should include the line "+a → →b"
 
-  Scenario: The picker's hint line offers the diff
+  Scenario: The picker's hint line leaves the diff to a line of its own
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" in a terminal
-    Then  the hint line should read "↑/↓ move · space toggle · a all/none · d diff · enter sync · ctrl-c cancel"
+    Then  the hint line should read "↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"
+
+  Scenario: The diff hint says which files can be diffed
+    Given that the file "README.md" has been changed locally
+    When  I run "csync ./project user@host:/project" in a terminal
+    Then  the diff hint should read "d diff (text files ≤ 200 KiB only)"
 
   Scenario: The diff's hint line offers scrolling and going back
     Given that the file "README.md" has been changed locally

@@ -1,5 +1,5 @@
-// pickerfetch.go shows that a diff is on its way: a spinner in the picker's notice
-// row while a slow fetch runs.
+// pickerfetch.go shows that a diff is on its way: a spinner after the picker's diff
+// hint while a slow fetch runs.
 
 package view
 
@@ -38,12 +38,11 @@ func (m pickerModel) advanceFetchProgress(fetch int) (tea.Model, tea.Cmd) {
 	return m.drawFetchProgress()
 }
 
-// drawFetchProgress shows the spinner's current frame in the notice row and schedules
+// drawFetchProgress shows the spinner's current frame after the diff hint and schedules
 // the next one. It uses the comparison spinner's frames and pace so both waits look
 // the same.
 func (m pickerModel) drawFetchProgress() (tea.Model, tea.Cmd) {
-	m.notice = spinnerFrames[m.fetchFrame] + " fetching diff…"
-	m.offset = m.scrollOffset()
+	m.progress = spinnerFrames[m.fetchFrame] + " fetching diff…"
 	id := m.fetchID
 	return m, tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return fetchFrameMsg{fetch: id} })
 }

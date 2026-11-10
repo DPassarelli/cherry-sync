@@ -154,7 +154,25 @@ func (s *terminalSession) rowBeginning(prefix string) []vt10x.Glyph {
 		for x := range row {
 			row[x] = s.screen.Cell(x, y)
 		}
-		if strings.HasPrefix(glyphText(row), prefix) {
+		text, _ := unframe(glyphText(row))
+		if strings.HasPrefix(text, prefix) {
+			return row
+		}
+	}
+	return nil
+}
+
+// rowContaining returns the cells of the first row whose text holds text, or nil
+// while no such row is on screen.
+func (s *terminalSession) rowContaining(text string) []vt10x.Glyph {
+	s.screen.Lock()
+	defer s.screen.Unlock()
+	for y := 0; y < terminalRows; y++ {
+		row := make([]vt10x.Glyph, terminalCols)
+		for x := range row {
+			row[x] = s.screen.Cell(x, y)
+		}
+		if strings.Contains(glyphText(row), text) {
 			return row
 		}
 	}

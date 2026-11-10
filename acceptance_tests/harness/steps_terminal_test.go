@@ -5,6 +5,7 @@ package acceptance_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -598,15 +599,121 @@ func theDiffOverlayShouldIncludeWhatTheRemoteSaid(ctx context.Context) error {
 	return err
 }
 
-// thePickerShouldShowANoticeContaining asserts the picker is on screen with the
-// phrase, so a notice can't be confused with the same words in an overlay.
-func thePickerShouldShowANoticeContaining(ctx context.Context, phrase string) error {
+// thePickerShouldNote asserts the picker is on screen with exactly want as the note
+// after its diff hint.
+func thePickerShouldNote(ctx context.Context, want string) error {
 	session, err := runningTerminal(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = session.waitFor("a notice containing "+phrase, func(s TerminalScreen) bool {
-		return s.HasPicker() && strings.Contains(s.String(), phrase)
+	_, err = session.waitFor("the note "+want, func(s TerminalScreen) bool {
+		return s.HasPicker() && s.Note() == want
 	})
 	return err
+}
+
+// thePickersNoteShouldContain asserts the note after the picker's diff hint holds
+// phrase.
+func thePickersNoteShouldContain(ctx context.Context, phrase string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("a note containing "+phrase, func(s TerminalScreen) bool {
+		return s.HasPicker() && strings.Contains(s.Note(), phrase)
+	})
+	return err
+}
+
+// theDiffHintShouldRead asserts the picker's line about diffs is exactly want.
+func theDiffHintShouldRead(ctx context.Context, want string) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the diff hint "+want, func(s TerminalScreen) bool { return s.DiffHint() == want })
+	return err
+}
+
+// aRemoteThatRecordsEachFileItSends points the scenario's remote at the recording
+// shell, logging into the scenario's throwaway home so the log goes with it.
+func aRemoteThatRecordsEachFileItSends(ctx context.Context) (context.Context, error) {
+	home, _ := ctx.Value(homeKey{}).(string)
+	if home == "" {
+		return ctx, fmt.Errorf("no scenario home to keep the send log in")
+	}
+	return context.WithValue(ctx, sendLogKey{}, filepath.Join(home, "sends")), nil
+}
+
+// theRemoteShouldNotHaveBeenAskedForACopy waits for the picker's note, which comes
+// once the diff's fetch is over, then checks the remote logged no send.
+func theRemoteShouldNotHaveBeenAskedForACopy(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("a note", TerminalScreen.HasNotice)
+	if err != nil {
+		return err
+	}
+	sendLog, _ := ctx.Value(sendLogKey{}).(string)
+	data, err := os.ReadFile(sendLog)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("the remote sent %d time(s)", strings.Count(string(data), "\n"))
+}
+
+// theDiffOverlayShouldBeDrawnInsideABox asserts the overlay's first and last lines
+// close a box whose every other line meets both of its sides.
+func theDiffOverlayShouldBeDrawnInsideABox(ctx context.Context) error {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the diff overlay", TerminalScreen.HasOverlay)
+	if err != nil {
+		return err
+	}
+	screen, err := session.settle()
+	if err != nil {
+		return err
+	}
+	if !isBox(screen.Framed) {
+		return fmt.Errorf("the overlay isn't drawn inside a box; screen was:\n%s", strings.Join(screen.Framed, "\n"))
+	}
+	return nil
+}
+
+// isBox reports whether lines form one closed box the width of the terminal.
+func isBox(lines []string) bool {
+	if len(lines) < 2 {
+		return false
+	}
+	last := len(lines) - 1
+	for i, line := range lines {
+		runes := []rune(line)
+		if len(runes) != terminalCols {
+			return false
+		}
+		left, right := string(runes[0]), string(runes[len(runes)-1])
+		switch i {
+		case 0:
+			if left != "┌" || right != "┐" {
+				return false
+			}
+		case last:
+			if left != "└" || right != "┘" {
+				return false
+			}
+		default:
+			if !(left == "│" && right == "│") && !(left == "├" && right == "┤") {
+				return false
+			}
+		}
+	}
+	return true
 }

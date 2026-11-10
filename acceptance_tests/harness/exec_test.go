@@ -135,6 +135,11 @@ func csyncEnv(ctx context.Context) []string {
 		if slowSend {
 			rsh = slowSendRsh
 		}
+		sendLog, _ := ctx.Value(sendLogKey{}).(string)
+		if sendLog != "" {
+			rsh = recordSendRsh
+			env = append(env, "SEND_LOG="+sendLog)
+		}
 		failSend, _ := ctx.Value(failSendModeKey{}).(bool)
 		if failSend {
 			rsh = failSendRsh

@@ -5,21 +5,21 @@ import (
 	"testing"
 )
 
-// A notice has to name exactly the copies that tripped its check.
-func TestWhichCopies(t *testing.T) {
+// A local copy is fetched first, whichever side of the sync it is on.
+func TestFetchOrder_LocalFirst(t *testing.T) {
 	cases := []struct {
-		source, destination bool
-		want                Copies
+		source, destination string
+		first               Copy
 	}{
-		{false, false, NoCopies},
-		{true, false, SourceCopy},
-		{false, true, DestinationCopy},
-		{true, true, BothCopies},
+		{"./project", "host:/project", SourceCopy},
+		{"host:/project", "./project", DestinationCopy},
+		{"./a", "./b", SourceCopy},
+		{"one:/a", "two:/b", SourceCopy},
 	}
 	for _, c := range cases {
-		got := whichCopies(c.source, c.destination)
-		if got != c.want {
-			t.Errorf("whichCopies(%v, %v) = %v, want %v", c.source, c.destination, got, c.want)
+		got := fetchOrder(c.source, c.destination)[0].copy
+		if got != c.first {
+			t.Errorf("fetchOrder(%q, %q) starts with %v, want %v", c.source, c.destination, got, c.first)
 		}
 	}
 }

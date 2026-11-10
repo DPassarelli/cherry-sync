@@ -24,8 +24,11 @@ const pickerPromptPrefix = "? "
 // overlayRule is the character the overlay's rule above its hint line is drawn with.
 const overlayRule = "─"
 
-// noticePrefix opens every notice the picker shows in place of a diff.
-const noticePrefix = "no diff: "
+// noticePrefix opens every note the picker shows in place of a diff.
+const noticePrefix = "cannot diff:"
+
+// diffHintPrefix opens the picker's line about diffs, which any note follows.
+const diffHintPrefix = "d diff"
 
 // pickerRowRE matches a change row: the cursor marker, the checkbox, and the
 // basename, which runs up to the two spaces before the verb.
@@ -45,12 +48,40 @@ type PickerRow struct {
 const wrapIndicator = "↪ "
 
 // TerminalScreen is what the terminal is showing: its lines with trailing padding
-// removed, the picker's rows when any are on screen, and Unwrapped, every row run
-// together without its wrap indicator, so a line wrapped across rows reads whole.
+// and the overlay's box removed, the picker's rows when any are on screen, and
+// Unwrapped, every row run together without its wrap indicator, so a line wrapped
+// across rows reads whole. Framed keeps the lines as drawn, box included.
 type TerminalScreen struct {
 	Lines     []string
 	Rows      []PickerRow
 	Unwrapped string
+	Framed    []string
+}
+
+// Box-drawing pieces of the overlay's frame. A divider inside the box reads as a
+// rule once its ends are removed, and the box's top and bottom are dropped.
+const (
+	frameSide       = "│"
+	frameDividerL   = "├"
+	frameDividerR   = "┤"
+	frameTopLeft    = "┌"
+	frameBottomLeft = "└"
+)
+
+// unframe returns line as it reads inside the overlay's box, untrimmed, and false
+// for a line that is the box's top or bottom. A line outside any box is unchanged.
+func unframe(line string) (string, bool) {
+	trimmed := strings.TrimRight(line, " ")
+	switch {
+	case strings.HasPrefix(trimmed, frameTopLeft), strings.HasPrefix(trimmed, frameBottomLeft):
+		return "", false
+	case strings.HasPrefix(trimmed, frameDividerL) && strings.HasSuffix(trimmed, frameDividerR):
+		return strings.TrimSuffix(strings.TrimPrefix(trimmed, frameDividerL), frameDividerR), true
+	case strings.HasPrefix(trimmed, frameSide+" ") && strings.HasSuffix(trimmed, " "+frameSide):
+		return strings.TrimSuffix(strings.TrimPrefix(trimmed, frameSide+" "), " "+frameSide), true
+	default:
+		return line, true
+	}
 }
 
 // String renders the screen for a failure message.
@@ -76,8 +107,8 @@ func (s TerminalScreen) OverlayTitle() string {
 	return s.Lines[0]
 }
 
-// OverlayHeader returns the lines between the overlay's title and the rule that
-// closes its header, or nil when no overlay is on screen. A line wrapped across rows
+// OverlayHeader returns the lines between the rule under the overlay's title and the
+// rule that closes its header, or nil when no overlay is on screen. A line wrapped across rows
 // is joined back into one, since how far a path wraps depends on where the
 // scenario's directories happen to live.
 func (s TerminalScreen) OverlayHeader() []string {
@@ -85,7 +116,8 @@ func (s TerminalScreen) OverlayHeader() []string {
 		return nil
 	}
 	var lines []string
-	for _, row := range s.Lines[1:s.firstRule()] {
+	start := s.ruleAfter(0) + 1
+	for _, row := range s.Lines[min(start, len(s.Lines)):s.ruleAfter(start)] {
 		continued, wrapped := strings.CutPrefix(row, wrapIndicator)
 		if wrapped && len(lines) > 0 {
 			lines[len(lines)-1] += continued
@@ -102,14 +134,15 @@ func (s TerminalScreen) OverlayBody() []string {
 	if !s.HasOverlay() {
 		return nil
 	}
-	return s.Lines[min(s.firstRule()+1, len(s.Lines)):]
+	end := s.ruleAfter(s.ruleAfter(0) + 1)
+	return s.Lines[min(end+1, len(s.Lines)):]
 }
 
-// firstRule returns the index of the first line drawn entirely in the overlay's
-// rule, or the number of lines when there is none.
-func (s TerminalScreen) firstRule() int {
-	for i, line := range s.Lines {
-		if isRule(line) {
+// ruleAfter returns the index of the first line from start on drawn entirely in the
+// overlay's rule, or the number of lines when there is none.
+func (s TerminalScreen) ruleAfter(start int) int {
+	for i := start; i < len(s.Lines); i++ {
+		if isRule(s.Lines[i]) {
 			return i
 		}
 	}
@@ -121,14 +154,36 @@ func isRule(line string) bool {
 	return line != "" && strings.Trim(line, overlayRule) == ""
 }
 
-// HasNotice reports whether the picker is showing a notice.
+// HasNotice reports whether the picker is showing a note about a file it can't diff.
 func (s TerminalScreen) HasNotice() bool {
+	return strings.HasPrefix(s.Note(), noticePrefix)
+}
+
+// DiffHint returns the picker's line about diffs without its indent or any note, or
+// "" when it isn't on screen.
+func (s TerminalScreen) DiffHint() string {
+	hint, _ := s.diffHintParts()
+	return hint
+}
+
+// Note returns what follows the picker's diff hint, or "" when nothing does.
+func (s TerminalScreen) Note() string {
+	_, note := s.diffHintParts()
+	return note
+}
+
+// diffHintParts splits the picker's line about diffs at the parenthesis that closes
+// its fixed text, since the note after it is free to contain any characters.
+func (s TerminalScreen) diffHintParts() (string, string) {
 	for _, line := range s.Lines {
-		if strings.HasPrefix(line, noticePrefix) {
-			return true
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, diffHintPrefix) {
+			continue
 		}
+		hint, note, _ := strings.Cut(trimmed, ")")
+		return hint + ")", strings.TrimSpace(note)
 	}
-	return false
+	return "", ""
 }
 
 // HasLine reports whether a line on screen is exactly want.
@@ -192,7 +247,12 @@ func parseTerminalScreen(raw string) TerminalScreen {
 	var screen TerminalScreen
 	dir := ""
 	var unwrapped strings.Builder
-	for line := range strings.SplitSeq(strings.TrimRight(raw, " \n"), "\n") {
+	for drawn := range strings.SplitSeq(strings.TrimRight(raw, " \n"), "\n") {
+		screen.Framed = append(screen.Framed, strings.TrimRight(drawn, " "))
+		line, inside := unframe(drawn)
+		if !inside {
+			continue
+		}
 		unwrapped.WriteString(strings.TrimPrefix(line, wrapIndicator))
 		trimmed := strings.TrimRight(line, " ")
 		screen.Lines = append(screen.Lines, trimmed)
