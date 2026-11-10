@@ -53,12 +53,11 @@ var helpFlags = []helpColumn{
 
 // Usage returns csync's full help text: the --version report as a header, then
 // the USAGE, EXAMPLES, COMMANDS, and FLAGS sections, and a closing note on saved
-// targets. raw is the build version (main.version); the report header is reused
-// verbatim (VersionReport) so --help and --version cannot drift. main prints it
-// to stdout for --help.
-func Usage(raw string) string {
+// targets. The report header is reused verbatim (VersionReport) so --help and
+// --version cannot drift. main prints it to stdout for --help.
+func Usage(build Build) string {
 	var b strings.Builder
-	b.WriteString(VersionReport(raw))
+	b.WriteString(VersionReport(build))
 	b.WriteString("\n\n")
 
 	b.WriteString("USAGE\n")

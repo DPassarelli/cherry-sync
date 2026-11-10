@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
 )
 
@@ -19,41 +18,82 @@ import (
 // the filename that precedes them.
 const detailSeparator = " · "
 
-// actionDetail returns the annotation for one row of the change list, measured
-// against now. Only an update carries one: a create has no counterpart on the other
-// side and a delete is being removed rather than compared, so for both the column
-// is left empty rather than filled with a claim about a file that has no second
-// copy.
+// detailSegment is one run of a row's annotation. The annotation stays in segments
+// up to the point of rendering because its text is measured and trimmed first, and
+// neither is safe once escape sequences have been written into the string.
+type detailSegment struct {
+	text       string
+	emphasized bool
+}
+
+// actionDetail returns the annotation for one row of the change list as plain text,
+// measured against now.
+func actionDetail(a compare.Action, now time.Time) string {
+	var b strings.Builder
+	for _, s := range detailSegments(a, now) {
+		b.WriteString(s.text)
+	}
+	return b.String()
+}
+
+// detailSegments builds the annotation for one row of the change list. Only an update
+// carries one: a create has no counterpart on the other side and a delete is being
+// removed rather than compared, so for both the column is left empty rather than
+// filled with a claim about a file that has no second copy.
 //
 // The annotation states the size gap between the two copies and then each copy's
 // own age, rather than the gap between their timestamps. Two ages answer "is this
 // the copy I was just working on?" directly, where a single interval between them
-// leaves the reader to work out whether either is recent at all.
+// leaves the reader to work out whether either is recent at all. The newer copy's
+// name and phrase are emphasized because which copy is the live one is what a reader
+// most needs from the row before deciding to overwrite it.
 //
 // An update whose destination could not be measured falls back to the itemize
 // labels, which say which attributes differ without needing the far side.
-func actionDetail(a compare.Action, now time.Time) string {
+func detailSegments(a compare.Action, now time.Time) []detailSegment {
 	if a.Verb != "update" {
-		return ""
+		return nil
 	}
 	if !a.Dest.Known {
-		return differenceLabel(a.Diff)
+		return []detailSegment{{text: differenceLabel(a.Diff)}}
 	}
-	source := sourceClause(a, now)
-	return source + detailSeparator + "dest last updated " + age(a.Dest.ModTime, now)
+	source := sourceSegments(a, now)
+	dest := detailSegment{
+		text:       "dest last updated " + age(a.Dest.ModTime, now),
+		emphasized: isNewer(a.Dest.ModTime, a.ModTime),
+	}
+	return append(source, detailSegment{text: detailSeparator}, dest)
 }
 
-// sourceClause describes the incoming copy: how its size compares with the one it
-// would replace, and when it was last written. The size half is omitted when the
-// two copies are the same size, and "source" then attaches to the timestamp instead
-// so the clause always names whose age it is reporting.
-func sourceClause(a compare.Action, now time.Time) string {
+// sourceSegments describes the incoming copy: how its size compares with the one it
+// would replace, and when it was last written. The size half is omitted when the two
+// copies are the same size, leaving "source" to attach to the timestamp so the clause
+// always names whose age it is reporting. When present it stays out of the emphasis,
+// because a size gap says nothing about which copy is newer.
+func sourceSegments(a compare.Action, now time.Time) []detailSegment {
+	updated := "last updated " + age(a.ModTime, now)
+	newer := isNewer(a.ModTime, a.Dest.ModTime)
 	gap := a.Size - a.Dest.Size
 	if gap == 0 {
-		return "source last updated " + age(a.ModTime, now)
+		return []detailSegment{{text: "source " + updated, emphasized: newer}}
 	}
-	return "source is " + formatBytes(abs64(gap)) + " " + comparative(gap > 0, "larger", "smaller") +
-		", last updated " + age(a.ModTime, now)
+	size := " is " + formatBytes(abs64(gap)) + " " + comparative(gap > 0, "larger", "smaller") + ", "
+	return []detailSegment{
+		{text: "source", emphasized: newer},
+		{text: size},
+		{text: updated, emphasized: newer},
+	}
+}
+
+// isNewer reports whether one copy's timestamp is later than the other's. An unreadable
+// timestamp ranks nothing, since calling its counterpart newer would be a guess. Whole
+// seconds are the finest precision both sides share: rsync reports only seconds, while
+// a stat of a local destination also carries nanoseconds.
+func isNewer(when, other time.Time) bool {
+	if when.IsZero() || other.IsZero() {
+		return false
+	}
+	return when.Truncate(time.Second).After(other.Truncate(time.Second))
 }
 
 // age renders how long ago a file was last written, as a compact span. The zero
@@ -149,54 +189,4 @@ func formatBytes(n int64) string {
 		return fmt.Sprintf("%.1f %s", value, byteUnits[unit])
 	}
 	return fmt.Sprintf("%.0f %s", value, byteUnits[unit])
-}
-
-// detailGap separates a row's annotation from the verb that precedes it.
-const detailGap = "  "
-
-// minDetailWidth is the narrowest an annotation may be squeezed to before it is
-// dropped instead. A couple of surviving characters and an ellipsis tell the reader
-// nothing except that something was cut, and the columns are better spent on the
-// filename.
-const minDetailWidth = 12
-
-// fitDetail trims a row's annotation to what the terminal can show, given the
-// display width already used by the rest of the row and the total width available.
-// A row that overflows would wrap onto a second terminal line while the scroll
-// window still counted it as one, so the window would slide out of step with what
-// the terminal actually drew — which is why this trims rather than letting the
-// terminal decide.
-//
-// A width of zero means the terminal has not reported its size yet, so nothing is
-// trimmed: guessing narrow would flicker the annotation away on the first frame and
-// back on the second.
-func fitDetail(detail string, used, width int) string {
-	if detail == "" || width <= 0 {
-		return detail
-	}
-	available := width - used - len(detailGap)
-	if available < minDetailWidth {
-		return ""
-	}
-	if lipgloss.Width(detail) <= available {
-		return detail
-	}
-	return truncateCells(detail, available-1) + "…"
-}
-
-// truncateCells cuts s to at most max display cells, measuring in cells rather than
-// bytes or runes so a multi-byte name or a wide CJK character is not cut mid-glyph
-// and does not overflow the row it was measured into.
-func truncateCells(s string, max int) string {
-	var b strings.Builder
-	used := 0
-	for _, r := range s {
-		w := lipgloss.Width(string(r))
-		if used+w > max {
-			break
-		}
-		b.WriteRune(r)
-		used += w
-	}
-	return b.String()
 }

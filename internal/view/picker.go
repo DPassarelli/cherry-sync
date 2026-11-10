@@ -33,6 +33,24 @@ type pickerModel struct {
 	preamble string
 	offset   int
 	accepted bool
+	// differ names the sides and gets a row's diff, fetching marks one in progress
+	// and progress shows that it is, notice explains a row with no diff to show,
+	// overlay holds the lines of an open diff, overlayPath is the file they are
+	// about, and overlayIsDiff tells real diff lines, which are colored by side,
+	// from a failure message, which is not.
+	differ        Differ
+	notice        string
+	fetching      bool
+	progress      string
+	overlay       []string
+	overlayPath   string
+	overlayIsDiff bool
+	// overlayOffset is the first overlay line on screen.
+	overlayOffset int
+	// fetchID tells one fetch's progress messages from a later one's, and fetchFrame
+	// is its spinner's current frame.
+	fetchID    int
+	fetchFrame int
 	// now is the moment each row's ages are measured against, fixed when the picker
 	// is built rather than read per frame: the list does not re-render on a timer,
 	// and an age that crept forward between two repaints of the same unchanged list
@@ -41,9 +59,10 @@ type pickerModel struct {
 }
 
 // pickerHeaderLines is how many rows View prints above the change list — a leading
-// blank, the "? Choose…" prompt, and the key hint — and so must be subtracted from
-// the terminal height to get the rows available for the scrolling list region.
-const pickerHeaderLines = 3
+// blank, the "? Choose…" prompt, the key hint, and the diff hint — and so must be
+// subtracted from the terminal height to get the rows available for the scrolling
+// list region.
+const pickerHeaderLines = 4
 
 // scrollMargin is one row left unused at the bottom of the picker's frame. View
 // ends its output with a trailing newline; without a spare row that newline scrolls
@@ -79,9 +98,10 @@ func newModel(actions []compare.Action) pickerModel {
 // of its scroll region so the preamble stays on screen. It drives a Bubble Tea
 // program and so needs a terminal: main selects it only when stdin and stdout are
 // TTYs.
-func RunPicker(actions []compare.Action, preamble string) ([]compare.Action, error) {
+func RunPicker(actions []compare.Action, preamble string, differ Differ) ([]compare.Action, error) {
 	m := newModel(actions)
 	m.preamble = preamble
+	m.differ = differ
 	final, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return nil, err
@@ -101,7 +121,7 @@ func (m pickerModel) Init() tea.Cmd {
 // Update handles one message: a WindowSizeMsg records the terminal width and height
 // that bound the scroll window; a keypress moves or acts. Keys: arrow/jk move the
 // cursor (clamped at the ends), space toggles the row under it, 'a' toggles the
-// whole list (all↔none), Enter accepts the selection and quits, and Ctrl-C
+// whole list (all↔none), 'd' asks for the row's diff, Enter accepts the selection and quits, and Ctrl-C
 // cancels — quitting without accepting. After a move or resize the scroll offset is
 // re-settled so the window follows the cursor to its edges. Other messages pass
 // through untouched.
@@ -112,7 +132,17 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.offset = m.scrollOffset()
 		return m, nil
+	case diffFetchedMsg:
+		return m.openOverlay(msg)
+	case fetchRevealMsg:
+		return m.showFetchProgress(msg.fetch)
+	case fetchFrameMsg:
+		return m.advanceFetchProgress(msg.fetch)
 	case tea.KeyMsg:
+		if m.overlay != nil {
+			return m.overlayKey(msg)
+		}
+		m.notice = ""
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
@@ -128,6 +158,12 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle the whole list: clear it if every row is checked, otherwise check
 			// every row.
 			m.sel.SetAll(!m.sel.AllChecked())
+		case "d":
+			var fetch tea.Cmd
+			m, fetch = m.pressDiff()
+			if fetch != nil {
+				return m, fetch
+			}
 		case "enter":
 			m.accepted = true
 			return m, tea.Quit

@@ -100,6 +100,12 @@ func expandHome(path string) (string, error) {
 	return filepath.Join(home, rest), nil
 }
 
+// IsRemote reports whether op names a path on another host.
+func IsRemote(op string) bool {
+	prefix, _ := splitRemote(op)
+	return prefix != ""
+}
+
 // splitRemote separates op into an rsync remote prefix ("[user@]host:") and the
 // path that follows; the prefix is empty for a local operand. It uses rsync's own
 // rule: an operand is remote when a ":" appears before the first "/", so a local

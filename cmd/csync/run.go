@@ -15,6 +15,7 @@ import (
 	"github.com/dpassarelli/cherry-sync/internal/cli"
 	"github.com/dpassarelli/cherry-sync/internal/command"
 	"github.com/dpassarelli/cherry-sync/internal/compare"
+	"github.com/dpassarelli/cherry-sync/internal/filediff"
 	"github.com/dpassarelli/cherry-sync/internal/runlog"
 	"github.com/dpassarelli/cherry-sync/internal/selection"
 	"github.com/dpassarelli/cherry-sync/internal/transfer"
@@ -134,7 +135,7 @@ func run() (code int) {
 	}
 
 	if interactive {
-		printAbove(view.Banner(version))
+		printAbove(view.Banner(currentBuild()))
 	}
 	// The header discloses any operand csync rewrote inline: the From fields carry
 	// the original path portion when a remote "~" was resolved, which Header renders
@@ -227,7 +228,13 @@ func run() (code int) {
 				picked = result.Actions
 			}
 		} else {
-			chosen, pickErr := view.RunPicker(result.Actions, preamble.String())
+			chosen, pickErr := view.RunPicker(result.Actions, preamble.String(), view.Differ{
+				Source:      source,
+				Destination: destination,
+				Fetch: func(path string) (filediff.Result, error) {
+					return filediff.Between(ctx, runner, source, destination, path)
+				},
+			})
 			if pickErr != nil {
 				fmt.Fprintln(os.Stderr, pickErr)
 				return 1

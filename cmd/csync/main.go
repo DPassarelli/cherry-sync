@@ -14,8 +14,8 @@ import (
 
 // version is csync's release version, injected at build time via
 // `-ldflags "-X main.version=…"` (see .goreleaser.yaml). It defaults to "dev"
-// for un-injected builds — `go build ./cmd/csync`, `go run`, the test harness —
-// which the version line renders as "cherry-sync (dev build)".
+// for un-injected builds (`go build ./cmd/csync`, `go run`), which the version
+// line renders as a dev build.
 var version = "dev"
 
 // compareTimeout is how long a comparison may run before csync stops waiting on

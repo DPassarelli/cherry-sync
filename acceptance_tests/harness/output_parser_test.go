@@ -93,10 +93,11 @@ var (
 	// applied no deletions and the header stays in its plain "(N files)" form.
 	removedRE = regexp.MustCompile(`(\d+) of which (?:was|were) removed`)
 	// versionLineRE captures the first line `csync --version` prints — either
-	// "cherry-sync v<semver>" for a release build or "cherry-sync (dev build)"
-	// for an un-injected one. The description and URL follow on their own lines;
-	// this matches only the version line.
-	versionLineRE = regexp.MustCompile(`(?m)^(cherry-sync (?:v.+|\(dev build\)))\s*$`)
+	// "cherry-sync v<semver>" for a release build or "cherry-sync (dev build)" for
+	// an un-injected one, optionally naming its commit ("(dev build: e608fd7)").
+	// The description and URL follow on their own lines; this matches only the
+	// version line.
+	versionLineRE = regexp.MustCompile(`(?m)^(cherry-sync (?:v.+|\(dev build(?:: [0-9a-f]+)?\)))\s*$`)
 	// logPathRE captures the path of the run log csync wrote. It is matched against
 	// both whole streams rather than the report region, so where csync chooses to
 	// disclose the path is not something the scenarios depend on: a clean run reports

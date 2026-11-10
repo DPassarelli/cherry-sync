@@ -83,6 +83,86 @@ shift
 exec "$@"
 `
 
+// failSendRsh is the path to a test-only remote shell that answers the comparison
+// and refuses to send a file. See failSendRshScript.
+var failSendRsh string
+
+// failSendMessage is what the refusing remote writes, so a scenario can check that
+// csync passed rsync's account of the failure on rather than a bare exit status.
+const failSendMessage = "send refused by the test remote"
+
+// failSendRshScript is the body of the refusing remote shell. As with the slow
+// remote, a real send is the one pass running --sender without -n.
+const failSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then
+	echo "${FAIL_SEND_MESSAGE:-` + failSendMessage + `}" >&2
+	exit 13
+fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
+// recordSendRsh is the path to a test-only remote shell that notes each time it is
+// asked to send a file. See recordSendRshScript.
+var recordSendRsh string
+
+// recordSendRshScript is the body of the recording remote shell. As with the slow
+// remote, a real send is the one pass running --sender without -n; each appends a
+// line to SEND_LOG and then runs as the plain fake remote does. The file names
+// travel over rsync's own protocol rather than its arguments, so only the send
+// itself can be recorded.
+const recordSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then echo send >> "$SEND_LOG"; fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
+// slowSendRsh is the path to a test-only remote shell that answers the comparison
+// promptly and is slow to send a file. See slowSendRshScript.
+var slowSendRsh string
+
+// slowSendRshScript is the body of the slow remote shell. A real file is sent by an
+// rsync running with --sender and without -n; the comparison's passes are all dry
+// runs, so only fetching a copy is delayed, and long enough for an indicator to show.
+const slowSendRshScript = `#!/bin/sh
+if [ "$1" = "-l" ]; then shift 2; fi
+shift
+sender=no
+dry=no
+for a in "$@"; do
+	case "$a" in
+	--sender) sender=yes ;;
+	--*) ;;
+	-*) case "$a" in *n*) dry=yes ;; esac ;;
+	esac
+done
+if [ "$sender" = yes ] && [ "$dry" = no ]; then sleep 2; fi
+if [ -n "$FAKE_REMOTE_HOME" ]; then cd "$FAKE_REMOTE_HOME" || exit 1; fi
+exec "$@"
+`
+
 // stallRsh is the path to a test-only remote shell that answers every rsync the
 // comparison runs and goes silent once the transfer starts. Scenarios that need a
 // stalled transfer point RSYNC_RSH here instead of at fakeRsh. See stallRshScript.
@@ -177,6 +257,22 @@ type stallModeKey struct{}
 // comparison but fails the measurement` step) as needing the refusing remote shell
 // rather than the plain one.
 type failMeasureModeKey struct{}
+
+// slowSendModeKey flags a scenario as needing the remote that is slow to send files,
+// so csyncEnv points RSYNC_RSH at slowSendRsh.
+type slowSendModeKey struct{}
+
+// sendLogKey stashes the file the recording remote appends to for each send, and so
+// also flags a scenario as needing that remote.
+type sendLogKey struct{}
+
+// failSendModeKey flags a scenario as needing the remote that refuses to send files,
+// so csyncEnv points RSYNC_RSH at failSendRsh.
+type failSendModeKey struct{}
+
+// failSendMessageKey holds the sentence the refusing remote should write in place of
+// failSendMessage, for a scenario that needs a particular one.
+type failSendMessageKey struct{}
 
 // homeKey stashes a per-scenario throwaway home directory, created by the Before
 // hook and removed by the After hook. runCsync points the csync child's HOME and
@@ -318,6 +414,27 @@ func TestMain(m *testing.M) {
 	err = os.WriteFile(failMeasureRsh, []byte(failMeasureRshScript), 0o755)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "failmeasurersh:", err)
+		os.Exit(2)
+	}
+
+	failSendRsh = filepath.Join(tmpDir, "failsendrsh")
+	err = os.WriteFile(failSendRsh, []byte(failSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "failsendrsh:", err)
+		os.Exit(2)
+	}
+
+	recordSendRsh = filepath.Join(tmpDir, "recordsendrsh")
+	err = os.WriteFile(recordSendRsh, []byte(recordSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "recordsendrsh:", err)
+		os.Exit(2)
+	}
+
+	slowSendRsh = filepath.Join(tmpDir, "slowsendrsh")
+	err = os.WriteFile(slowSendRsh, []byte(slowSendRshScript), 0o755)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "slowsendrsh:", err)
 		os.Exit(2)
 	}
 
