@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 	"github.com/hinshun/vt10x"
@@ -86,10 +87,13 @@ func startTerminalSession(ctx context.Context, args []string) (*terminalSession,
 	go func() {
 		defer close(session.readerDone)
 		buf := make([]byte, 4096)
+		var held []byte
 		for {
 			n, readErr := ptmx.Read(buf)
 			if n > 0 {
-				_, _ = session.screen.Write(buf[:n])
+				var whole []byte
+				whole, held = splitIncompleteRune(append(held, buf[:n]...))
+				_, _ = session.screen.Write(whole)
 			}
 			if readErr != nil {
 				return
@@ -97,6 +101,23 @@ func startTerminalSession(ctx context.Context, args []string) (*terminalSession,
 		}
 	}()
 	return session, nil
+}
+
+// splitIncompleteRune splits data before a UTF-8 character cut off at its end. The
+// emulator drops a character whose bytes arrive in two writes, and how a pty chunks
+// its output varies by platform (macOS hands back smaller reads than Linux), so a
+// box-drawing character could vanish on one runner and not another.
+func splitIncompleteRune(data []byte) ([]byte, []byte) {
+	for back := 1; back < utf8.UTFMax && back <= len(data); back++ {
+		start := len(data) - back
+		if utf8.RuneStart(data[start]) {
+			if utf8.FullRune(data[start:]) {
+				return data, nil
+			}
+			return data[:start], data[start:]
+		}
+	}
+	return data, nil
 }
 
 // press sends the named key to csync.
