@@ -375,3 +375,30 @@ func TestParseActions_OpenrsyncBareDeleteWithGlobMeta_IsDropped(t *testing.T) {
 		t.Errorf("got %+v, want no actions (dropped)", got)
 	}
 }
+
+// Behavior: openrsync can report a deleted folder without its trailing slash, as
+// macOS CI showed. The deletions beneath it prove it is a folder, and the slash is
+// restored so a folder ignore rule such as build/ still matches it.
+func TestParseActions_BareDeletedFolder_RegainsTheTrailingSlash(t *testing.T) {
+	got := parseActions("*deleting build/a/x.log\n*deleting build/a\n*deleting build\n")
+
+	want := []Action{
+		{Verb: "delete", Path: "build/a/x.log"},
+		{Verb: "delete", Path: "build/a/"},
+		{Verb: "delete", Path: "build/"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: only deletions count as evidence of a folder. A file being replaced by
+// a folder of the same name is deleted while the folder's contents are created, and
+// that file must keep its bare name.
+func TestParseActions_DeletedFileUnderCreates_KeepsItsName(t *testing.T) {
+	got := parseActions("*deleting build\n" + line(">f+++++++++", 1, "build/x.log"))
+
+	if got[0].Path != "build" {
+		t.Errorf("got %q, want the deleted file to stay %q", got[0].Path, "build")
+	}
+}
