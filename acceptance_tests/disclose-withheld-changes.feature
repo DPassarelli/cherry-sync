@@ -125,3 +125,57 @@ Feature: Say what was held back
     Then  the withheld changes should be summarized as:
       | folder | count | actions             |
       | logs/  | 11    | 6 create · 5 delete |
+
+  @remote
+  Scenario: A deleted ignored folder is summarized on a single row
+    # The folder's own deletion once appeared as a second row beside its summary,
+    # and its subfolders were counted as files (#139).
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that 11 files have been added on the remote under "build/a"
+    When  I run "csync ./project user@host:/project"
+    Then  the withheld changes should be summarized as:
+      | folder | count | actions |
+      | build/ | 11    | delete  |
+
+  @remote
+  Scenario: A deleted ignored folder collapses however few files it holds
+    # The threshold keeps long lists short; a whole-folder deletion reads as one
+    # change whatever its size.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that 3 files have been added on the remote under "build/a"
+    When  I run "csync ./project user@host:/project"
+    Then  the withheld changes should be summarized as:
+      | folder | count | actions |
+      | build/ | 3     | delete  |
+
+  @remote
+  Scenario: A deleted ignored subfolder collapses inside a kept folder
+    # logs/README.md is not ignored, so logs/ itself survives the push.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      logs/README.md
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      logs/old/
+      """
+    And   that 3 files have been added on the remote under "logs/old"
+    When  I run "csync ./project user@host:/project"
+    Then  the withheld changes should be summarized as:
+      | folder    | count | actions |
+      | logs/old/ | 3     | delete  |

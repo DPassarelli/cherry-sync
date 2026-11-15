@@ -25,7 +25,8 @@ type ReportedOutput struct {
 	Withheld         []Action
 	HasWithheldBlock bool
 	// WithheldSummaries holds the withheld block's summary rows, each standing in for
-	// the many withheld changes under one top-level folder. They are kept apart from
+	// the many withheld changes under one top-level folder, or for a whole folder
+	// being deleted. They are kept apart from
 	// Withheld because a summary names a folder and a count, not a change.
 	WithheldSummaries []WithheldSummary
 	SyncCount         int
@@ -56,8 +57,8 @@ type Action struct {
 }
 
 // WithheldSummary is the test-side view of one summary row in the withheld block:
-// the top-level folder it stands for, how many withheld files it covers, and its
-// actions column exactly as rendered (a lone verb, or per-verb counts).
+// the folder it stands for, how many withheld files it covers, and its actions
+// column exactly as rendered (a lone verb, or per-verb counts).
 type WithheldSummary struct {
 	Folder  string
 	Count   int
@@ -125,6 +126,11 @@ var (
 	// tried before actionLineRE, which would otherwise read the row as a change to a
 	// path named after the folder.
 	withheldSummaryRE = regexp.MustCompile(`^[^\S\n]+(\S+)[^\S\n]+([\d,]+) files[^\S\n]{2,}(.+?)[^\S\n]*$`)
+	// withheldFolderRE captures a withheld row standing in for a whole folder that
+	// is going away: the folder, its action, and the count of files it holds. It is
+	// read as a summary because, like one, it names a folder and a count rather than
+	// a single change.
+	withheldFolderRE = regexp.MustCompile(`^[^\S\n]+(\S+/)[^\S\n]+(\S+)[^\S\n]{2,}\(with ([\d,]+) files?\)[^\S\n]*$`)
 	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
 	// past — today, only its inability to write a run log.
 	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
@@ -217,6 +223,12 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		if sm != nil {
 			n, _ := strconv.Atoi(strings.ReplaceAll(sm[2], ",", ""))
 			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: sm[1], Count: n, Actions: sm[3]})
+			continue
+		}
+		fm := withheldFolderRE.FindStringSubmatch(line)
+		if fm != nil {
+			n, _ := strconv.Atoi(strings.ReplaceAll(fm[3], ",", ""))
+			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: fm[1], Count: n, Actions: fm[2]})
 			continue
 		}
 		m := actionLineRE.FindStringSubmatch(line)
