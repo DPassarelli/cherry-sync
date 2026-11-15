@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - A gitignored folder that would be deleted now appears once under "Withheld by .gitignore:", at any depth and however few files it holds, instead of as a row for the folder beside a summary of its contents. Withheld counts, and the 10-change summary threshold, now include only files rather than the subfolders inside them. (#139)
 
+### Fixed
+
+- On macOS, a gitignored folder that exists only on the destination is no longer offered for deletion.
+
 ## [1.3.0] - 2026-10-06
 
 ### Added

@@ -52,7 +52,33 @@ func parseActions(rsyncOut string) []Action {
 		seen[key] = true
 		actions = append(actions, action)
 	}
+	markDeletedFolders(actions)
 	return actions
+}
+
+// markDeletedFolders restores the trailing slash on a deleted folder reported
+// without one, recognizing it by the deletions beneath it. openrsync was seen on
+// macOS CI to drop the slash, and the slash is what tells git the path is a folder:
+// without it a folder ignore rule such as build/ fails to match, and the ignored
+// folder is offered for deletion. An empty folder has nothing beneath it to give it
+// away, so it keeps the bare name.
+func markDeletedFolders(actions []Action) {
+	folders := map[string]bool{}
+	for _, a := range actions {
+		if a.Verb != "delete" {
+			continue
+		}
+		for i := range len(a.Path) {
+			if a.Path[i] == '/' {
+				folders[a.Path[:i]] = true
+			}
+		}
+	}
+	for i, a := range actions {
+		if a.Verb == "delete" && folders[a.Path] {
+			actions[i].Path += "/"
+		}
+	}
 }
 
 // actionFromLine translates one --out-format record into an Action, reporting

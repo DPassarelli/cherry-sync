@@ -165,6 +165,25 @@ Feature: Leave ignored files out of a sync
       | action | path           |
       | create | logs/README.md |
 
+  @remote
+  Scenario: An ignored folder only on the remote is not offered for deletion
+    # openrsync can name the deleted folder without its trailing slash, which a
+    # folder rule such as build/ does not match unless csync restores it.
+    Given a local git repository containing these files:
+      """
+      src/main.go
+      """
+    And   the repository's ".gitignore" contains:
+      """
+      build/
+      """
+    And   that 3 files have been added on the remote under "build"
+    And   that the file "notes.txt" has been added locally
+    When  I run "csync ./project user@host:/project"
+    Then  the reported actions should be:
+      | action | path      |
+      | create | notes.txt |
+
   # ---------------------------------------------------------------------------
   # TODO: sibling scenarios, each its own behavior — drafted as we drill in.
   # ---------------------------------------------------------------------------
