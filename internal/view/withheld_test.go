@@ -92,7 +92,7 @@ func deletes(paths ...string) []compare.Action {
 func TestWithheldRows_DeletedFolderIsOneRow(t *testing.T) {
 	acts := deletes("build/a/f01", "build/a/f02", "build/b.txt", "build/a/", "build/")
 	got := withheldRows(acts)
-	want := []withheldRow{{label: "build/", count: 3, actions: "delete", removesFolder: true}}
+	want := []withheldRow{{label: "build/", count: 3, actions: "delete"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("rows: got %+v, want %+v", got, want)
 	}
@@ -106,7 +106,7 @@ func TestWithheldRows_DeletedSubfolderIsOneRow(t *testing.T) {
 	got := withheldRows(acts)
 	want := []withheldRow{
 		{label: "logs/a.log", actions: "create"},
-		{label: "logs/old/", count: 1, actions: "delete", removesFolder: true},
+		{label: "logs/old/", count: 1, actions: "delete"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("rows: got %+v, want %+v", got, want)
@@ -131,7 +131,7 @@ func TestWithheldRows_SummaryAbsorbsDeletedSubfolder(t *testing.T) {
 	acts := creates("logs", 9)
 	acts = append(acts, deletes("logs/old/x.log", "logs/old/y.log", "logs/old/")...)
 	got := withheldRows(acts)
-	want := []withheldRow{{label: "logs/", count: 11, actions: "9 create · 2 delete"}}
+	want := []withheldRow{{label: "logs/", count: 11, actions: "9 create · 2 delete", itemized: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("rows: got %+v, want %+v", got, want)
 	}
@@ -141,6 +141,28 @@ func TestWithheldRows_SummaryAbsorbsDeletedSubfolder(t *testing.T) {
 func TestWithheld_DeletedFolderOfOneFileIsSingular(t *testing.T) {
 	got := Withheld(deletes("tmp/x", "tmp/"))
 	want := "delete  (with 1 file)"
+	if !strings.Contains(got, want) {
+		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
+	}
+}
+
+// Rule 1: a folded row with a single action names its file count, which would
+// otherwise be hidden.
+func TestWithheld_SingleActionFoldShowsFileCount(t *testing.T) {
+	got := Withheld(creates("build/x", 11))
+	want := "build/  create  (with 11 files)"
+	if !strings.Contains(got, want) {
+		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
+	}
+}
+
+// Rule 2: a folded row with mixed actions leaves the file count off, since the
+// per-action counts already add up to it.
+func TestWithheld_MixedActionFoldOmitsFileCount(t *testing.T) {
+	acts := creates("logs", 6)
+	acts = append(acts, deletes("logs/a", "logs/b", "logs/c", "logs/d", "logs/e")...)
+	got := Withheld(acts)
+	want := "logs/  6 create · 5 delete\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
 	}

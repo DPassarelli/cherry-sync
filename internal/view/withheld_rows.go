@@ -19,13 +19,13 @@ const summaryThreshold = 10
 
 // withheldRow is one line of the withheld section: either a single change (count
 // 0, label the path, actions its verb) or a folded folder (label the folder, count
-// the files beneath it, actions the verbs among them). removesFolder marks a fold
-// whose folder is itself being deleted rather than merely holding changes.
+// the files beneath it, actions the verbs among them). itemized marks actions that
+// carry a count per verb, which between them already state the file count.
 type withheldRow struct {
-	label         string
-	count         int
-	actions       string
-	removesFolder bool
+	label    string
+	count    int
+	actions  string
+	itemized bool
 }
 
 // rowPlan holds what is known about the whole set of withheld changes before any
@@ -66,14 +66,19 @@ func withheldRows(actions []compare.Action) []withheldRow {
 			continue
 		}
 		laidOut[key] = true
-		row := withheldRow{label: key, count: len(files[key]), removesFolder: plan.deleted[key]}
-		row.actions = "delete"
-		if !row.removesFolder {
-			row.actions = verbCounts(files[key])
-		}
-		rows = append(rows, row)
+		rows = append(rows, foldedRow(key, files[key], plan.deleted[key]))
 	}
 	return rows
+}
+
+// foldedRow builds the row for folder from the files folded into it. A deleted
+// folder reads as a deletion even when it holds no files at all.
+func foldedRow(folder string, files []compare.Action, deleted bool) withheldRow {
+	if deleted {
+		return withheldRow{label: folder, count: len(files), actions: "delete"}
+	}
+	tally := verbTally(files)
+	return withheldRow{label: folder, count: len(files), actions: describeVerbs(tally), itemized: len(tally) > 1}
 }
 
 // newRowPlan gathers the deleted folders and each top-level folder's file count.
@@ -132,27 +137,32 @@ func topFolder(path string) (string, bool) {
 	return path[:i+1], true
 }
 
-// verbCounts describes the verbs among a summarized folder's changes: the bare verb
-// when they all agree, or each verb's count otherwise, most frequent first and ties
-// by name, so the same set of changes always reads the same way.
-func verbCounts(actions []compare.Action) string {
-	counts := map[string]int{}
+// verbTally counts how many of actions carry each verb.
+func verbTally(actions []compare.Action) map[string]int {
+	tally := map[string]int{}
 	for _, a := range actions {
-		counts[a.Verb]++
+		tally[a.Verb]++
 	}
-	if len(counts) == 1 {
-		return actions[0].Verb
-	}
-	verbs := make([]string, 0, len(counts))
-	for v := range counts {
+	return tally
+}
+
+// describeVerbs writes a folded row's actions: the bare verb when they all agree,
+// or each verb's count otherwise, most frequent first and ties by name, so the same
+// set of changes always reads the same way.
+func describeVerbs(tally map[string]int) string {
+	verbs := make([]string, 0, len(tally))
+	for v := range tally {
 		verbs = append(verbs, v)
 	}
+	if len(verbs) == 1 {
+		return verbs[0]
+	}
 	slices.SortFunc(verbs, func(a, b string) int {
-		return cmp.Or(cmp.Compare(counts[b], counts[a]), cmp.Compare(a, b))
+		return cmp.Or(cmp.Compare(tally[b], tally[a]), cmp.Compare(a, b))
 	})
 	parts := make([]string, len(verbs))
 	for i, v := range verbs {
-		parts[i] = groupDigits(counts[v]) + " " + v
+		parts[i] = groupDigits(tally[v]) + " " + v
 	}
 	return strings.Join(parts, " · ")
 }

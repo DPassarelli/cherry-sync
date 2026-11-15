@@ -36,11 +36,8 @@ func Withheld(actions []compare.Action) string {
 	for _, row := range rows {
 		pad := strings.Repeat(" ", width-lipgloss.Width(row.label))
 		rest := row.actions
-		switch {
-		case row.removesFolder && row.count > 0:
+		if row.count > 0 && !row.itemized {
 			rest += "  (with " + fileCount(row.count) + ")"
-		case row.count > 0:
-			rest = fileCount(row.count) + "  " + rest
 		}
 		fmt.Fprintf(&b, "  %s\n", dim.Render(row.label+pad+"  "+rest))
 	}
