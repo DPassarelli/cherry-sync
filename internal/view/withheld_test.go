@@ -3,6 +3,7 @@ package view
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dpassarelli/cherry-sync/internal/compare"
@@ -73,5 +74,96 @@ func TestGroupDigits(t *testing.T) {
 		if got != want {
 			t.Errorf("groupDigits(%d): got %q, want %q", n, got, want)
 		}
+	}
+}
+
+// deletes returns a delete action for each path, in order, the way rsync reports
+// a folder's removal: its contents first, then the folder entries themselves.
+func deletes(paths ...string) []compare.Action {
+	acts := make([]compare.Action, len(paths))
+	for i, p := range paths {
+		acts[i] = compare.Action{Verb: "delete", Path: p}
+	}
+	return acts
+}
+
+// Behavior: a deleted folder takes one row however few files it holds, owned by
+// the outermost folder being deleted and counting only the files beneath it.
+func TestWithheldRows_DeletedFolderIsOneRow(t *testing.T) {
+	acts := deletes("build/a/f01", "build/a/f02", "build/b.txt", "build/a/", "build/")
+	got := withheldRows(acts)
+	want := []withheldRow{{label: "build/", count: 3, actions: "delete"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rows: got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: a deleted subfolder collapses to one row of its own while the kept
+// folder around it is still listed change by change.
+func TestWithheldRows_DeletedSubfolderIsOneRow(t *testing.T) {
+	acts := []compare.Action{{Verb: "create", Path: "logs/a.log"}}
+	acts = append(acts, deletes("logs/old/x.log", "logs/old/")...)
+	got := withheldRows(acts)
+	want := []withheldRow{
+		{label: "logs/a.log", actions: "create"},
+		{label: "logs/old/", count: 1, actions: "delete"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rows: got %+v, want %+v", got, want)
+	}
+}
+
+// Rule 1: the summary threshold counts files only, so a deleted subfolder's own
+// entry does not tip a folder of ten files into a summary.
+func TestWithheldRows_ThresholdCountsFilesOnly(t *testing.T) {
+	acts := creates("logs", 9)
+	acts = append(acts, deletes("logs/old/x.log", "logs/old/")...)
+	got := len(withheldRows(acts))
+	want := 10
+	if got != want {
+		t.Errorf("rows: got %d, want %d", got, want)
+	}
+}
+
+// Rule 2: a top-level summary absorbs a deleted subfolder beneath it, counting
+// its files among the folder's changes.
+func TestWithheldRows_SummaryAbsorbsDeletedSubfolder(t *testing.T) {
+	acts := creates("logs", 9)
+	acts = append(acts, deletes("logs/old/x.log", "logs/old/y.log", "logs/old/")...)
+	got := withheldRows(acts)
+	want := []withheldRow{{label: "logs/", count: 11, actions: "9 create · 2 delete", itemized: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("rows: got %+v, want %+v", got, want)
+	}
+}
+
+// Behavior: a deleted folder holding a single file says "file", not "files".
+func TestWithheld_DeletedFolderOfOneFileIsSingular(t *testing.T) {
+	got := Withheld(deletes("tmp/x", "tmp/"))
+	want := "delete  (with 1 file)"
+	if !strings.Contains(got, want) {
+		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
+	}
+}
+
+// Rule 1: a folded row with a single action names its file count, which would
+// otherwise be hidden.
+func TestWithheld_SingleActionFoldShowsFileCount(t *testing.T) {
+	got := Withheld(creates("build/x", 11))
+	want := "build/  create  (with 11 files)"
+	if !strings.Contains(got, want) {
+		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
+	}
+}
+
+// Rule 2: a folded row with mixed actions leaves the file count off, since the
+// per-action counts already add up to it.
+func TestWithheld_MixedActionFoldOmitsFileCount(t *testing.T) {
+	acts := creates("logs", 6)
+	acts = append(acts, deletes("logs/a", "logs/b", "logs/c", "logs/d", "logs/e")...)
+	got := Withheld(acts)
+	want := "logs/  6 create · 5 delete\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Withheld: got %q, want it to contain %q", got, want)
 	}
 }

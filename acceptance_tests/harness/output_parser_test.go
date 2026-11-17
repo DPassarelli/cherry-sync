@@ -25,7 +25,8 @@ type ReportedOutput struct {
 	Withheld         []Action
 	HasWithheldBlock bool
 	// WithheldSummaries holds the withheld block's summary rows, each standing in for
-	// the many withheld changes under one top-level folder. They are kept apart from
+	// the many withheld changes under one top-level folder, or for a whole folder
+	// being deleted. They are kept apart from
 	// Withheld because a summary names a folder and a count, not a change.
 	WithheldSummaries []WithheldSummary
 	SyncCount         int
@@ -56,8 +57,8 @@ type Action struct {
 }
 
 // WithheldSummary is the test-side view of one summary row in the withheld block:
-// the top-level folder it stands for, how many withheld files it covers, and its
-// actions column exactly as rendered (a lone verb, or per-verb counts).
+// the folder it stands for, how many withheld files it covers, and its actions
+// column exactly as rendered (a lone verb, or per-verb counts).
 type WithheldSummary struct {
 	Folder  string
 	Count   int
@@ -120,11 +121,14 @@ var (
 	// The block runs from this line to the next blank one, and parseOutput cuts that
 	// span out of the report before scanning it for actions.
 	withheldHeaderRE = regexp.MustCompile(`(?m)^Withheld by \.gitignore:[^\S\n]*$`)
-	// withheldSummaryRE captures a withheld block's summary row: the folder, its count
-	// of files (which may carry thousands separators), and the actions column. It is
-	// tried before actionLineRE, which would otherwise read the row as a change to a
-	// path named after the folder.
-	withheldSummaryRE = regexp.MustCompile(`^[^\S\n]+(\S+)[^\S\n]+([\d,]+) files[^\S\n]{2,}(.+?)[^\S\n]*$`)
+	// withheldFolderRE captures a withheld block's summary row whose changes share
+	// one action: the folder, that action, and its file count (which may carry
+	// thousands separators). Summary rows are tried before actionLineRE, which would
+	// otherwise read one as a change to a path named after the folder.
+	withheldFolderRE = regexp.MustCompile(`^[^\S\n]+(\S+/)[^\S\n]+(\S+)[^\S\n]{2,}\(with ([\d,]+) files?\)[^\S\n]*$`)
+	// withheldItemizedRE captures a withheld block's summary row whose changes mix
+	// actions: the folder and its per-action counts, whose sum is the file count.
+	withheldItemizedRE = regexp.MustCompile(`^[^\S\n]+(\S+/)[^\S\n]+((?:[\d,]+ \S+ · )+[\d,]+ \S+)[^\S\n]*$`)
 	// warningRE captures a non-fatal diagnostic csync prints to stderr and carries on
 	// past — today, only its inability to write a run log.
 	warningRE = regexp.MustCompile(`(?m)^warning:\s+(.+?)\s*$`)
@@ -213,10 +217,19 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 	auto, report := carveSection(report, autoExcludedHeaderRE)
 	out.HasWithheldBlock = withheld != ""
 	for line := range strings.SplitSeq(withheld, "\n") {
-		sm := withheldSummaryRE.FindStringSubmatch(line)
-		if sm != nil {
-			n, _ := strconv.Atoi(strings.ReplaceAll(sm[2], ",", ""))
-			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: sm[1], Count: n, Actions: sm[3]})
+		fm := withheldFolderRE.FindStringSubmatch(line)
+		if fm != nil {
+			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: fm[1], Count: groupedInt(fm[3]), Actions: fm[2]})
+			continue
+		}
+		im := withheldItemizedRE.FindStringSubmatch(line)
+		if im != nil {
+			n := 0
+			for part := range strings.SplitSeq(im[2], " · ") {
+				count, _, _ := strings.Cut(part, " ")
+				n += groupedInt(count)
+			}
+			out.WithheldSummaries = append(out.WithheldSummaries, WithheldSummary{Folder: im[1], Count: n, Actions: im[2]})
 			continue
 		}
 		m := actionLineRE.FindStringSubmatch(line)
@@ -290,4 +303,11 @@ func parseOutput(stdout, stderr string) ReportedOutput {
 		break
 	}
 	return out
+}
+
+// groupedInt reads a count csync may have written with thousands separators,
+// yielding 0 for anything unreadable so the assertion comparing it fails loudly.
+func groupedInt(s string) int {
+	n, _ := strconv.Atoi(strings.ReplaceAll(s, ",", ""))
+	return n
 }
