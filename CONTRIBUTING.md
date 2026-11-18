@@ -88,8 +88,6 @@ Adjust the harness for the new location: build csync via its module path rather 
 Fix a coupling this exposes: internal/testreport inferred the module root as the shortest package path seen, which was the bare root package only because root had tests. With the suite moved out, that heuristic picked a subpackage and garbled every per-package label. Derive the root from the longest common package prefix instead — correct whether or not root has tests.
 
 No behavior change; docs (TESTING, README, SMOKE-TEST) updated to the new paths.
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 ````
 
 Note how this compares to the good "Refactor" sample shown above.
@@ -123,4 +121,3 @@ Excludes nested .git.
 ## Footers
 
 - `Closes #N` for each issue the change resolves, one per line.
-- The `Co-Authored-By:` line.

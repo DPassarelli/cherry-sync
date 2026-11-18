@@ -6,22 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-17
+
 ### Added
 
-- Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing it would change. The diff is drawn inside a box, with a scrollbar on its right edge when it's taller than the screen, under a header that stays put while you scroll and names the file and both the source and the destination, and its lines are colored to match the diff's: red for the destination, green for the source. A new hint line says diffs are only available for text files of 200 KiB or less, and a file that can't be diffed (one side missing, too big, or binary) gets a short bold note on that line instead. The local copy is checked first, so one that can't be diffed never costs a trip to the remote. Long lines wrap behind `↪`, tabs show as `→`, and a fetch that fails repeats what rsync said. (#119)
+- Pressing `d` in the picker shows the highlighted file's diff, from the destination copy to the source, so you can see what syncing would change. The diff is shown with color-coded lines: red for the destination (which would be lost), green for the source (which will be added). Long lines wrap behind `↪` and tabs are shown as `→`. A new hint line says diffs are only available for text files of 200 KiB or less, and a file that can't be diffed (one side missing, too big, or binary) generates a notification. Any fetch that fails repeats what rsync said. (#119)
 - A build from source now names the commit it was built from in its version line, e.g. `cherry-sync (dev build: e608fd7)`, so two dev builds can be told apart.
 
 ### Changed
 
 - The picker now shows the newer copy's name and "last updated" phrase in bold in the highlighted row's comparison, so you can see at a glance which copy is the live one. Nothing is bold when the timestamps match or can't be read.
-- A summarized folder under "Withheld by .gitignore:" now reads `build/  create  (with 11 files)`, with the file count shown only when a single action would otherwise hide it; a folder with mixed actions reads `logs/  6 create · 5 delete`. (#139)
+- A gitignored folder that would be either created or deleted appears once under "Withheld by .gitignore:", instead of as a row for the folder AND a row for its contents. A folder with mixed actions reads `logs/  6 create · 5 delete`. (#139)
 
 ### Fixed
 
-- A gitignored folder that would be deleted now appears once under "Withheld by .gitignore:", at any depth and however few files it holds, instead of as a row for the folder beside a summary of its contents. Withheld counts, and the 10-change summary threshold, now include only files rather than the subfolders inside them. (#139)
-
-### Fixed
-
+- Withheld counts, and the 10-change summary threshold, now include only files rather than the subfolders inside them. (#139)
 - On macOS, a gitignored folder that exists only on the destination is no longer offered for deletion.
 
 ## [1.3.0] - 2026-10-06
@@ -180,7 +179,8 @@ The approach taken (that is, driving rsync's `--exclude-from` with the output of
 - Compatibility with both GNU rsync and macOS's openrsync; the `--itemize-changes` output is parsed without assuming implementation-specific field widths.
 - Hardened rsync invocation: commands run with no shell, and a `--` separator precedes the path operands so a path beginning with `-` cannot be parsed as an rsync option.
 
-[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/dpassarelli/cherry-sync/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/dpassarelli/cherry-sync/compare/v1.0.0...v1.1.0

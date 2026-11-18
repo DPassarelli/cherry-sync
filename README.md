@@ -31,7 +31,7 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 
 - **rsync does the heavy lifting.** This tool is a UX layer, not a reimplementation. It parses rsync's output and drives rsync's parameters for selective transfer.
 - **SSH is the transport.** No additional daemon or agent on the remote side. If you can `ssh` to it, this tool works.
-- **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display is a future goal.
+- **No opinion on direction.** Push and pull are both first-class.
 - **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
 
 ## Requirements
@@ -78,7 +78,7 @@ $ csync ./local-dir user@host:/remote-dir
 $ csync user@host:/remote-dir ./local-dir
 ```
 
-csync compares the two directories and lets you choose what to transfer. **In a terminal** you get an interactive picker: arrow keys to move, space to toggle, `a` for all/none, Enter to sync, `ctrl-c` to cancel.
+csync compares the two directories and lets you choose what to transfer. **In a terminal** you get an interactive picker: arrow keys (or `j`/`k`) to move, space to toggle, `a` for all/none, `d` to view the highlighted file's diff, Enter to sync, `ctrl-c` to cancel.
 
 **When input or output is redirected** (such as a pipe, a file, CI), csync falls back to a typed prompt on stderr (so that the report on stdout stays uncluttered), where:
 - press **Enter** (or `a`) to sync every change
@@ -92,6 +92,10 @@ csync compares the two directories and lets you choose what to transfer. **In a 
 If the two directories are identical, csync reports there is nothing to sync and exits cleanly. An invalid invocation prints an error that explains the problem and points to `csync --help`, then exits with code 2.
 
 `csync --help` (or `-h`) prints a usage summary and exits. `csync --version` prints the version and exits. Both take precedence over any other arguments.
+
+### Viewing a diff
+
+In the picker, `d` shows what syncing the highlighted file would change, as a diff from the destination copy to the source. Arrow keys (or `j`/`k`) scroll it and Esc returns to the picker; other picker keys are ignored while it's open, so Enter can't start a sync you can't see. Diffs are available only for small text files that exist on both sides, and only in the interactive picker, not the typed prompt.
 
 ### Saved targets
 
@@ -121,8 +125,6 @@ If the log cannot be written at all (for example, the state directory is read-on
 ## Roadmap
 
 Near-term enhancements are tracked as [open `enhancement` issues](https://github.com/DPassarelli/cherry-sync/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement) on GitHub.
-
-Further out: bidirectional diff (showing which side is newer) and conflict flagging when a file has changed on both sides.
 
 See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
