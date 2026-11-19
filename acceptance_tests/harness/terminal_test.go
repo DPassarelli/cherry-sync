@@ -42,6 +42,7 @@ var terminalKeys = map[string]string{
 	"down":   "\x1b[B",
 	"enter":  "\r",
 	"esc":    "\x1b",
+	"n":      "n",
 	"space":  " ",
 	"up":     "\x1b[A",
 }

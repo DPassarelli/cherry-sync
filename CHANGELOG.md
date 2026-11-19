@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Pressing `n` in the picker unchecks every row, so you can start from an empty selection and check only what you want. `a` still toggles between all and none.
+
 ## [1.4.0] - 2026-11-17
 
 ### Added

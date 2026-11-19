@@ -226,6 +226,7 @@ Feature: Show a file's diff from the picker
       | enter |
       | space |
       | a     |
+      | n     |
       | d     |
 
   Scenario: Pressing "enter" in the diff transfers nothing
@@ -248,6 +249,7 @@ Feature: Show a file's diff from the picker
       | key   |
       | space |
       | a     |
+      | n     |
 
   Scenario: Ctrl-C in the diff cancels the run
     Given that the file "README.md" has been changed locally
@@ -312,7 +314,7 @@ Feature: Show a file's diff from the picker
   Scenario: The picker's hint line leaves the diff to a line of its own
     Given that the file "README.md" has been changed locally
     When  I run "csync ./project user@host:/project" in a terminal
-    Then  the hint line should read "↑/↓ move · space toggle · a all/none · enter sync · ctrl-c cancel"
+    Then  the hint line should read "↑/↓ move · space toggle · a/n all/none · enter sync · ctrl-c cancel"
 
   Scenario: The diff hint says which files can be diffed
     Given that the file "README.md" has been changed locally
