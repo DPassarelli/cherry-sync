@@ -106,9 +106,9 @@ func (m pickerModel) overlayView() string {
 // since offering a key that does nothing would read as a sign something is hidden.
 func (m pickerModel) overlayHint(total int) string {
 	if total > m.overlayRows() {
-		return "↑/↓ scroll · esc back"
+		return "↑/↓ scroll · esc/d back"
 	}
-	return "esc back"
+	return "esc/d back"
 }
 
 // thumb is the run of the diff's rows the scrollbar marks: size rows from start.
