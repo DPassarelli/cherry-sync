@@ -33,6 +33,7 @@ An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
 - **SSH is the transport.** No additional daemon or agent on the remote side. If you can `ssh` to it, this tool works.
 - **No opinion on direction.** Push and pull are both first-class.
 - **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
+- **CLI conventions.** Where practical, follows the guidelines at [clig.dev](https://clig.dev) for command-line UX. Adherence is intentional but not exhaustive.
 
 ## Requirements
 
@@ -78,7 +79,7 @@ $ csync ./local-dir user@host:/remote-dir
 $ csync user@host:/remote-dir ./local-dir
 ```
 
-csync compares the two directories and lets you choose what to transfer. **In a terminal** you get an interactive picker: arrow keys (or `j`/`k`) to move, space to toggle, `a` for all/none, `d` to view the highlighted file's diff, Enter to sync, `ctrl-c` to cancel.
+csync compares the two directories and lets you choose what to transfer. **In a terminal** you get an interactive picker: arrow keys (or `j`/`k`) to move, space to toggle, `a` to toggle all/none, `n` to uncheck all, `d` to view the highlighted file's diff, Enter to sync, `ctrl-c` to cancel.
 
 **When input or output is redirected** (such as a pipe, a file, CI), csync falls back to a typed prompt on stderr (so that the report on stdout stays uncluttered), where:
 - press **Enter** (or `a`) to sync every change
@@ -132,7 +133,7 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 **Disclaimer:** I am a real person with many years of software engineering experience. I personally came up with this idea on my own, and I am the one driving the product design, reviewing code, managing issues, and maintaining documentation; however, I am working with [Claude](https://www.anthropic.com/product/claude-code) to write the code, suggest verbiage, and analyze security issues on this project. The evidence of this is sprinkled throughout.
 
-The development process is mainly described in [TESTING](TESTING.md), with additional concerns covered in [STYLE](STYLE.md) and [SECURITY](SECURITY.md). Automated testing and a thorough CI workflow have been in place since the beginning in order to assure quality and reliability. The Gherkin specifications found under `acceptance_tests/features/` are the canonical definition of expected behavior and usage for this application.
+The development process is mainly described in [TESTING](TESTING.md), with additional concerns covered in [STYLE](STYLE.md) and [SECURITY](SECURITY.md). Automated testing and a thorough CI workflow have been in place since the beginning in order to assure quality and reliability. The [Gherkin specifications](acceptance_tests/README.md) are the canonical definition of expected behavior and usage for this application.
 
 ## Testing
 
@@ -156,10 +157,10 @@ Each test workflow run publishes a detailed report to the job summary, which inc
 To run these tests locally:
 
 ```sh
-go test -count=1 ./...
+./_scripts/verify.sh --test
 ```
 
-> _The `-count=1` is deliberate: the suite builds and execs the `csync` binary rather than importing it, so Go's test cache doesn't notice production-code changes and a plain `go test ./...` can report a stale pass. See [TESTING](TESTING.md#running-tests) for the details._
+Run `./_scripts/verify.sh` with no flags for every check CI enforces.
 
 ### Smoke tests
 
