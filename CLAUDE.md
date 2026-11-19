@@ -36,12 +36,17 @@ See [STYLE.md](STYLE.md) for the rationale, scope, and worked examples behind ea
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for the threat model, trust boundaries, and the catalog of concerns. That document is the source of truth on security. The non-negotiable invariants, kept here because they constrain every change:
+See [SECURITY.md](SECURITY.md) for the threat model, trust boundaries, and the catalog of concerns. That document is the source of truth for the threat model and the concern catalog; security decisions live in `docs/decisions/`. The non-negotiable invariants, kept here because they constrain every change:
 
 - **No shell, ever.** Invoke external commands with `exec.Command` and an argument slice — never `sh -c`. Shell metacharacters in a path must reach `rsync` as inert literal bytes.
 - **`--` before positional paths handed to rsync**, so a path beginning with `-` can't be parsed as an rsync option (`-e`/`--rsh` = remote-shell execution).
 - **Validate every path operand** before use — at minimum reject empty strings (an empty path becomes `/`).
 - **NUL-delimit (`--from0`) any `--files-from` list** once the transfer phase exists; newlines in filenames otherwise smuggle extra entries.
+
+## Decisions
+
+- **Decisions live in `docs/decisions/`.** Read the relevant records before proposing a design, and don't re-propose an alternative a record rejects unless one of its "Revisit if" conditions now holds. Write a record (from the template there) in the same PR as any decision that spans several PRs or rules something out; change direction by superseding a record, never by rewriting it.
+- **Older decisions migrate over time.** Until a decision is migrated, its reasoning stays in the topic doc that holds it (TESTING, STYLE, SECURITY, RELEASE-GATE); a migrated decision leaves a link to its record behind.
 
 ## Changelog & documentation
 
@@ -50,8 +55,8 @@ The release process rolls `CHANGELOG.md`'s `[Unreleased]` section into the publi
 - **Log user-visible changes in the same change that makes them.** Every PR that adds, changes, fixes, or removes something a user would notice gets a Keep a Changelog entry (Added/Changed/Fixed/Removed) under `[Unreleased]` — written then, not reconstructed at release time. An empty `[Unreleased]` must mean nothing user-facing landed, never that the log was skipped.
 - **Internal-only changes don't need an entry.** Refactors, test-harness, and CI work that change no observable behavior stay out of the changelog.
 - **CHANGELOG owns version history; README must not duplicate it.** Keep per-version status banners, "done" checklists, and hardcoded version numbers out of `README.md`. README describes what the tool is and how to install and use it — content that doesn't go stale every release. Anything of the form "shipped in vX" lives only in CHANGELOG.
-- **This file holds durable rules, not plans.** What shipped lives in `CHANGELOG.md`; what's planned lives in the GitHub issue tracker, which the README's Roadmap links to (the `enhancement` label) rather than enumerating inline. Don't add a per-version scope or status section here, or reinstate a bulleted plan list in the README — both go stale the moment a release ships (the original "Scope for v0.1" did exactly that).
-- **Don't reference gitignored / uncommitted files from committed files.** Code comments, feature files, and committed docs must not cite paths that aren't in the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF reference docs). A clone won't have them, so the reference is a dead pointer that leaks a private filename. State the reasoning inline instead, or cite a committed doc. (CLAUDE.md, README, CHANGELOG, CONTRIBUTING, STYLE/TESTING/SECURITY are committed and fair to cite.)
+- **This file holds durable rules, not plans.** What shipped lives in `CHANGELOG.md`; what was decided, and why, lives in `docs/decisions/`; what's planned lives in the GitHub issue tracker, which the README's Roadmap links to (the `enhancement` label) rather than enumerating inline. Don't add a per-version scope or status section here, or reinstate a bulleted plan list in the README — both go stale the moment a release ships (the original "Scope for v0.1" did exactly that).
+- **Don't reference gitignored / uncommitted files from committed files.** Code comments, feature files, and committed docs must not cite paths that aren't in the repo (anything matched by `.gitignore` — e.g. the local scratchpad, the PDF reference docs). A clone won't have them, so the reference is a dead pointer that leaks a private filename. State the reasoning inline instead, or cite a committed doc. (CLAUDE.md, README, CHANGELOG, CONTRIBUTING, STYLE/TESTING/SECURITY, and the records in `docs/decisions/` are committed and fair to cite.)
 - **Don't hard-wrap prose in Markdown.** In committed Markdown — README, CHANGELOG, CONTRIBUTING, CLAUDE/TESTING/STYLE/SECURITY — write each paragraph and list item as one logical line and let the editor soft-wrap; don't insert hard newlines to wrap at ~80 columns, since those breaks render as unwanted line breaks in some viewers. Prose only: keep the deliberate line structure of tables, code blocks, and list-item boundaries.
 
 ## Pull requests
