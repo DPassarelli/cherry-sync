@@ -26,7 +26,7 @@ One round of behavior, from idea to merged code:
 
 6. **Make it pass.** Write the minimum production code to satisfy the failing tests. No speculative features, no unused fields.
 7. **Refactor on green.** Rename, extract, simplify — but only with all tests passing. The suite is the safety net.
-8. **Verify.** Run `go test -count=1 ./...`, `gofmt -l .`, `go vet ./...`, and `gosec ./...` before committing. All four are gates the PR must clear — the first two the human runs, the last two enforced by the lefthook pre-push hook and again in CI. Run them yourself rather than leaning on the hook: a contributor who pushes from an environment without the hook installed (or whose commits are pushed on their behalf from another machine) never triggers it, so the security and vet checks only surface on the PR unless run by hand here. The `-count=1` is not optional after a production change — see [Why `-count=1` matters](#running-tests) below for why a plain `go test ./...` can report a stale pass.
+8. **Verify.** Run `./_scripts/verify.sh` before committing (`--help` lists its checks). Every check it runs is a gate the PR must clear, and CI runs each one through the same script. Run it yourself rather than leaning on the lefthook hooks: a contributor who pushes from an environment without the hooks installed (or whose commits are pushed on their behalf from another machine) never triggers them, so failures only surface on the PR unless run by hand here.
 
 ## Gherkin style
 
@@ -107,14 +107,9 @@ Deliberately absent: an inventory of the files themselves. This section listed t
 
 | Command                     | Purpose                                                              |
 |-----------------------------|---------------------------------------------------------------------|
-| `go test -count=1 ./...`    | Run the full suite (godog scenarios + unit tests); `-count=1` defeats stale caching — see below |
+| `./_scripts/verify.sh`      | Run every gate a change must clear, or one by intent (`--help` lists them) |
 | `./_scripts/test-report.sh`  | Run the suite and print the same dashboard panel CI publishes (needs [`gotestsum`](https://github.com/gotestyourself/gotestsum); see below) |
-| `gofmt -l .`                | List files needing formatting (silent = all clean)                  |
-| `go vet ./...`              | Part of the verify gate; also enforced by lefthook pre-push and CI  |
-| `./_scripts/gosec.sh`       | Static security analysis at the pinned gosec version; part of the verify gate, also lefthook pre-push and CI |
 
 `_scripts/test-report.sh` is the single source of the dashboard panel shown in the GitHub Actions job summary, so running it locally previews exactly what CI will show: the environment (which rsync implementation, Go, host), a Gherkin-scenario-vs-unit-test breakdown, any failures by name, and per-package detail. It streams gotestsum's live output and then prints the panel as raw Markdown (pipe to a renderer such as `glow` if you want it formatted). The panel is rendered by `cmd/testreport` from gotestsum's `--jsonfile`; that summarizing logic lives in `internal/testreport` and is unit-tested like any other code. The script needs `gotestsum` on `PATH` (or installed in your Go bin dir); install the version CI pins with `go install gotest.tools/gotestsum@v1.13.0`. Extra arguments are forwarded to `go test` (e.g. `./_scripts/test-report.sh -run TestParse`).
 
 godog's default pretty formatter prints feature-file line numbers on failure, which makes it easy to navigate from a failing assertion back to the scenario that triggered it.
-
-**Why `-count=1` matters.** The godog suite builds the `csync` binary in `TestMain` and drives it by exec — the test package imports none of the production packages. Go's test cache keys a package's result on that package's own sources and its imported packages, so **no production-code change invalidates the godog cache**: edit `cmd/csync`, `internal/compare`, `internal/selection`, or anything else the binary uses, and a plain `go test ./...` can still print a green `ok (cached)` from a stale build — only changes to the test files themselves bust it. This bites because the suite execs a binary rather than calling production code in-process, which is otherwise the right design (it tests the real artifact a user runs). Pass `-count=1` (or run `go clean -testcache`) to force a real run whenever you've touched production code; the suite is fast enough that `-count=1` is a fine everyday default.

@@ -1,33 +1,13 @@
 # Cherry-Sync: An Interactive Rsync Wrapper
 
-## Problem
+## Overview
 
-When working across a local machine and a remote dev environment over SSH, the workflow for moving files back and forth is clumsy. Plain `rsync` transfers everything or nothing. Plain `scp` has no incremental mode. What's missing is the middle step: see what's different, then pick what moves and in which direction.
-
-This is a common situation for anyone working with SSH-accessible dev boxes — cloud instances, Proxmox containers, Raspberry Pis, WSL-to-host, etc. This tool originated from a need to improve an AI-assisted development workflow, where Claude runs inside a sandbox isolated from the primary computer.
-
-## What this tool does
-
-An interactive CLI that wraps `rsync` to provide a select-then-sync workflow:
-
-1. Compare local and remote directories (using `rsync --dry-run --itemize-changes`)
-2. Show the user a human-readable list of differences (new, modified, deleted — with direction)
-3. Let the user choose: sync all, or select individual files
-4. Execute the transfer for only the selected files (using `rsync --files-from`)
-
-## Design principles
-
-- **rsync does the heavy lifting.** This tool is a UX layer, not a reimplementation. It parses rsync's output and drives rsync's `--files-from` for selective transfer.
-- **SSH is the transport.** No additional daemon or agent on the remote side. If you can `ssh` to it, this tool works.
-- **No opinion on direction.** Push and pull are both first-class. Bidirectional diff display (showing which side is newer) is a goal.
-- **Minimal dependencies.** `rsync` and `ssh` must be present on both sides. The tool itself should be easy to install.
-- **CLI conventions.** Where practical, follows the guidelines at [clig.dev](https://clig.dev) for command-line UX. Adherence is intentional but not exhaustive.
+See @README.md for the problem this tool solves, what it does, and its design principles.
 
 ## Key technical details
 
 - `rsync --itemize-changes` produces per-file codes like `>f.st......` that encode what changed and in which direction. Parsing these into human-readable labels ("modified locally", "new on remote", "deleted") is the core translation layer.
 - `rsync --files-from=<path>` accepts a text file of relative paths and transfers only those. This is how selective sync works without running rsync once per file.
-- Bidirectional comparison requires two dry-run passes (one push, one pull) and merging the results. Conflicts (modified on both sides) need to be flagged clearly.
 
 ## Testing
 
@@ -40,7 +20,7 @@ See [TESTING.md](TESTING.md) for the philosophy, the development loop in full, t
 - **Agree the scenario before wiring it.** Gherkin scenarios are the spec; review them before writing step definitions or production code.
 - **One scenario, one behavior.** Don't bundle expectations into a single scenario.
 - **Unit-test logic, not command assembly.** A unit test pins a decision the code makes — parsing, ordering, classification. Never assert the argument vector handed to an external tool (that a specific flag or path is in the slice passed to `rsync`/`ssh`): the outside-in scenario that runs the real command already gates that, and a slice assertion only breaks on a correct refactor. If a unit test's failure couldn't mean a user-visible behavior changed, delete it.
-- **Green before refactor; verify before done.** Minimal code to pass, refactor only on green, and run `go test -count=1 ./...`, `gofmt -l .`, `go vet ./...`, and `./_scripts/gosec.sh` before calling it done. The `-count=1` is not optional: the acceptance suite execs a binary it builds itself, so a plain `go test ./...` can report a stale pass after a production-only change (TESTING.md explains why).
+- **Green before refactor; verify before done.** Minimal code to pass, refactor only on green, and run `./_scripts/verify.sh` before calling it done.
 
 ## Style
 

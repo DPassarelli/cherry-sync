@@ -38,9 +38,21 @@ commit-msg:
         EOF
         exit 1
 
+pre-commit:
+  commands:
+    gofmt:
+      # Check-only: rewriting and re-staging would sweep unstaged hunks of a
+      # partially staged file into the commit. A bare *.go would match only
+      # root-level files.
+      glob: ["*.go", "**/*.go"]
+      run: |
+        unformatted=$(gofmt -l {staged_files}) || exit 1
+        [ -z "$unformatted" ] && exit 0
+        echo "Not gofmt-clean (run gofmt -w on these, then re-stage):" >&2
+        echo "$unformatted" >&2
+        exit 1
+
 pre-push:
   commands:
-    go-vet:
-      run: go vet ./...
-    gosec:
-      run: ./_scripts/gosec.sh
+    verify:
+      run: ./_scripts/verify.sh --lint --security
