@@ -96,11 +96,13 @@ func (m pickerModel) openOverlay(msg diffFetchedMsg) (tea.Model, tea.Cmd) {
 }
 
 // overlayKey handles a keypress while the overlay is open. Movement keys scroll
-// rather than move the cursor, and every other picker key is ignored, because its effect would be hidden behind the overlay and "enter" would
-// start a sync the user can't see they asked for.
+// rather than move the cursor, and "d" closes the overlay so the key that opened it
+// also toggles it shut. Every other picker key is ignored, because its effect would
+// be hidden behind the overlay and "enter" would start a sync the user can't see
+// they asked for.
 func (m pickerModel) overlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "esc":
+	case "esc", "d":
 		m.overlay = nil
 		return m, tea.ExitAltScreen
 	case "up", "k":

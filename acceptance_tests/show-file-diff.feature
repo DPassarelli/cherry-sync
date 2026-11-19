@@ -200,12 +200,17 @@ Feature: Show a file's diff from the picker
     When  I press "up"
     Then  the diff overlay should not show its last line
 
-  Scenario: The escape key closes the diff
+  Scenario Outline: Pressing "<key>" closes the diff
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     And   that I have pressed "d" on the row for "README.md"
-    When  I press "esc"
+    When  I press "<key>"
     Then  the diff overlay should no longer be visible
+
+    Examples:
+      | key |
+      | esc |
+      | d   |
 
   Scenario: Closing the diff brings back what was above the picker
     Given that the file "README.md" has been changed locally
@@ -227,7 +232,6 @@ Feature: Show a file's diff from the picker
       | space |
       | a     |
       | n     |
-      | d     |
 
   Scenario: Pressing "enter" in the diff transfers nothing
     Given that the file "README.md" has been changed locally
@@ -325,10 +329,10 @@ Feature: Show a file's diff from the picker
     Given that the file "README.md" has been changed locally so that its diff is taller than the terminal
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the hint line should read "↑/↓ scroll · esc back"
+    Then  the hint line should read "↑/↓ scroll · esc/d back"
 
   Scenario: A diff that fits offers only going back
     Given that the file "README.md" has been changed locally
     And   that I have run "csync ./project user@host:/project" in a terminal
     When  I press "d" on the row for "README.md"
-    Then  the hint line should read "esc back"
+    Then  the hint line should read "esc/d back"

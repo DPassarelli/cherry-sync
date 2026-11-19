@@ -96,7 +96,7 @@ If the two directories are identical, csync reports there is nothing to sync and
 
 ### Viewing a diff
 
-In the picker, `d` shows what syncing the highlighted file would change, as a diff from the destination copy to the source. Arrow keys (or `j`/`k`) scroll it and Esc returns to the picker; other picker keys are ignored while it's open, so Enter can't start a sync you can't see. Diffs are available only for small text files that exist on both sides, and only in the interactive picker, not the typed prompt.
+In the picker, `d` shows what syncing the highlighted file would change, as a diff from the destination copy to the source. Arrow keys (or `j`/`k`) scroll it, and Esc or `d` returns to the picker; other picker keys are ignored while it's open, so Enter can't start a sync you can't see. Diffs are available only for small text files that exist on both sides, and only in the interactive picker, not the typed prompt.
 
 ### Saved targets
 
