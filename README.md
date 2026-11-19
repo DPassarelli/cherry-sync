@@ -133,7 +133,7 @@ See the [CHANGELOG](CHANGELOG.md) for what has shipped in each release.
 
 **Disclaimer:** I am a real person with many years of software engineering experience. I personally came up with this idea on my own, and I am the one driving the product design, reviewing code, managing issues, and maintaining documentation; however, I am working with [Claude](https://www.anthropic.com/product/claude-code) to write the code, suggest verbiage, and analyze security issues on this project. The evidence of this is sprinkled throughout.
 
-The development process is mainly described in [TESTING](TESTING.md), with additional concerns covered in [STYLE](STYLE.md) and [SECURITY](SECURITY.md). Automated testing and a thorough CI workflow have been in place since the beginning in order to assure quality and reliability. The Gherkin specifications found under `acceptance_tests/features/` are the canonical definition of expected behavior and usage for this application.
+The development process is mainly described in [TESTING](TESTING.md), with additional concerns covered in [STYLE](STYLE.md) and [SECURITY](SECURITY.md). Automated testing and a thorough CI workflow have been in place since the beginning in order to assure quality and reliability. The [Gherkin specifications](acceptance_tests/README.md) are the canonical definition of expected behavior and usage for this application.
 
 ## Testing
 
