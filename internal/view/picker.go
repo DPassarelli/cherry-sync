@@ -158,6 +158,8 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle the whole list: clear it if every row is checked, otherwise check
 			// every row.
 			m.sel.SetAll(!m.sel.AllChecked())
+		case "n":
+			m.sel.SetAll(false)
 		case "d":
 			var fetch tea.Cmd
 			m, fetch = m.pressDiff()

@@ -512,6 +512,68 @@ func theRowShouldBeChecked(ctx context.Context, relPath string) error {
 	return nil
 }
 
+// thatIHaveUncheckedTheRowFor toggles relPath's checkbox off and waits until the
+// picker shows it clear, so the next key can't overtake the redraw.
+func thatIHaveUncheckedTheRowFor(ctx context.Context, relPath string) error {
+	err := iPressOnTheRowFor(ctx, "space", relPath)
+	if err != nil {
+		return err
+	}
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = session.waitFor("the row for "+relPath+" unchecked", func(s TerminalScreen) bool {
+		index := s.RowIndex(relPath)
+		return index >= 0 && !s.Rows[index].Checked
+	})
+	return err
+}
+
+// theRowShouldNotBeChecked asserts relPath's checkbox is clear.
+func theRowShouldNotBeChecked(ctx context.Context, relPath string) error {
+	screen, err := settledPicker(ctx)
+	if err != nil {
+		return err
+	}
+	index := screen.RowIndex(relPath)
+	if index < 0 {
+		return fmt.Errorf("no row for %s; screen was:\n%s", relPath, screen)
+	}
+	if screen.Rows[index].Checked {
+		return fmt.Errorf("row for %s is checked; screen was:\n%s", relPath, screen)
+	}
+	return nil
+}
+
+// noRowShouldBeChecked asserts every checkbox in the picker is clear.
+func noRowShouldBeChecked(ctx context.Context) error {
+	screen, err := settledPicker(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range screen.Rows {
+		if row.Checked {
+			return fmt.Errorf("row for %s is checked; screen was:\n%s", row.Path, screen)
+		}
+	}
+	return nil
+}
+
+// settledPicker returns the screen once the picker's rows are drawn and csync has
+// stopped redrawing, so a check of the checkboxes can't read a frame mid-update.
+func settledPicker(ctx context.Context) (TerminalScreen, error) {
+	session, err := runningTerminal(ctx)
+	if err != nil {
+		return TerminalScreen{}, err
+	}
+	_, err = session.waitFor("the picker's rows", func(s TerminalScreen) bool { return len(s.Rows) > 0 })
+	if err != nil {
+		return TerminalScreen{}, err
+	}
+	return session.settle()
+}
+
 // csyncShouldHaveExited asserts the process ended, as opposed to only leaving no sign
 // of itself on screen.
 func csyncShouldHaveExited(ctx context.Context) error {
