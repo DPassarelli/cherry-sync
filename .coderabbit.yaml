@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# Project rules reach the reviewer through CLAUDE.md, which CodeRabbit detects
+# on its own. Only guidance CLAUDE.md cannot express belongs here.
+reviews:
+  path_instructions:
+    - path: "**/*.feature"
+      instructions: >-
+        Feature files are this project's specification. If this pull request also
+        changes the production code a scenario exercises, treat every changed or
+        removed expectation as suspect: name the expectation that changed, and ask
+        whether the spec was wrong or the scenario was bent to let the code pass.
+    - path: "**/*_test.go"
+      instructions: >-
+        If this pull request also changes the production code this test covers,
+        treat every changed or removed assertion as suspect: name the expectation
+        that changed, and ask whether the old expectation was wrong or the test was
+        bent to let the code pass.
